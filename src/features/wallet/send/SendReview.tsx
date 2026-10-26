@@ -65,7 +65,7 @@ export function SendReview({ asset, amount, recipient, address, quote, problem, 
         <DetailRow
           label="To"
           value={
-            recipient.kind === 'address' ? <KeyText value={address} full small copyable={false} /> : <PersonRecipient recipient={recipient} address={address} />
+            recipient.kind === 'address' ? <KeyText value={address} full small copyable={false} /> : <PersonRecipient recipient={recipient} address={address} asset={asset} />
           }
         />
         <Divider />

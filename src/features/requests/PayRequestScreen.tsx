@@ -215,6 +215,7 @@ export function PayRequestScreen({ navigation, route }: RootScreenProps<'PayRequ
           <PersonRecipient
             recipient={{ kind: 'pubky', label: name, publicKey: counterparty, route: 'request', addresses: { [prepared.asset]: prepared.address } }}
             address={prepared.address}
+            asset={prepared.asset}
           />
           <Text color="alert" testID="pay-request-blocked">
             {step.message}

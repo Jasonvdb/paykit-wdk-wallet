@@ -32,6 +32,7 @@ import {
 } from '../../../paykit';
 import { Button, Input, KeyText, Text, space } from '../../../ui';
 import { ASSETS } from '../../../wallet';
+import { privateRouteWords } from '../../people/person/personWords';
 import { usePersonName } from '../../people/usePersonName';
 import { PersonHeader } from './PersonRecipient';
 import type { RecipientFieldProps, SendRecipient } from './recipient';
@@ -191,7 +192,7 @@ class OwnKeyError extends Error {}
 function acceptsWords(ready: Extract<Lookup, { state: 'ready' }>, name: string): string {
   const assets = (['btc', 'usdt'] as const).filter((a) => ready.addresses[a] !== undefined).map((a) => ASSETS[a].displayName);
   if (assets.length === 0) return 'Accepts nothing by pubky';
-  if (ready.route === 'private') return `Paying privately: ${name} shared ${assets.join(' and ')} addresses only with you.`;
+  if (ready.route === 'private') return privateRouteWords((['btc', 'usdt'] as const).filter((a) => ready.addresses[a] !== undefined), name);
   return `Accepts ${assets.join(' and ')} by pubky`;
 }
 

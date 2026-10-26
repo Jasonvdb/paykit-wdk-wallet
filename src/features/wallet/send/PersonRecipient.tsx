@@ -1,8 +1,9 @@
 // Review's "To" for a person: their seal, name and shortened pubky, whether
 // they are one of your contacts, and the exact address the money goes to.
-// A private address says so plainly: the contact shared it only with you
-// (their Private Payment List), so the payment is not linked to the
-// addresses they publish for everyone.
+// A private Bitcoin address says so plainly: the contact shared it only
+// with you (their Private Payment List), so the payment is not linked to
+// the addresses they publish for everyone. A USD₮ address from the same
+// list is their one address for everyone, and the words say that too.
 //
 // The name and photo of someone who is not a contact come from their own
 // profile, so anyone can publish "Ben" with Ben's photo. The review
@@ -15,17 +16,18 @@ import { StyleSheet, View } from 'react-native';
 
 import { KeyText, Text, space } from '../../../ui';
 import { PersonSeal } from '../../people/PersonSeal';
+import { privateAddressWords } from '../../people/person/personWords';
 import { usePersonName } from '../../people/usePersonName';
 import type { SendRecipient } from './recipient';
 
-export function PersonRecipient({ recipient, address }: { recipient: Extract<SendRecipient, { kind: 'pubky' }>; address: string }) {
+export function PersonRecipient({ recipient, address, asset }: { recipient: Extract<SendRecipient, { kind: 'pubky' }>; address: string; asset: string }) {
   const { name } = usePersonName(recipient.publicKey);
   return (
     <View style={styles.root} testID="review-person">
       <PersonHeader publicKey={recipient.publicKey} sealSize={36} />
-      <Text variant="caption" color={recipient.route === 'public' ? 'graphite' : 'seal'} testID="review-route">
+      <Text variant="caption" color={recipient.route === 'private' && asset === 'btc' ? 'seal' : 'graphite'} testID="review-route">
         {recipient.route === 'private'
-          ? `A private address ${name} shared only with you. Nobody else knows it is theirs.`
+          ? privateAddressWords(asset, name)
           : recipient.route === 'request'
             ? `The address ${name} put in their request, sent to you privately:`
             : 'The public address they publish for everyone:'}
