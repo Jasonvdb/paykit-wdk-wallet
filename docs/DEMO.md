@@ -189,21 +189,27 @@ terms).
 Shows: Allowances, automatic acceptance and payment within limits.
 
 1. **Ana:** Ben's Person page > Automatic payments > **Set up automatic
-   payments**. Choose 5 USD₮ a payment and 1 day. The limits read: at most
-   10 payments and 4 payments' worth an hour, 10 payments' worth in all.
-   **Offer to Ben (Android)**.
+   payments**. Choose 5 USD₮ a payment and 1 day. Your limits read "From
+   0.50 USD₮ to 5.00 USD₮ a payment. At most 10 payments and 20.00 USD₮
+   an hour. 50.00 USD₮ in all. Until …". **Offer to Ben (Android)**.
 2. **Ben:** Ana's Person page says "Ana (iOS) offers to pay your requests
-   automatically". **Accept**. Both pages show the limits with 0 used.
+   automatically". **Accept automatic payments**. Ana's page shows the
+   limits with 0 used; Ben's shows the limits.
 3. **Ben:** request 1 USD₮ from Ana, Every minute, 3 payments. His
    request page says "Ana (iOS) pays requests like this automatically."
 4. **Ana:** don't touch anything. Within a few seconds the request is
    accepted and the first payment is sent; each minute the next one is
-   paid. The request page says "Paid automatically, within your limits
-   for Ben (Android).", rows say "Paid automatically", and the Person page
-   shows the usage.
-5. Over a limit, the request waits for Ana and says why ("It would go over
-   your hourly limit for automatic payments. You can pay it yourself.").
-6. **Either:** **Stop automatic payments** (Ana) or **End** (Ben).
+   paid. The request page says "Paid automatically within your limits
+   for Ben (Android) as payments come due.", rows say "Paid
+   automatically", and the Person page shows the usage.
+5. Outside the limits, the request waits for Ana and says why. A request
+   for more than 5 USD₮: "Outside the amount you allowed for one
+   automatic payment, so it waits for you." A recurring request whose
+   next payment would pass 20 USD₮ in an hour: "Not paid automatically.
+   It would go over your hourly limit for automatic payments. You can pay
+   it yourself."
+6. **Either:** **Stop automatic payments** (Ana) or **End automatic
+   payments** (Ben), each after a confirmation.
 
 ## 10. Block and unblock
 
@@ -211,13 +217,14 @@ Shows: blockPeer, unblockPeer, forgetPeer.
 
 1. **Ana:** Ben's Person page > **Block Ben (Android)**, confirm. Ben moves
    under "Blocked" on People with a grey dashed ring. His requests and
-   messages are ignored.
-2. **Ana:** **Forget what they sent** says the history is kept: Ana and
-   Ben have requested and paid each other, and the SDK keeps history you
-   acted on.
+   messages are ignored, and automatic payments between them end (Ben's
+   page shows them ended once the End message arrives).
+2. **Ana:** **Forget what they sent** says, in grey, "You and Ben
+   (Android) have requests, payments or automatic payments together, so
+   that history is kept. They stay blocked."
 3. **Ana:** **Unblock Ben (Android)**. About 30 seconds later the ring is
-   solid again, "Private connection ready", and an accepted Allowance is
-   still accepted.
+   solid again, "Private connection ready". Automatic payments stay ended:
+   set them up again to use them.
 
 ## 11. Backup of contacts and requests
 
@@ -226,8 +233,10 @@ restoreBackupString into a throwaway handle.
 
 1. **Ana:** You > Contacts and requests backup > **Back up contacts and
    requests** > **Copy backup**. "Backup copied. Paste it somewhere safe,
-   such as a note or a file." While the backup is held, screenshots of the
-   app come out blank.
+   such as a note or a file." The status line then says "Last backup just
+   now. Nothing changed since then." While the backup is held,
+   screenshots of the app come out blank. (Share works too; on Android
+   the app can't tell whether you saved it, so it asks.)
 2. **Ana:** **Check a copied backup**: "This backup opens with your
    recovery phrase and holds 1 contact, … requests and … receipts."
    Nothing on the phone changes.
@@ -235,7 +244,9 @@ restoreBackupString into a throwaway handle.
 
 The real restore is on onboarding's sign-in step of a restored wallet
 ("Paste a backup"). It needs a phone with no state for the identity, so it
-is not part of this run.
+is not part of this run. After a restore, requests from the backup are
+paid by hand, and if the backup held automatic payments they stay paused
+until you check Activity and tap **Resume automatic payments** in You.
 
 ## 12. Network details
 

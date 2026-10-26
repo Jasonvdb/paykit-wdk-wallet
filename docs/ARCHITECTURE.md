@@ -59,7 +59,7 @@ This app has two engines and one UI:
 | `src/paykit/` | The Paykit service (see below). |
 | `src/ui/` | Design system from `docs/DESIGN.md`, including the seal (`src/ui/seal/`). |
 | `src/navigation/` | Route types, root gate, onboarding stack, tabs, deep links (`contact`, `send`, `receive`, `profile`, `scan`, `request-money?pubky=`, `request?counterparty=&requestId=`, `person?pubky=`, `automatic-payments?pubky=`, tab names). |
-| `src/features/<feature>/` | Screens, one folder per feature: `onboarding`, `wallet`, `people`, `requests`, `you`. Phase-specific parts of shared screens sit in subfolders, e.g. `wallet/send/`, `wallet/receive/`, `wallet/activity/`, `people/scan/`. |
+| `src/features/<feature>/` | Screens, one folder per feature: `onboarding`, `wallet`, `people`, `requests`, `you`. Parts of shared screens sit in subfolders by what they do, e.g. `wallet/send/`, `wallet/receive/`, `wallet/activity/`, `people/scan/`. |
 | `src/features/people/PersonSeal.tsx` | A seal with the person's profile photo from the profile cache. Every screen that shows a person uses it. |
 | `src/features/people/usePersonName.ts`, `personName.ts` | What to call a person (your label, else their published name, else the short key) and whether that name is a contact's or self-chosen. Every screen that names a person uses it. |
 | `src/features/people/person/` | The Person page's parts: `LabelEditor` (your local name for them), `WhatTheyAccept` (public endpoints and private lists both ways), `AutomaticPayments` (Allowances both ways, with usage), `PersonActions` (Block, Unblock, Forget, Remove), `PersonHistory`, and the pure `personWords.ts`. `contactOrder.ts` sorts the People list; `justAdded.ts` lets the page play the seal closing when the link formed during Add. `../AutomaticPaymentsScreen.tsx` is the modal that offers a contact automatic payments. |
@@ -128,7 +128,7 @@ parseTypedAmount(text, asset): ParseResult                                      
 fetchBtcFeeRate() / fetchBtcTransactionStatus(txid)                                        // Mutinynet esplora (src/wallet/mutinynet.ts)
 retryIfElectrumDropped(read) / isElectrumConnectionLost(error)                             // one quiet retry of a Bitcoin read (src/wallet/electrumRetry.ts)
 nextFailureStreak / shouldReportFailure                                                    // when a polled read has failed long enough to say so (src/wallet/failureStreak.ts)
-// payment requests (Phase 5)
+// payment requests
 useAccountZeroPaymentChecks(): { btcSent(txid); evmTransaction(hash); signErc20Payment(typedData) }   // WDK getTransaction / signTypedData
 useBtcReceivedReader(accountIndex): ((txid, address) => Promise<BtcReceipt>) | undefined              // WDK getTransfers on one account
 erc20PaymentTypedData / erc20PaymentDigest / erc20PaymentSigner / isErc20PaymentTypedData            // src/wallet/erc20PaymentProof.ts, pure
@@ -216,11 +216,11 @@ class PaykitService {
   resolvePeer(text: string): Promise<{ publicKey; registry?; publicPayment; profile? }>;
   saveContactAndLink(text: string, label?: string): Promise<FfiContactRecord>;  // saveContact + ensureLinkWithPeer
   setContactLabel(publicKey: string, label: string): Promise<void>;             // local only; '' = their published name
-  removeContact(publicKey: string): Promise<void>;         // withdraws our list and ends the link (see "Contacts")
+  removeContact(publicKey: string): Promise<void>;         // ends automatic payments, withdraws our list, ends the link; a blocked person stays blocked (see "Contacts")
   readonly privateLists: PrivateListStore;                 // lists shared and received, for display
-  blockPeer(publicKey: string): Promise<void>;             // withdraw our list, then blockPeer; keeps the contact (see "Blocking and forgetting")
+  blockPeer(publicKey: string): Promise<void>;             // end automatic payments, withdraw our list, then blockPeer; keeps the contact (see "Blocking and forgetting")
   unblockPeer(publicKey: string): Promise<void>;           // back to NotLinked; the sync loop forms a fresh link
-  forgetPeer(publicKey: string): Promise<void>;            // blocked only; refused when we have history with them
+  forgetPeer(publicKey: string): Promise<'forgotten' | 'kept'>;  // blocked only; 'kept' when we have history with them
   // backups (./backup.ts; see "Backup and restore")
   sealBackup(plaintext, nonce): string / openBackup(text): string   // key from the recovery phrase, never logged
   inScratchState(label, task): Promise<T>                  // a throwaway SDK handle (in-memory store, same session) in this queue
@@ -253,7 +253,7 @@ loadReceivedPrivateList(service, pubky, priority?)         // currentPrivatePaym
 usePrivateLists(pubky): { incoming?; outgoing? }           // what they shared with you / whether yours reached them
 usePrivateListSummary() / usePrivateAddressOwners() / useContactAccounts()
 loadNetworkDetails(service): Promise<NetworkDetails>       // identityStatus + our own app registry
-// payment requests (Phase 5, ./requests.ts; see "Payment requests")
+// payment requests (./requests.ts; see "Payment requests")
 requestMoney(service, { payer, asset, amount, note, expiry, repeat, count }): Promise<RequestView>
 acceptRequest / declineRequest / cancelRequest(service, counterparty, requestId, ...)
 preparePayment(service, counterparty, requestId, period?): Promise<PreparedPayment>     // claim + resolve; nothing reserved
@@ -263,14 +263,18 @@ deferPayment(service, counterparty, requestId, period)                          
 paymentRequestsOf(service): { book: RequestBook; attachChain(chain: PaymentChain) }
 usePaymentRequests() / usePaymentRequest(cp, id) / useRequestFacts(view, name) / useRequestBook() / useRequestLinks()
 requestStatusWords(facts) / requestTimeline(facts, payment) / paymentWords(...)          // ./requestStatus.ts, pure
-// backup and restore (Phase 6, ./backup.ts)
-exportBackup(service): Promise<string>                     // sealed text; remembers when and the revision
+// backup and restore (./backup.ts, ./restoreReview.ts)
+exportBackup(service): Promise<{ text; meta }>             // sealed text, and the meta to record once it is kept
+recordBackupKept(service, meta)                            // on Copy, or a Share iOS confirms: "Last backup" from then on
 readBackupStatus(service): Promise<BackupStatus>           // backupStateRevision, observedBackupStateRevision, last backup, changed since
 checkBackup(service, text): Promise<BackupSummary>         // dry-run restore into a throwaway handle; nothing here changes
-PaykitService.connect({ ..., restoreBackup })              // the real restore, during onboarding
-// automatic payments (Phase 6, ./allowances.ts, ./automaticPayments.ts, ./allowanceTerms.ts)
+PaykitService.connect({ ..., restoreBackup })              // the real restore, during onboarding; writes the restore review
+useRestoreReview() / resumeAfterRestore(store)             // what a restore left to check; the person resumes automatic payments
+// automatic payments (./allowances.ts, ./automaticPayments.ts, ./allowanceTerms.ts, ./acceptanceTiming.ts)
 offerAutomaticPayments(service, pubky, terms) / acceptAutomaticPayments / declineAutomaticPayments / endAutomaticPayments
+endAutomaticPaymentsWith(service, pubky)                   // before Block and Remove: stop on this phone, then end with them
 buildAllowanceTerms(draft) / readAllowanceTerms / allowanceTermsWords / allowanceCovers / allowanceUsage / allowanceUsageWords   // pure
+acceptProblem(terms, weWouldPay, now) / automaticFeeProblem(quote) / nextAcceptanceTiming(...)                                  // pure
 useAllowancesWith(pubky) / useAllowanceLedger() / useAutomaticPaymentNote(key)
 // presentation, in src/ui: linkStateWords(state), sealRingFor(state)
 ```
@@ -309,7 +313,9 @@ useAllowancesWith(pubky) / useAllowanceLedger() / useAutomaticPaymentNote(key)
 | `allowances.ts` | Allowances: offer, accept, decline, end; the per-service cache of `listAllowances` and the payment ledger (`allowanceAccountingState`) as plain data. See "Automatic payments". |
 | `allowanceTerms.ts` | Pure: the demo's default limits, reading terms, words, whether limits cover a request (display only), usage per period. Unit tested. |
 | `automaticPayments.ts` | The `allowances` and `automatic-payments` round hooks: accept covered requests and pay due ones under an Allowance, through the same ledger, book, WDK send and proof path as the Pay button. |
+| `acceptanceTiming.ts` | Pure: whether our acceptance of a request left before it expired, as the automatic payment hook observes it. Unit tested. |
 | `backup.ts` | Make, check and apply backups of the Paykit state and the app's own records. See "Backup and restore". |
+| `restoreReview.ts` | After a restore: which requests came back (paid by hand) and whether automatic payments are paused until the person resumes them. Unit tested. |
 | `backupCrypto.ts` | Pure: the backup key (HKDF over the phrase-derived identity secret), XChaCha20-Poly1305 sealing, the envelope. Unit tested. |
 
 ### Why the callbacks are synchronous, and the address cache
@@ -476,10 +482,10 @@ every 3 s (paused in the background):
    confirmations);
 6. extension hooks (`syncLoop.addRoundHook(name, hook)`): the service's
    own retry of a public endpoint publish that has not worked yet, then
-   `private-payment-lists` and `received-private-lists` (Phase 4), then
-   `payment-request-payments`, `payment-request-proofs` and
-   `payment-request-receipts` (Phase 5), then `allowances` and
-   `automatic-payments` (Phase 6);
+   `private-payment-lists` and `received-private-lists` (private
+   payments), then `payment-request-payments`, `payment-request-proofs`
+   and `payment-request-receipts` (payment requests), then `allowances`
+   and `automatic-payments` (automatic payments);
 7. `observeState()`, which feeds the React hooks.
 
 `syncLoop.flush()` runs a round immediately; call it after a user action
@@ -511,12 +517,16 @@ SDK's `removeContact` deletes only the Contact Record and leaves the
 Encrypted Link (and their messages) running, so `PaykitService.removeContact`
 instead:
 
-1. sends an empty Private Payment List (`clearPrivatePaymentListAndProcessOutbound`,
+1. ends automatic payments with them (`endAutomaticPaymentsWith`, see
+   "Blocking and forgetting");
+2. sends an empty Private Payment List (`clearPrivatePaymentListAndProcessOutbound`,
    best effort), so their wallet drops our private addresses;
-2. runs `removeContactsAndBlockPeers`, which removes the record and
+3. runs `removeContactsAndBlockPeers`, which removes the record and
    discards the link in one transaction;
-3. runs `unblockPeer`, which returns them to NotLinked and clears our
-   recovery attempt id.
+4. runs `unblockPeer`, which returns them to NotLinked and clears our
+   recovery attempt id. Not for someone the person had blocked: removing
+   them keeps the block, so their messages stay refused (the Remove
+   confirmation says so).
 
 Adding them again then starts a fresh link with a new attempt id; their
 side sees it on its next receive, marks the old link for recovery and links
@@ -535,17 +545,30 @@ Remove, each after a confirmation (`person/PersonActions.tsx`):
   read. Stored requests, proofs and receipts stay. The contact record
   stays too, so the page shows "Blocked" (Graphite dashed ring, as
   DESIGN.md defines) with their history, and the People list puts blocked
-  people under their own "Blocked" heading at the bottom. The app first
-  withdraws our Private Payment List (best effort), and refuses while a
-  proof of our payment to them has not gone out (the same guard as
-  Remove: the proof would be dropped). The sync loop skips blocked
-  contacts.
+  people under their own "Blocked" heading at the bottom (with the empty
+  state above it when no one else is left). Pay and Request are hidden,
+  including the Pay button in their empty history. The app first ends
+  automatic payments with them (below), withdraws our Private Payment
+  List (best effort), and refuses while a proof of our payment to them
+  has not gone out (the same guard as Remove: the proof would be
+  dropped). The sync loop skips blocked contacts.
+- **Automatic payments end on Block and Remove**
+  (`endAutomaticPaymentsWith` in `allowances.ts`). The SDK's `blockPeer`
+  leaves Allowances alone, and an accepted one would pay again after an
+  Unblock or a re-add, while the Person page can't reach it in between.
+  So every Allowance we pay them under (accepted, or offered by us and
+  open) is first stopped on this phone: its id goes into a persisted list
+  (`stopped-allowances-v1`, kept in backups) that `usableAsPayer()`
+  leaves out for good. Then each live Allowance with them is ended with
+  `endAllowance`, which queues an End message and needs a ready link; for
+  a peer who is unreachable, that fails, and the local stop still holds.
+  After an Unblock the Person page marks a stopped Allowance as stopped,
+  with End to tell them, and allows a new offer.
 - **Unblock** (`unblockPeer`): back to NotLinked; the SDK does not restore
   the old link. Because they are still a contact, the next sync round
   calls `ensureLinkWithPeer` with a new attempt id; their wallet sees the
   new recovery marker and links again. Checked on the simulators: the
-  link was ready again about 30 seconds after Unblock, and an accepted
-  Allowance stayed accepted.
+  link was ready again about 30 seconds after Unblock.
 - **Forget** (`forgetPeer`), blocked only: deletes what they sent that we
   never acted on (received private stream items, including their Private
   Payment List, the Event Message dedupe records, Receipt Access never
@@ -553,10 +576,12 @@ Remove, each after a confirmation (`person/PersonActions.tsx`):
   when we have any history with them: a request or allowance message we
   sent (lists and confirmations don't count), an execution claim, a
   ledger occurrence or association, or a retrieved receipt, because those
-  records name only ids the peer could reuse with other terms. The page
-  then says the history is kept and they stay blocked. Between the two
-  demo phones, which have requested and answered each other, Forget is
-  always refused; that is what was checked.
+  records name only ids the peer could reuse with other terms.
+  `forgetPeer` then returns `'kept'` and the page says, as a Graphite
+  note (a normal outcome, not an error), that you have requests, payments
+  or automatic payments together, so that history is kept and they stay
+  blocked. Between the two demo phones, which have requested and answered
+  each other, Forget is always refused; that is what was checked.
 
 The seal's closing animation plays when a seal's ring goes from linking to
 linked while it is on screen. The second person to add the other often
@@ -709,9 +734,10 @@ bytes before `proposePaymentRequest`. Only Linked contacts can be asked.
    acceptance has left the outbound queue, and refuses to accept within
    two minutes of the proposal's expiry. See "Acceptance and expiry"
    below for why.
-5. The payment ledger: `reconcileAllowanceAccounting` once per install
-   (the ledger refuses every payment until the wallet attests its
-   history; see below), then `reserveManualPayment` (admits exactly this
+5. The payment ledger: `reconcileAllowanceAccounting` once per install,
+   and again after a backup restore (the ledger refuses every payment
+   until the wallet attests its history; see below and "Backup and
+   restore"), then `reserveManualPayment` (admits exactly this
    request, or this billing period, once) and `beginPaymentExecution`
    (issues the handoff). The attempt id goes into the request book
    before WDK sends.
@@ -862,10 +888,16 @@ payment to them has not left (`paymentsWithUndeliveredProof`).
 **Demo simplifications**, each a decision a production wallet would
 make differently:
 
-- The ledger is reconciled with an empty history on first use. That is
-  true here (only this module pays requests, and the ledger keeps every
-  attempt), and an empty history never erases what the SDK holds. A
-  production wallet would attest its complete payment records.
+- The ledger is reconciled with an empty history on first use. On a
+  fresh install that is true (only this module pays requests, and the
+  ledger keeps every attempt), and an empty history never erases what the
+  SDK holds. After a backup restore it is not: payments made after the
+  backup are missing. There the attestation is the person's (a Pay tap
+  after the request page warned them to check Activity, or resuming
+  automatic payments), never the background hook's, and restored
+  requests are never paid automatically (`restoreReview.ts`; see "Backup
+  and restore"). A production wallet would attest its complete payment
+  records, rebuilt from chain history.
 - One confirmation is enough (Mutinynet blocks come every 30 s, Sepolia
   every 12 s). Reorgs are not handled.
 - A payment made after the request, to its address, for something else
@@ -903,12 +935,35 @@ period limits, each an amount and/or a count over a rolling or anchored
 period; a lifetime amount; a start and an end; the allowed payment
 methods. Terms need at least one money ceiling or an end. This app
 offers: up to a chosen amount per payment (1, 5 or 10 USD₮; 1,000,
-5,000 or 10,000 sats), at most 10 payments and 4 payments' worth in any
-rolling hour, 10 payments' worth in all, only our payment method for the
-asset, ending after 1 hour, 1 day or 1 week. The Person page shows the
-limits and what has been used against them (`allowanceUsage`, from the
-payment ledger's automatic attempts: committed and still-reserved ones
-count, failed ones don't).
+5,000 or 10,000 sats) and at least a tenth of it, at most 10 payments
+and 4 payments' worth in any rolling hour, 10 payments' worth in all,
+only our payment method for the asset, ending after 1 hour, 1 day or
+1 week. The summary reads, for 5 USD₮: "From 0.50 USD₮ to 5.00 USD₮ a
+payment. At most 10 payments and 20.00 USD₮ an hour. 50.00 USD₮ in all.
+Until …". The Person page shows the limits and, to the payer, what has
+been used against them (`allowanceUsage`, from the payment ledger's
+automatic attempts: committed and still-reserved ones count, failed
+ones don't).
+
+**Network fees.** No limit counts fees, which the payer pays on top of
+each payment (for USD₮, in ETH). The floor of a tenth of the per-payment
+limit, with the total, bounds an Allowance to at most 100 payments, so a
+payee can't make the payer pay a fee for many tiny requests. And the
+hook leaves a payment for the person when its fee is out of proportion
+(`automaticFeeProblem`): over 5,000 sats or 0.0005 ETH of gas, or, for
+Bitcoin, more than half the amount.
+
+**Offers the other side wrote.** A contact can ask to be paid
+automatically under limits they wrote (they propose as the Allowee).
+Accept is not offered for limits this wallet can't read or that have
+ended, nor, when we would pay, for limits without both a per-payment
+and a total ceiling, or above this wallet's caps (ten times its largest
+per-payment choice, per payment and in all: `acceptProblem`); the page
+says why instead. Accepting as the payer asks first and repeats every
+limit, and a missing ceiling reads "No limit …". The offer screen (also
+reachable by the `automatic-payments` deep link) refuses a second offer
+while one is accepted or open: two accepted Allowances would each have
+their own limits.
 
 **Paying automatically** (`automaticPayments.ts`, the
 `automatic-payments` round hook, after the payment request hooks). For
@@ -926,7 +981,11 @@ each request from a contact we have an accepted Allowance with:
    ordinary acceptance in one transaction (for a one-time request the SDK
    also checks the limits here; for a recurring one at each payment).
 2. Accepted (one-time) or active (recurring), with that Allowance chosen
-   in the ledger, once our acceptance has left the outbound queue: the
+   in the ledger, once our acceptance has left the outbound queue before
+   the request expired (`acceptanceTiming.ts`: the hook watches every
+   acceptance each round and keeps the final answer in the app store; the
+   payee ignores a proof for a request whose acceptance arrived after its
+   expiry, so a late one is left for the person with a note): the
    one-time payment, or the oldest started billing period that has no
    proof, no book entry, no live ledger attempt, isn't manual-only and
    wasn't put off. Claim, resolve, quote again, then
@@ -942,11 +1001,19 @@ each request from a contact we have an accepted Allowance with:
 At most one such step per round, so rounds stay short. A step that can't
 go ahead is noted per request or period (memory only) and tried again
 after a minute (the wallet) or two (the SDK or the ledger said no). The
-request page shows "Within your limits for automatic payments", "Paid
-automatically, within your limits for Ben", or why the last try stopped
-("Not enough USD₮", "It would go over your hourly limit for automatic
-payments. You can pay it yourself."). The payee's page says "Ana pays
-requests like this automatically". Payment words, request rows and
+request page (`AutomaticPaymentNote`) says what actually happened, from
+the ledger: "Within your limits for automatic payments: it is accepted
+and paid in a moment" (proposed and covered), "Accepted automatically.
+It is paid in a moment." (accepted, no payment yet), "Paid
+automatically, within your limits for Ben." (an automatic payment is
+recorded), "Paid automatically within your limits for Ben as payments
+come due." (recurring), "Outside the amount you allowed for one
+automatic payment, so it waits for you.", or, when the Allowance ended
+and something is still due, "Pay what is due yourself". Why the last try
+stopped is a second line ("Couldn't pay it automatically. Not enough
+USD₮. …", "Not paid automatically. It would go over your hourly limit
+for automatic payments. You can pay it yourself."). The payee's page
+says "Ana pays requests like this automatically". Payment words, request rows and
 Activity say "Paid automatically" for payments made under an Allowance:
 the payer from its own book, the payee from a verified proof that names
 one (informational only; it decides nothing).
@@ -961,7 +1028,9 @@ round. A reservation that got no handoff is released (Failed), or left
 as a `not-sent` book entry for the payment hook to release if that call
 fails. Ending an Allowance, a cancel, or a blocked peer stops the next
 payment at `reserveAutomaticPayment` or `beginPaymentExecution`; a
-payment already sent still gets its proof.
+payment already sent still gets its proof. After a backup restore, the
+requests that came back are never paid automatically, and nothing is
+until the person resumes automatic payments (see "Backup and restore").
 
 **Demo simplifications.** Trusted time is the phone's clock (a
 production wallet would use a time source it trusts; the SDK's watermark
@@ -1000,9 +1069,14 @@ shows it.
 contacts and requests", then Copy or Share; when the last backup was
 made here and whether anything changed since (`backupStateRevision`, a
 fingerprint of what a backup would hold, compared with the one at the
-last backup). `observedBackupStateRevision` is for the SDK's
-shared-state storage mode only; with on-phone storage it returns
-nothing (Network details shows both).
+last backup). A backup counts as made only once it was kept
+(`recordBackupKept`): on Copy, or a Share that iOS confirms. Android's
+share sheet reports success even when it was dismissed, so there the
+page says it can't tell and offers "I saved it". The revisions
+themselves are developer detail and show only in Network details.
+`observedBackupStateRevision` is for the SDK's shared-state storage mode
+only; with on-phone storage it returns nothing (Network details shows
+both).
 
 **Checking a backup** ("Check a copied backup", `checkBackup`): opens the
 backup with this phrase and restores it into a throwaway SDK handle
@@ -1026,10 +1100,35 @@ never Resume: a backup may be older than the last message this identity
 sent, and resuming a link from a stale snapshot would reuse a transport
 key and nonce. Every linked contact comes back as "Reconnecting
 privately…" and the sync loop forms a fresh link (messages the backup
-had not received are not read from the old link). The payment ledger
-requires reconciliation after any restore; `ensureLedgerReady` attests
-before the next payment, and an empty attestation never erases what the
-backup brought back. Ready then says what was restored.
+had not received are not read from the old link). Ready then says what
+was restored. If publishing the payment keys fails after the restore,
+Sign in retries only that step on the same connection; the pasted
+backup is dropped once restored, so it is never restored twice. The
+SDK's two refusals (state already on the phone, or other SDK work in
+progress) get their own sentences.
+
+**A restore can't be trusted for automatic payments.** A backup is a
+snapshot: anything paid after it was made is missing from what comes
+back (the request's proof, the request book entry, the ledger's attempt
+and the Allowance's usage), and the payee's events this phone had
+already confirmed are not sent again on the new link. A restored request
+can look unpaid when it was paid, and a restored Allowance less used
+than it is. The SDK requires the ledger to be reconciled after every
+restore, and the Allowances spec says restored execution state stays
+ineligible until the wallet has established that no later payment is
+missing. This wallet can't prove that from chain history, so
+`connect({ restoreBackup })` writes a restore review
+(`restoreReview.ts`, app store `restore-review-v1`):
+
+- every payer request that came back is never paid automatically; its
+  request page says to check Activity before paying it by hand;
+- if the backup held Allowances we pay under, no automatic payment is
+  made until the person checks Activity and taps "Resume automatic
+  payments" in You > Contacts and requests backup (after a confirmation
+  that says the limits count only the payments in the backup). The
+  Person page and Ready say so. `ensureLedgerReady(service,
+  'automatic')` refuses while paused, so only a person's Pay or Resume
+  attests the ledger after a restore.
 
 Not exercised on a device: the onboarding restore itself, because it
 needs an install with no state for the identity, which means wiping one
@@ -1041,15 +1140,16 @@ tried on the demo identities: it moves the identity to a new Paykit key
 generation, both sides must link again, and the session provider must
 hand the SDK the new key from then on.
 
-### Extension points for later phases
+### How features plug in
 
 - Round hooks are registered in `registerPrivatePaymentHooks`,
   `registerPaymentRequestHooks` and `registerAllowanceHooks`.
   `PaykitService.connect` calls each once per service, before the loop
-  starts, so no phase edits the service or the provider to wire its hook.
-- Feature agents work in their own `src/features/<feature>` folder. Shared
-  layers (`src/ui`, `src/wallet`, `src/paykit`, `src/navigation`) change only
-  for additions the feature needs.
+  starts, so a feature wires its background work without editing the
+  service or the provider.
+- Screens live in their own `src/features/<feature>` folder. Shared
+  layers (`src/ui`, `src/wallet`, `src/paykit`, `src/navigation`) hold
+  what more than one feature needs.
 
 ### The Send flow and recipients
 
@@ -1065,36 +1165,13 @@ type SendRecipient =
 type RecipientFieldProps = { asset: AssetId; initialText?: string; onChange(recipient?: SendRecipient): void };
 ```
 
-Phase 2 ships `AddressRecipientField`, Phase 3 `PubkyRecipientField`
+There are two fields, `AddressRecipientField` and `PubkyRecipientField`
 (see "Paying a person by pubky"); the compose step switches between them
 with "A person (pubky)" / "An address", opens on Person when the `to`
 param is a pubky, and switches to Person when a pubky is pasted into the
 address field. For a Linked contact the pubky field gets
 `privatePaymentAddressesFor` first (`route: 'private'`). Review shows a
 person's seal, name and the address paid (`send/PersonRecipient.tsx`).
-
-### Files that several phases edit
-
-Feature folders follow the tabs, but phases cut across them. These screens
-carry TODOs for more than one phase, so **phases 2 to 5 run one after
-another, not in parallel**:
-
-| File | Phases |
-|---|---|
-| `src/features/wallet/SendScreen.tsx` | 2 (address send), 3 (pay a pubky), 4 (pay a contact privately) |
-| `src/features/wallet/ReceiveScreen.tsx` | 2 (receive card), 3 (pay-me code) |
-| `src/features/wallet/ActivityDetailScreen.tsx` | 2 (transaction), 5 (request and receipt links) |
-| `src/features/wallet/send/SendReview.tsx`, `SendSuccess.tsx` | 2 (address send), 5 (paying a request: locked, own label, what happens next) |
-| `src/features/you/YouScreen.tsx` | 2 (phrase, faucet, collect), 3 (profile, endpoints, network details) |
-
-A phase that adds to one of these screens should put its part in its own
-component file next to the screen (for example
-`src/features/wallet/send/PubkyRecipientField.tsx`) and keep its edit to the screen
-small. Phase 2 left marked slots for Phases 3 and 5; those parts now render
-there directly (for example `<ActivityPaykitLinks />` in Activity detail). Edits to the barrels (`src/paykit/index.ts`, `src/wallet/index.ts`,
-`src/ui/index.ts`) and to routes (`src/navigation/types.ts`,
-`RootNavigator.tsx`) are append-only: add lines, do not reorder or rewrite
-existing ones, so merges stay trivial.
 
 ## Storage and secrets
 
@@ -1113,7 +1190,10 @@ existing ones, so merges stay trivial.
 | Request book (payments in flight, proof checks, claimed transfers, deferred periods) | Encrypted MMKV `paykit-app-<id>` (`payment-requests-v1`) | What the wallet must remember to never pay twice and to finish after a restart. Automatic payments carry their Allowance id. |
 | Allowances and the payment ledger (usage, associations, watermarks) | Paykit SDK state | Read for display into memory (`allowances.ts`); never logged. |
 | Why an automatic payment didn't go ahead | Memory only | Rebuilt by the next try. |
-| When the last backup was made, and its revision | Encrypted MMKV `paykit-app-<id>` (`backup-meta-v1`) | Not in the backup itself. |
+| When the last backup was kept, and its revision | Encrypted MMKV `paykit-app-<id>` (`backup-meta-v1`) | Written on Copy or a confirmed Share, not when the backup is sealed. Not in the backup itself. |
+| Allowances stopped on this phone (blocked or removed peers) | Encrypted MMKV `paykit-app-<id>` (`stopped-allowances-v1`) | Never paid under again. Travels with backups. |
+| Whether each acceptance left before its request expired | Encrypted MMKV `paykit-app-<id>` (`acceptance-timing-v1`) | Final answers only; the automatic payment hook watches the rest each round. |
+| What a restore left to check | Encrypted MMKV `paykit-app-<id>` (`restore-review-v1`) | Requests that came back (paid by hand) and whether automatic payments are paused. Not in backups. |
 | The backup text | Nowhere | Held in memory until it is copied or shared, or the app leaves the foreground. Sealed with a key from the recovery phrase. |
 | Onboarding flag, wallet origin | Plain MMKV `app-settings` | Not secret. The origin ('created' or 'restored') decides sign-up vs sign-in. |
 

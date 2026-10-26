@@ -89,7 +89,9 @@ light haptic.
 Onboarding (stack)
   Welcome            "A testnet wallet where you pay people, not addresses."
   Create / Restore   generate a phrase, or paste one
-  Invite code        staging signup code (prefilled in dev builds)
+  Invite code        staging signup code (prefilled in dev builds); a restored
+                     wallet signs in instead and can "Paste a backup" of its
+                     contacts and requests
   Your name          display name and optional photo -> publishes profile
   Ready              your seal, your pubky, "Add someone" / "Go to wallet"
 
@@ -102,7 +104,10 @@ Tabs
     list of contacts (seal, name, link state in words)
     Add person: paste pubky, scan QR, or open a paykitwdk:// link
     Person: seal + name, link state, what they accept (public / private),
-            Pay, Request, history with them, Block / Forget
+            Pay, Request, your name for them, automatic payments (limits
+            and usage both ways, Accept / Decline / Stop, "Set up automatic
+            payments"), history with them, Bitcoin from them (Collect),
+            Block / Unblock / Forget / Remove. Blocked: no Pay or Request.
   Requests
     Incoming / Sent segments, each row a request with its status
     Request detail: amount, asset, note, due date, recurring schedule,
@@ -111,12 +116,16 @@ Tabs
   You
     profile (name, photo), your pubky + QR, what you publish publicly
     (BTC / USD₮ toggles), recovery phrase (reveal), test funds
-    ("Get test USD₮"), network details, sync status and log
+    ("Get test USD₮"), Bitcoin from contacts, contacts and requests
+    backup (make, Copy or Share, check a copied one; resume automatic
+    payments after a restore), network details, sync status and log
 
 Modals
   Send:    To (person or address) -> asset -> amount -> review fee -> sent
   Receive: asset picker, address QR, and "Your pay-me code" (pubky QR)
   Request: person -> asset -> amount -> note, expiry, repeat
+  Automatic payments: asset -> most per payment -> ends after -> the
+           limits in words -> "Offer to Ben" (one open offer at a time)
 ```
 
 Wireframe of the wallet tab:

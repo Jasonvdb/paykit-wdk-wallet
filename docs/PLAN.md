@@ -57,9 +57,12 @@ to read over code that is hardened.
 
 Each phase ends with commits pushed to `main` and a check on both simulators
 where it applies. Phases 2 to 5 run one after another: several screens
-(Send, Receive, Activity detail, You) carry work for more than one phase
-(see "Files that several phases edit" in [`ARCHITECTURE.md`](ARCHITECTURE.md)). Device builds run one at a time: this Mac has crashed under a
-simulator, an emulator, Xcode and Gradle all at once.
+(Send, Receive, Activity detail, You) carry work for more than one phase,
+so each phase put its part in its own component file next to the screen
+(for example `src/features/wallet/send/PubkyRecipientField.tsx`) and kept
+its edit to the screen, the barrels and the routes small and append-only.
+Device builds run one at a time: this Mac has crashed under a simulator,
+an emulator, Xcode and Gradle all at once.
 
 0. **Spike.** Expo app with both native stacks on both simulators. WDK
    generates a mnemonic and reads Mutinynet and Sepolia balances. Paykit signs

@@ -41,7 +41,10 @@ Honest gaps:
   covered by unit tests and code review only.
 - **Restoring a backup in onboarding** has not run on a device: it needs
   a phone with no state for the identity. The same SDK restore ran in
-  "Check a copied backup" on both phones.
+  "Check a copied backup" on both phones. What a restore means for
+  automatic payments (restored requests paid by hand, automatic payments
+  paused until you resume them; see ARCHITECTURE.md, "Backup and
+  restore") is covered by unit tests and code review only.
 - **iOS screenshot blocking** could not be checked on the simulator,
   whose screenshots read the framebuffer directly. Android's
   `FLAG_SECURE` was checked.
@@ -109,10 +112,10 @@ here because the keys are not domain-separated.
 | Paykit | Recurring requests | Request money > Every minute | `src/features/requests/RecurringPayments.tsx`, `src/paykit/recurrence.ts` |
 | Paykit | Payment ledger: never pay twice | Pay request | `src/paykit/requests.ts`, `src/paykit/requestBook.ts` |
 | Paykit | Proofs, verification and receipts | Request timeline, Activity detail | `src/paykit/paymentProofs.ts`, `src/paykit/requestRounds.ts`, `src/features/wallet/activity/ActivityPaykitLinks.tsx` |
-| Paykit | Allowances: automatic payments | Person > Automatic payments | `src/features/people/AutomaticPaymentsScreen.tsx`, `src/paykit/allowances.ts`, `src/paykit/automaticPayments.ts` |
+| Paykit | Allowances: automatic payments | Person > Automatic payments | `src/features/people/AutomaticPaymentsScreen.tsx`, `src/paykit/allowances.ts`, `src/paykit/allowanceTerms.ts`, `src/paykit/automaticPayments.ts` |
 | Paykit | Block, unblock, forget | Person page | `src/features/people/person/PersonActions.tsx`, `src/paykit/PaykitService.ts` |
-| Paykit | Backup and restore | You > Contacts and requests backup; onboarding sign-in | `src/features/you/BackupSection.tsx`, `src/paykit/backup.ts`, `src/paykit/backupCrypto.ts` |
-| Paykit | Recovery markers, revisions, the sync loop | You > Network details, Sync status | `src/features/you/NetworkDetailsSection.tsx`, `src/paykit/eventLog.ts` |
+| Paykit | Backup and restore | You > Contacts and requests backup; onboarding sign-in | `src/features/you/BackupSection.tsx`, `src/paykit/backup.ts`, `src/paykit/backupCrypto.ts`, `src/paykit/restoreReview.ts` |
+| Paykit | Recovery markers, revisions, the sync loop | You > Network details, Sync status | `src/features/you/NetworkDetailsSection.tsx`, `src/paykit/networkDetails.ts`, `src/paykit/backup.ts` (`readBackupStatus`), `src/paykit/syncLoop.ts`, `src/paykit/eventLog.ts` |
 
 ## Screenshots
 
