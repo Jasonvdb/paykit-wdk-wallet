@@ -39,5 +39,9 @@
     "@tetherto/wdk-worklet-bundler": "1.0.0-beta.15",
     "@types/react": "19.2.2",
     "typescript": "5.9.2"
+  },
+  "overrides": {
+    "bare-worker": "4.4.0",
+    "bare-thread": "1.2.4"
   }
 }

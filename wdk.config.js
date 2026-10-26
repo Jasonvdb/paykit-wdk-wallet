@@ -18,6 +18,7 @@ module.exports = {
         'getAddress',
         'getBalance',
         'getTokenBalance',
+        'getTokenBalances',
         'quoteSendTransaction',
         'sendTransaction',
         'quoteTransfer',
