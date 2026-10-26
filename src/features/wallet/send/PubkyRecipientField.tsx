@@ -24,15 +24,14 @@ import {
   privatePaymentAddressesFor,
   pubkyFromText,
   resolvePublicPaymentOptions,
-  useContacts,
   usePaykit,
-  usePersonProfile,
   userMessageFor,
   type PayeeAsset,
   type PublicPaymentOptions,
 } from '../../../paykit';
-import { Button, Input, Text, middleEllipsis, space } from '../../../ui';
-import { PersonSeal } from '../../people/PersonSeal';
+import { Button, Input, Text, space } from '../../../ui';
+import { usePersonName } from '../../people/usePersonName';
+import { PersonHeader } from './PersonRecipient';
 import type { RecipientFieldProps, SendRecipient } from './recipient';
 
 /** Wait this long after the last keystroke before looking a pubky up. */
@@ -54,9 +53,7 @@ export function PubkyRecipientField({ asset, initialText, onChange }: RecipientF
   const key = pubkyFromText(text);
 
   const ready = lookup.state === 'ready' ? lookup : undefined;
-  const contact = useContacts().find((c) => c.publicKey === ready?.publicKey);
-  const profile = usePersonProfile(ready?.publicKey);
-  const name = contact?.label || profile.displayName || (ready ? middleEllipsis(ready.publicKey) : '');
+  const { name } = usePersonName(ready?.publicKey);
 
   // Look the key up whenever it changes (and on "Try again").
   useEffect(() => {
@@ -157,15 +154,10 @@ export function PubkyRecipientField({ asset, initialText, onChange }: RecipientF
 
       {ready ? (
         <View style={styles.payee} testID="pubky-payee">
-          <PersonSeal pubky={ready.publicKey} size={44} />
-          <View style={styles.payeeText}>
-            <Text variant="bodyStrong" numberOfLines={1}>
-              {name}
-            </Text>
-            <Text variant="secondary" color="graphite" testID="pubky-accepts">
-              {acceptsWords(ready)}
-            </Text>
-          </View>
+          <PersonHeader publicKey={ready.publicKey} sealSize={44} />
+          <Text variant="secondary" color="graphite" testID="pubky-accepts">
+            {acceptsWords(ready)}
+          </Text>
         </View>
       ) : null}
       {reason ? (
@@ -192,6 +184,5 @@ export const isPubkyText = (text: string | undefined): boolean => !!text && pubk
 const styles = StyleSheet.create({
   root: { gap: space.m },
   block: { gap: space.s, alignItems: 'flex-start' },
-  payee: { flexDirection: 'row', alignItems: 'center', gap: space.m },
-  payeeText: { flex: 1, gap: 2 },
+  payee: { gap: space.s },
 });

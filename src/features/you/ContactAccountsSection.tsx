@@ -15,9 +15,10 @@ import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
 
-import { shortKey, useContacts, usePaykitService, type PaykitService } from '../../paykit';
+import { usePaykitService, type PaykitService } from '../../paykit';
 import { AssetAmount, Button, Divider, Text, space } from '../../ui';
 import { sendFailureFor, useBtcContactAccount } from '../../wallet';
+import { usePersonName } from '../people/usePersonName';
 
 type ContactAccount = { pubky: string; accountIndex: number };
 
@@ -36,8 +37,6 @@ function useContactAccounts(service: PaykitService | undefined): ContactAccount[
 export function ContactAccountsSection() {
   const service = usePaykitService();
   const accounts = useContactAccounts(service);
-  const contacts = useContacts();
-  const nameOf = (pubky: string) => contacts.find((contact) => contact.publicKey === pubky)?.name ?? shortKey(pubky);
 
   return (
     <View style={styles.root}>
@@ -50,7 +49,7 @@ export function ContactAccountsSection() {
         accounts.map((account, index) => (
           <View key={account.accountIndex}>
             {index > 0 ? <Divider /> : null}
-            <ContactAccountRow name={nameOf(account.pubky)} accountIndex={account.accountIndex} />
+            <ContactAccountRow pubky={account.pubky} accountIndex={account.accountIndex} />
           </View>
         ))
       )}
@@ -58,7 +57,8 @@ export function ContactAccountsSection() {
   );
 }
 
-function ContactAccountRow({ name, accountIndex }: { name: string; accountIndex: number }) {
+function ContactAccountRow({ pubky, accountIndex }: { pubky: string; accountIndex: number }) {
+  const { name } = usePersonName(pubky);
   const account = useBtcContactAccount(accountIndex);
   const [collecting, setCollecting] = useState(false);
   const [message, setMessage] = useState<{ text: string; explorerUrl?: string; tone: 'graphite' | 'alert' }>();

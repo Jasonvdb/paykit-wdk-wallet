@@ -12,22 +12,23 @@
 import { StyleSheet, View } from 'react-native';
 
 import type { RootScreenProps } from '../../navigation/types';
-import { useContacts, useLinkState, usePersonProfile } from '../../paykit';
-import { KeyText, PushedScreen, Text, linkStateWords, middleEllipsis, sealRingFor, space } from '../../ui';
+import { useContacts, useLinkState } from '../../paykit';
+import { KeyText, PushedScreen, Text, linkStateWords, sealRingFor, space } from '../../ui';
 import { PersonSeal } from './PersonSeal';
+import { usePersonName } from './usePersonName';
 
 export function PersonScreen({ navigation, route }: RootScreenProps<'Person'>) {
   const { pubky } = route.params;
   const linkState = useLinkState(pubky);
   const contact = useContacts().find((c) => c.publicKey === pubky);
-  const hint = contact ? { displayName: contact.name, imageUri: contact.imageUri } : undefined;
-  const profile = usePersonProfile(pubky, hint);
+  const hint = contact ? { displayName: contact.publishedName, imageUri: contact.imageUri } : undefined;
+  const { name } = usePersonName(pubky);
 
   return (
     <PushedScreen onBack={() => navigation.goBack()} testID="person-screen">
       <View style={styles.body}>
         <PersonSeal pubky={pubky} size={112} ring={sealRingFor(linkState)} profileHint={hint} testID="person-seal" />
-        <Text variant="title">{contact?.label || profile.displayName || middleEllipsis(pubky)}</Text>
+        <Text variant="title">{name}</Text>
         <Text color={linkState === 'linked' ? 'seal' : 'graphite'} testID="person-link-state">
           {linkStateWords(linkState)}
         </Text>

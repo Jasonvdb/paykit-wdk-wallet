@@ -61,6 +61,7 @@ This app has two engines and one UI:
 | `src/navigation/` | Route types, root gate, onboarding stack, tabs, deep links (`contact`, `send`, `receive`, `profile`, `scan`, tab names). |
 | `src/features/<feature>/` | Screens, one folder per feature: `onboarding`, `wallet`, `people`, `requests`, `you`. Phase-specific parts of shared screens sit in subfolders, e.g. `wallet/send/`, `wallet/receive/`, `wallet/activity/`, `people/scan/`. |
 | `src/features/people/PersonSeal.tsx` | A seal with the person's profile photo from the profile cache. Every screen that shows a person uses it. |
+| `src/features/people/usePersonName.ts`, `personName.ts` | What to call a person (your label, else their published name, else the short key) and whether that name is a contact's or self-chosen. Every screen that names a person uses it. |
 | `src/media/pickProfilePhoto.ts` | Pick, crop and shrink a profile photo for upload. |
 | `wdk.config.js` | Which WDK wallet modules go into the worklet, and which account methods the app may call. |
 | `plugins/withPaykitSimulatorArchs.js` | Expo config plugin: arm64-only iOS simulator builds (Paykit ships no x86_64 slice). |
@@ -318,9 +319,17 @@ hint)` (the hint is a contact record's profile from `observeState`) and
 Profiles are someone else's data. Only `pubky://` images are fetched,
 through the SDK with a 512 KB cap (an `https` URL could be used to see who
 views a profile), the image type comes from the file's magic bytes rather
-than its name, and names lose control characters and are cut at 128
-characters. Display order for a contact's name: your local label, then
-their published name, then the shortened key.
+than its name, and names lose control, bidi-override, zero-width and other
+invisible format characters and are cut at 128 characters (hints from
+contact records too). Display order for a person's name, in one place
+(`usePersonName`): your local label, then their published name, then the
+shortened key.
+
+A published name is a claim: anyone can publish "Ben" with Ben's photo.
+So where a payment depends on it (the Send payee card and the review),
+`PersonHeader` also shows the shortened pubky and says whether the person
+is in your contacts or "Not in your contacts: this is the name they gave
+themselves".
 
 Publishing (`publishProfile`) uploads a new photo first, reads the current
 profile, and publishes with that revision as `expectedRevision`, so a

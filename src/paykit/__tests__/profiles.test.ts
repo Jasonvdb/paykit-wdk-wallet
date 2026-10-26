@@ -98,6 +98,12 @@ describe('profile helpers', () => {
     expect(cleanDisplayName('x'.repeat(300))).toHaveLength(128);
   });
 
+  it('drops bidi overrides and zero-width characters from names', () => {
+    expect(cleanDisplayName('Ben\u202e (Android)')).toBe('Ben (Android)');
+    expect(cleanDisplayName('B\u200be\u200dn\u2066')).toBe('Ben');
+    expect(cleanDisplayName('\ufeff\u00ad')).toBeUndefined();
+  });
+
   it('accepts only pubky:// image URIs', () => {
     expect(isFetchableImageUri('pubky://abc/pub/paykit/blobs/avatar-1.jpg')).toBe(true);
     expect(isFetchableImageUri('https://example.com/a.jpg')).toBe(false);

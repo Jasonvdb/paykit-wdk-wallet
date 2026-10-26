@@ -8,9 +8,10 @@
 import { StyleSheet, View } from 'react-native';
 
 import type { MainTabScreenProps } from '../../navigation/types';
-import { useConnectionNotice, useContacts, usePersonProfile, type ContactSummary } from '../../paykit';
-import { Button, Divider, EmptyState, Row, Screen, Text, linkStateWords, middleEllipsis, sealRingFor, space } from '../../ui';
+import { useConnectionNotice, useContacts, type ContactSummary } from '../../paykit';
+import { Button, Divider, EmptyState, Row, Screen, Text, linkStateWords, sealRingFor, space } from '../../ui';
 import { PersonSeal } from './PersonSeal';
+import { usePersonName } from './usePersonName';
 
 export function PeopleScreen({ navigation }: MainTabScreenProps<'People'>) {
   const notice = useConnectionNotice();
@@ -52,11 +53,11 @@ export function PeopleScreen({ navigation }: MainTabScreenProps<'People'>) {
 
 /** One contact: seal with photo, local label or published name, link state in words. */
 function ContactRow({ contact, onPress }: { contact: ContactSummary; onPress: () => void }) {
-  const hint = { displayName: contact.name, imageUri: contact.imageUri };
-  const profile = usePersonProfile(contact.publicKey, hint);
+  const hint = { displayName: contact.publishedName, imageUri: contact.imageUri };
+  const { name } = usePersonName(contact.publicKey);
   return (
     <Row
-      title={contact.label || profile.displayName || middleEllipsis(contact.publicKey)}
+      title={name}
       subtitle={linkStateWords(contact.linkState)}
       leading={<PersonSeal pubky={contact.publicKey} size={44} ring={sealRingFor(contact.linkState)} profileHint={hint} />}
       onPress={onPress}

@@ -35,3 +35,11 @@ describe('contact links', () => {
     expect(shortKey(BEN)).toBe('pubky5fpe1io…');
   });
 });
+
+describe('keyFromContactLink on hostile text', () => {
+  it('never throws on broken percent-encoding', () => {
+    expect(() => keyFromContactLink('paykitwdk://contact?pubky=%')).not.toThrow();
+    expect(keyFromContactLink('paykitwdk://contact?pubky=%')).toBeUndefined();
+    expect(pubkyFromText('paykitwdk://contact?pubky=%E0%A4%A')).toBeUndefined();
+  });
+});

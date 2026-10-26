@@ -16,11 +16,22 @@ export function cleanKeyInput(text: string): string {
   return trimmed.toLowerCase().startsWith('pk:') ? trimmed.slice(3) : trimmed;
 }
 
-/** Parse a paykitwdk://contact?pubky=<key> link or bare key text into key text (not yet normalized). */
+/**
+ * Parse a paykitwdk://contact?pubky=<key> link or bare key text into key
+ * text (not yet normalized). Runs on untrusted text during render and on
+ * every scan, so it never throws: a link with broken percent-encoding
+ * ("…?pubky=%") has no key (undefined).
+ */
 export function keyFromContactLink(text: string): string | undefined {
   const trimmed = text.trim();
   const match = /^paykitwdk:\/\/contact\?pubky=([^&#\s]+)$/i.exec(trimmed);
-  if (match) return decodeURIComponent(match[1] ?? '');
+  if (match) {
+    try {
+      return decodeURIComponent(match[1] ?? '') || undefined;
+    } catch {
+      return undefined;
+    }
+  }
   return trimmed || undefined;
 }
 

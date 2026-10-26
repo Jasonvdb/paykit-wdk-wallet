@@ -11,7 +11,7 @@ import type { SyncLogEntry } from './eventLog';
 import { linkStateOf, type LinkState } from './linkState';
 import { PaykitContext, type PaykitContextValue } from './PaykitProvider';
 import type { PaykitService, PublicEndpointStatus } from './PaykitService';
-import type { PersonProfile } from './profiles';
+import { cleanDisplayName, type PersonProfile } from './profiles';
 import type { SyncStatus } from './syncLoop';
 
 const noopSubscribe = () => () => undefined;
@@ -84,6 +84,8 @@ export type ContactSummary = {
   label?: string;
   /** Label, else their published name. Undefined if neither: show the key. */
   name?: string;
+  /** Their published name from the contact record (cleaned), never your label. */
+  publishedName?: string;
   /** pubky:// avatar URI from their profile; load it with PaykitService.fetchImageDataUri. */
   imageUri?: string;
   linkState: LinkState;
@@ -101,7 +103,8 @@ export function useContacts(): ContactSummary[] {
       .map((contact) => ({
         publicKey: contact.publicKey,
         label: contact.label,
-        name: contact.label || contact.profile?.displayName || undefined,
+        name: contact.label || cleanDisplayName(contact.profile?.displayName),
+        publishedName: cleanDisplayName(contact.profile?.displayName),
         imageUri: contact.profile?.imageUri,
         linkState: linkStateOf(links.get(contact.publicKey), true),
         createdAt: contact.createdAt,
@@ -141,7 +144,8 @@ export function usePersonProfile(publicKey: string | undefined, hint?: PersonPro
   const directory = service?.profiles;
   const subscribe = useCallback((listener: () => void) => (directory ? directory.subscribe(listener) : () => undefined), [directory]);
   const cached = useSyncExternalStore(subscribe, () => (publicKey ? directory?.profile(publicKey) : undefined));
-  const displayName = cached?.displayName ?? hint?.displayName ?? undefined;
+  // The hint is someone else's data too: clean it like a fetched profile.
+  const displayName = cached?.displayName ?? cleanDisplayName(hint?.displayName);
   const imageUri = cached ? cached.imageUri : hint?.imageUri;
   const image = useSyncExternalStore(subscribe, () => (imageUri ? directory?.image(imageUri) : undefined));
 

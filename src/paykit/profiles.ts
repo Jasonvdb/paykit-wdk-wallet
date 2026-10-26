@@ -59,10 +59,20 @@ export function isFetchableImageUri(uri: string | undefined): uri is string {
   return typeof uri === 'string' && uri.startsWith('pubky://') && uri.length <= 2048;
 }
 
+/**
+ * Characters that change how text is drawn without being visible: C0/C1
+ * controls, bidi overrides and isolates (U+202A–202E, U+2066–2069),
+ * zero-width characters and other Unicode "format" (Cf) characters. A
+ * hostile profile could use them to break layout or to make a name read as
+ * someone else's ("Ben" + invisible marks). Listed as ranges because
+ * Hermes regex support for \p{Cf} is not something to rely on.
+ */
+const INVISIBLE_CHARACTERS =
+  /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff\ufff9-\ufffb]/g;
+
 /** Trim a published name for display; an empty name counts as none. */
 export function cleanDisplayName(name: string | undefined): string | undefined {
-  // Strip control characters a hostile profile could use to break layout.
-  const cleaned = name?.replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  const cleaned = name?.replace(INVISIBLE_CHARACTERS, '').trim();
   return cleaned ? cleaned.slice(0, 128) : undefined;
 }
 
