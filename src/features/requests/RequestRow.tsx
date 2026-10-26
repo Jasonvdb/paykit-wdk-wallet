@@ -17,6 +17,8 @@ export function RequestRow({ view, nowMs, onPress }: { view: RequestView; nowMs:
   return (
     <Row
       title={name}
+      // Status and schedule can wrap; the note keeps its own line.
+      subtitleLines={3}
       subtitle={
         facts ? requestRowSubtitle({ status: requestStatusWords(facts), recurrence, schedule, payer: view.role === 'payer', note: view.terms?.note, nowMs }) : undefined
       }

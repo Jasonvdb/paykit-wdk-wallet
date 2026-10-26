@@ -10,6 +10,8 @@ import { space, tints } from './theme';
 export type RowProps = {
   title: string;
   subtitle?: string;
+  /** Lines the subtitle may take before it is cut (default 2). */
+  subtitleLines?: number;
   leading?: ReactNode;
   /** Text or any element on the right (an amount, a chip). */
   trailing?: ReactNode;
@@ -17,7 +19,7 @@ export type RowProps = {
   testID?: string;
 };
 
-export function Row({ title, subtitle, leading, trailing, onPress, testID }: RowProps) {
+export function Row({ title, subtitle, subtitleLines = 2, leading, trailing, onPress, testID }: RowProps) {
   const body = (
     <View style={styles.row}>
       {leading ? <View style={styles.leading}>{leading}</View> : null}
@@ -26,7 +28,7 @@ export function Row({ title, subtitle, leading, trailing, onPress, testID }: Row
           {title}
         </Text>
         {subtitle ? (
-          <Text variant="secondary" color="graphite" numberOfLines={2}>
+          <Text variant="secondary" color="graphite" numberOfLines={subtitleLines}>
             {subtitle}
           </Text>
         ) : null}
