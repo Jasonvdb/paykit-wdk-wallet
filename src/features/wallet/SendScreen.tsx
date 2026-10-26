@@ -12,17 +12,20 @@
 //
 // Recipients plug in through ./send/recipient.ts: each way of choosing who
 // to pay is a field component that reports a SendRecipient.
-// TODO(Phase 3 — Public payments): when `to` is a pubky, render a pubky
-// recipient field (send/PubkyRecipientField.tsx) that resolves it with
-// PaykitService.resolvePeer() and reports its public endpoints.
-// TODO(Phase 4 — Private payments): for linked contacts, a contact field
-// that reports their private endpoints (src/paykit/privatePayments.ts).
+//   Person   send/PubkyRecipientField: a pubky, resolved to the addresses
+//            they publish (public endpoints)
+//   Address  send/AddressRecipientField: a tb1… or 0x… address
+// A `to` param that is a pubky (paykitwdk://send?to=<pubky>) opens on
+// Person, and pasting a pubky into Address switches to Person.
+// TODO(Phase 4 — Private payments): for linked contacts, fill in
+// privatePaymentAddressesFor (src/paykit/privatePayments.ts); the Person
+// field already asks it before public endpoints.
 import * as Haptics from 'expo-haptics';
 import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import type { RootScreenProps } from '../../navigation/types';
-import { Button, SheetScreen, Text, space } from '../../ui';
+import { Button, SegmentedControl, SheetScreen, Text, space } from '../../ui';
 import {
   checkAffordable,
   fetchBtcFeeRate,
@@ -38,6 +41,7 @@ import {
 import { AssetPicker, isPayableAsset, type PayableAsset } from './AssetPicker';
 import { AddressRecipientField } from './send/AddressRecipientField';
 import { AmountField } from './send/AmountField';
+import { PubkyRecipientField, isPubkyText } from './send/PubkyRecipientField';
 import type { SendRecipient } from './send/recipient';
 import { SendReview } from './send/SendReview';
 import { SendSuccess } from './send/SendSuccess';
@@ -57,6 +61,9 @@ export function SendScreen({ navigation, route }: RootScreenProps<'Send'>) {
   const initialAsset = route.params?.asset;
   const [asset, setAsset] = useState<PayableAsset>(isPayableAsset(initialAsset) ? initialAsset : 'btc');
   const [recipient, setRecipient] = useState<SendRecipient>();
+  const [toKind, setToKind] = useState<'person' | 'address'>(isPubkyText(route.params?.to) ? 'person' : 'address');
+  /** Text to start the "To" field with: the link's `to`, or a pubky pasted into the address field. */
+  const [toPrefill, setToPrefill] = useState(route.params?.to);
   const [amountText, setAmountText] = useState('');
   const [step, setStep] = useState<Step>({ name: 'compose' });
   const [busy, setBusy] = useState<'max' | 'quote' | 'send' | null>(null);
@@ -71,6 +78,15 @@ export function SendScreen({ navigation, route }: RootScreenProps<'Send'>) {
 
   // Stable, so recipient fields can report from an effect without looping.
   const onRecipientChange = useCallback((next: SendRecipient | undefined) => setRecipient(next), []);
+  const onPubkyInAddressField = useCallback((text: string) => {
+    setToPrefill(text);
+    setToKind('person');
+  }, []);
+  const changeToKind = (next: 'person' | 'address') => {
+    setToPrefill(undefined);
+    setRecipient(undefined);
+    setToKind(next);
+  };
 
   const changeAsset = (next: PayableAsset) => {
     setAsset(next);
@@ -142,7 +158,14 @@ export function SendScreen({ navigation, route }: RootScreenProps<'Send'>) {
   if (step.name === 'sent' && amount !== undefined) {
     return (
       <SheetScreen title="Send" onClose={close} testID="send-screen">
-        <SendSuccess asset={asset} amount={amount} toLabel={recipient?.label ?? address ?? ''} result={step.result} onDone={close} />
+        <SendSuccess
+          asset={asset}
+          amount={amount}
+          toLabel={recipient?.label ?? address ?? ''}
+          toIsName={recipient?.kind === 'pubky'}
+          result={step.result}
+          onDone={close}
+        />
       </SheetScreen>
     );
   }
@@ -186,8 +209,30 @@ export function SendScreen({ navigation, route }: RootScreenProps<'Send'>) {
       }
     >
       <View style={styles.body}>
-        {/* Coming back from review remounts the field: start from the address already chosen. */}
-        <AddressRecipientField asset={asset} initialText={address ?? route.params?.to} onChange={onRecipientChange} />
+        <SegmentedControl
+          accessibilityLabel="Pay"
+          value={toKind}
+          onChange={changeToKind}
+          options={[
+            { value: 'person', label: 'A person (pubky)', testID: 'send-to-person' },
+            { value: 'address', label: 'An address', testID: 'send-to-address' },
+          ]}
+        />
+        {/* Coming back from review remounts the field: start from the recipient already chosen. */}
+        {toKind === 'person' ? (
+          <PubkyRecipientField
+            asset={asset}
+            initialText={recipient?.kind === 'pubky' ? recipient.publicKey : toPrefill}
+            onChange={onRecipientChange}
+          />
+        ) : (
+          <AddressRecipientField
+            asset={asset}
+            initialText={address ?? toPrefill}
+            onChange={onRecipientChange}
+            onPubky={onPubkyInAddressField}
+          />
+        )}
         <AssetPicker value={asset} onChange={changeAsset} />
         <AmountField
           asset={asset}

@@ -10,6 +10,7 @@ import { StyleSheet, View } from 'react-native';
 import { AssetAmount, Button, DetailRow, Divider, KeyText, Text, space } from '../../../ui';
 import { formatAssetAmount, formatFee, type FeeQuote, type SendProblem } from '../../../wallet';
 import type { PayableAsset } from '../AssetPicker';
+import { PersonRecipient } from './PersonRecipient';
 import type { SendRecipient } from './recipient';
 
 export type SendReviewProps = {
@@ -44,7 +45,9 @@ export function SendReview({ asset, amount, recipient, address, quote, problem, 
       <View>
         <DetailRow
           label="To"
-          value={recipient.kind === 'address' ? <KeyText value={address} full small copyable={false} /> : <Text>{recipient.label}</Text>}
+          value={
+            recipient.kind === 'address' ? <KeyText value={address} full small copyable={false} /> : <PersonRecipient recipient={recipient} address={address} />
+          }
         />
         <Divider />
         <DetailRow

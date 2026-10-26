@@ -31,3 +31,5 @@ export type { PublicEndpointChoice } from './addressCache';
 export { resolvePublicPaymentOptions, type PublicPayee } from './publicPayments';
 export { acceptedAssets, cannotPayReason, type PayeeAsset, type PublicPaymentOptions } from './publicPaymentOptions';
 export { privatePaymentAddressesFor } from './privatePayments';
+export { pubkyFromText } from './keys';
+export { paykitErrorTag } from './errors';

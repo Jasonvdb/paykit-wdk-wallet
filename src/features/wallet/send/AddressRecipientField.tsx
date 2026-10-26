@@ -4,7 +4,8 @@
 // with a message that says what to do instead.
 //
 // The error shows once the person is done with the field (blur or paste),
-// not on every keystroke of a half-typed address.
+// not on every keystroke of a half-typed address. A pasted pubky is handed
+// to `onPubky`, so the Send screen can switch to paying that person.
 import * as Clipboard from 'expo-clipboard';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable } from 'react-native';
@@ -13,7 +14,12 @@ import { Input, Text } from '../../../ui';
 import { ASSETS, checkRecipientAddress } from '../../../wallet';
 import { addressRecipient, type RecipientFieldProps } from './recipient';
 
-export function AddressRecipientField({ asset, initialText, onChange }: RecipientFieldProps) {
+export function AddressRecipientField({
+  asset,
+  initialText,
+  onChange,
+  onPubky,
+}: RecipientFieldProps & { onPubky?: (text: string) => void }) {
   const [text, setText] = useState(initialText ?? '');
   const [touched, setTouched] = useState(!!initialText);
   const chain = ASSETS[asset].chain;
@@ -22,6 +28,12 @@ export function AddressRecipientField({ asset, initialText, onChange }: Recipien
   useEffect(() => {
     onChange(check.ok ? addressRecipient(check.address, asset) : undefined);
   }, [check, asset, onChange]);
+
+  useEffect(() => {
+    // Only once the person is done with the field (paste or blur), not
+    // halfway through typing.
+    if (touched && !check.ok && check.reason === 'pubky' && onPubky) onPubky(text);
+  }, [touched, check, text, onPubky]);
 
   const onPaste = async () => {
     const pasted = await Clipboard.getStringAsync();

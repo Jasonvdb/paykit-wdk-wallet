@@ -11,11 +11,13 @@ export type SendSuccessProps = {
   asset: PayableAsset;
   amount: bigint;
   toLabel: string;
+  /** True when `toLabel` is a person's name, not an address. */
+  toIsName?: boolean;
   result: SendResult;
   onDone: () => void;
 };
 
-export function SendSuccess({ asset, amount, toLabel, result, onDone }: SendSuccessProps) {
+export function SendSuccess({ asset, amount, toLabel, toIsName, result, onDone }: SendSuccessProps) {
   return (
     <View style={styles.root} testID="send-success">
       <View style={styles.headline}>
@@ -28,7 +30,7 @@ export function SendSuccess({ asset, amount, toLabel, result, onDone }: SendSucc
         </Text>
       </View>
       <View>
-        <DetailRow label="To" value={<KeyText value={toLabel} full small copyable={false} />} />
+        <DetailRow label="To" value={toIsName ? toLabel : <KeyText value={toLabel} full small copyable={false} />} />
         {result.fee !== undefined ? (
           <>
             <Divider />

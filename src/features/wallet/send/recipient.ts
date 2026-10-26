@@ -6,20 +6,36 @@
 // not usable):
 //
 //   Phase 2  AddressRecipientField  a pasted or typed address ('address')
-//   Phase 3  a pubky field          resolves public endpoints ('pubky')
+//   Phase 3  PubkyRecipientField    a person's pubky, resolved to their public
+//                                   endpoints ('pubky', route 'public')
 //   Phase 4  a contact picker       private endpoints of a linked contact ('contact')
 //
 // Later phases add their `kind` to the union and their field next to
 // AddressRecipientField; the review, send and success steps stay the same.
 import type { AssetId } from '../../../wallet';
 
-export type SendRecipient = {
-  kind: 'address';
-  /** What review and success show in "To": an address here, a person's name later. */
-  label: string;
-  /** Where each asset this recipient accepts should be paid. */
-  addresses: Partial<Record<AssetId, string>>;
-};
+export type SendRecipient =
+  | {
+      kind: 'address';
+      /** What review and success show in "To": the address. */
+      label: string;
+      /** Where each asset this recipient accepts should be paid. */
+      addresses: Partial<Record<AssetId, string>>;
+    }
+  | {
+      kind: 'pubky';
+      /** Their published name, or their shortened pubky. */
+      label: string;
+      publicKey: string;
+      /**
+       * Which of their endpoints the addresses came from: 'public' (anyone
+       * can read them) or, from Phase 4, 'private' (shared with you as a
+       * linked contact).
+       */
+      route: 'public' | 'private';
+      /** Only the assets they accept; a missing asset cannot be sent. */
+      addresses: Partial<Record<AssetId, string>>;
+    };
 
 /** Props every recipient field takes. */
 export type RecipientFieldProps = {
