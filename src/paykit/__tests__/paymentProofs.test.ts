@@ -101,9 +101,12 @@ describe('verifyErc20Proof', () => {
     expect(verifyErc20Proof({ state: 'unknown' }, await context()).status).toBe('pending');
   });
 
-  it('rejects failed and dropped transactions', async () => {
+  it('rejects a reverted transaction', async () => {
     expect(verifyErc20Proof({ state: 'failed', confirmations: 1 }, await context()).status).toBe('rejected');
-    expect(verifyErc20Proof({ state: 'dropped' }, await context()).status).toBe('rejected');
+  });
+
+  it('waits on a "dropped" transaction instead of rejecting it (a lagging RPC node says the same about a mined one)', async () => {
+    expect(verifyErc20Proof({ state: 'dropped' }, await context())).toMatchObject({ status: 'pending', recheckMs: 60_000 });
   });
 
   it('rejects a signature from someone other than the sender (a public transfer claimed by another)', async () => {

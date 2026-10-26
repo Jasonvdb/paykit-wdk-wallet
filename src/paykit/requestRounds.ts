@@ -41,7 +41,7 @@ import { bareKey, shortKey } from './keys';
 import type { PaykitService } from './PaykitService';
 import { erc20ProofJson, btcProofJson, parseProof, transferKey, verifyBtcProof, verifyErc20Proof, type Verdict } from './paymentProofs';
 import { isScheduledPeriod, parseTime, periodKey } from './recurrence';
-import { paymentKey, type OutgoingPayment } from './requestBook';
+import { afterDroppedCheck, DROPPED_RECHECK_MS, paymentKey, type OutgoingPayment } from './requestBook';
 import type { SyncRoundContext } from './syncLoop';
 import { newReceiptId, recordOutcome, requestViewOf, submitProof, type PaymentRequests, type ProofView, type RequestView } from './requests';
 
@@ -106,20 +106,31 @@ async function finishUsdtPayment(service: PaykitService, requests: PaymentReques
   if (!chain || !from) return;
   const txHash = payment.txHash ?? '';
   const tx = await chain.evmTransaction(txHash);
-  if (tx.state === 'unknown' || tx.state === 'pending') {
+  if (tx.state === 'unknown') {
+    // Not found, or the RPC failed: never a reason to think it didn't pay.
     requests.book.updateOutgoing(key, { nextCheckAt: Date.now() + CHAIN_RECHECK_MS });
     return;
   }
-  if (tx.state === 'failed' || tx.state === 'dropped') {
-    // It never paid: release the ledger reservation, so the request can be paid again.
+  if (tx.state === 'pending') {
+    requests.book.updateOutgoing(key, { nextCheckAt: Date.now() + CHAIN_RECHECK_MS, droppedSince: undefined, droppedChecks: undefined });
+    return;
+  }
+  if (tx.state === 'dropped') {
+    await handleDropped(service, requests, key, payment);
+    return;
+  }
+  if (tx.state === 'failed') {
+    // Mined and reverted: it never paid. Release the ledger reservation, so
+    // the request can be paid again. Recorded first: if that fails, the
+    // book entry stays and the next round tries again.
     await recordOutcome(service, payment.attemptId, FfiPaymentOutcome.Failed);
     requests.book.forgetOutgoing(key);
-    service.log.warn(`payment for ${payment.requestId.slice(0, 8)} ${tx.state} on chain; it can be paid again`);
+    service.log.warn(`payment for ${payment.requestId.slice(0, 8)} reverted on chain; it can be paid again`);
     return;
   }
   if (payment.outcome === undefined) {
     await recordOutcome(service, payment.attemptId, FfiPaymentOutcome.Succeeded);
-    requests.book.updateOutgoing(key, { outcome: 'succeeded' });
+    requests.book.updateOutgoing(key, { outcome: 'succeeded', droppedSince: undefined, droppedChecks: undefined });
   }
   if (!needsProof) return;
   const logIndex = findErc20TransferLog(tx.logs, { token: SEPOLIA_USDT, from, to: payment.address, amount: BigInt(payment.amount) });
@@ -147,6 +158,32 @@ async function finishUsdtPayment(service: PaykitService, requests: PaymentReques
   });
   const signature = await chain.signErc20Payment(typed);
   await submitProof(service, key, payment, erc20ProofJson({ transactionHash: txHash, receiptLogIndex: String(logIndex), signature }));
+}
+
+/**
+ * WDK reports "dropped" when it finds the transaction but no receipt, and
+ * the account's nonce has moved past it. A mined transaction looks the same
+ * on an RPC node that lags on receipts (the public Sepolia RPC is load
+ * balanced), and the ledger's Failed is final. So "dropped" is only
+ * believed after an unbroken run of checks (afterDroppedCheck); until then
+ * the payment stays reserved and its book entry stays, so nothing offers
+ * to pay again.
+ */
+async function handleDropped(service: PaykitService, requests: PaymentRequests, key: string, payment: OutgoingPayment) {
+  const now = Date.now();
+  const next = afterDroppedCheck(payment, now);
+  if (!next.replaced) {
+    requests.book.updateOutgoing(key, {
+      droppedSince: next.droppedSince,
+      droppedChecks: next.droppedChecks,
+      nextCheckAt: now + DROPPED_RECHECK_MS,
+      problem: "The transaction hasn't confirmed yet. Still checking.",
+    });
+    return;
+  }
+  await recordOutcome(service, payment.attemptId, FfiPaymentOutcome.Failed);
+  requests.book.forgetOutgoing(key);
+  service.log.warn(`payment for ${payment.requestId.slice(0, 8)} was replaced and never confirmed; it can be paid again`);
 }
 
 // Payee: check proofs, issue receipts ---------------------------------------------------
@@ -197,7 +234,7 @@ async function checkOneProof(service: PaykitService, requests: PaymentRequests, 
     transferKey: parsed ? transferKey(parsed) : undefined,
     txHash: proof.txHash,
     checkedAt: now,
-    nextCheckAt: verdict.status === 'pending' ? now + CHAIN_RECHECK_MS : Number.MAX_SAFE_INTEGER,
+    nextCheckAt: verdict.status === 'pending' ? now + (verdict.recheckMs ?? CHAIN_RECHECK_MS) : Number.MAX_SAFE_INTEGER,
   });
   if (verdict.status !== existing?.status || existing?.proofEventId !== proof.eventId) {
     service.log.info(`proof for ${view.requestId.slice(0, 8)}: ${verdict.status}${verdict.status === 'verified' ? '' : ` (${verdict.reason})`}`);

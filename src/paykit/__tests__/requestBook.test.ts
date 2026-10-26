@@ -1,5 +1,5 @@
 // The wallet's own notes about requests, persisted in the app store.
-import { RequestBook, paymentKey, type OutgoingPayment } from '../requestBook';
+import { DROPPED_GIVE_UP_MS, RequestBook, afterDroppedCheck, paymentKey, type OutgoingPayment } from '../requestBook';
 
 function memoryStore() {
   const data = new Map<string, string>();
@@ -53,4 +53,26 @@ it('notifies listeners and survives unreadable storage', () => {
   expect(listener).toHaveBeenCalledTimes(1);
   expect(book.isDeferred('k')).toBe(true);
   expect(book.getRevision()).toBe(1);
+});
+
+describe('afterDroppedCheck', () => {
+  it('believes "dropped" only after an unbroken run of checks over several minutes', () => {
+    let state: { droppedSince?: number; droppedChecks?: number } = {};
+    let replaced = false;
+    for (let i = 0; i < 9; i++) {
+      const next = afterDroppedCheck(state, 1_000 + i * DROPPED_GIVE_UP_MS);
+      replaced ||= next.replaced;
+      state = next;
+    }
+    // Long enough, but only nine checks.
+    expect(replaced).toBe(false);
+    expect(afterDroppedCheck(state, 1_000 + 9 * DROPPED_GIVE_UP_MS).replaced).toBe(true);
+  });
+
+  it('does not give up on many quick checks', () => {
+    let state: { droppedSince?: number; droppedChecks?: number } = {};
+    for (let i = 0; i < 50; i++) state = afterDroppedCheck(state, 1_000 + i * 1_000);
+    expect(afterDroppedCheck(state, 60_000).replaced).toBe(false);
+    expect(state.droppedSince).toBe(1_000);
+  });
 });

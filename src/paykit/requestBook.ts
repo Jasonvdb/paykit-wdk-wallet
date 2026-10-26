@@ -53,9 +53,38 @@ export type OutgoingPayment = {
   updatedAt: number;
   /** Not before this time (ms): background retries back off. */
   nextCheckAt?: number;
+  /**
+   * USD₮: since when every check said "dropped", and how many checks. WDK
+   * says dropped when a lookup finds no receipt but the account's nonce has
+   * moved on, which a lagging RPC node also says about a mined transaction.
+   * Only a long, unbroken run of "dropped" counts as replaced.
+   */
+  droppedSince?: number;
+  droppedChecks?: number;
   /** Last background problem, for the request page. Safe words only. */
   problem?: string;
 };
+
+/** How long a USD₮ payment must look "dropped", without a break, before we believe it. */
+export const DROPPED_GIVE_UP_MS = 10 * 60_000;
+/** ...and over at least this many checks (they run every DROPPED_RECHECK_MS). */
+export const DROPPED_MIN_CHECKS = 10;
+export const DROPPED_RECHECK_MS = 30_000;
+
+/**
+ * One more "dropped" answer for our USD₮ payment. `replaced` is true only
+ * after an unbroken run of them, long enough that a mined transaction
+ * would have shown its receipt on some check (any other answer resets the
+ * run: see requestRounds.ts).
+ */
+export function afterDroppedCheck(
+  payment: Pick<OutgoingPayment, 'droppedSince' | 'droppedChecks'>,
+  nowMs: number,
+): { replaced: boolean; droppedSince: number; droppedChecks: number } {
+  const droppedSince = payment.droppedSince ?? nowMs;
+  const droppedChecks = (payment.droppedChecks ?? 0) + 1;
+  return { replaced: nowMs - droppedSince >= DROPPED_GIVE_UP_MS && droppedChecks >= DROPPED_MIN_CHECKS, droppedSince, droppedChecks };
+}
 
 /** Payee: what we found when checking one proof on chain. */
 export type ProofCheck = {

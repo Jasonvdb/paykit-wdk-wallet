@@ -23,8 +23,9 @@
 //     signature over the request binding recovers to the Transfer's sender;
 //   - the same transfer has not already paid another request or period
 //     (the caller passes what is already claimed).
-// A missing or unconfirmed transaction is "pending", never "rejected": a
-// proof often arrives before its block.
+// A missing, unconfirmed or "dropped" transaction is "pending", never
+// "rejected": a proof often arrives before its block, and a lagging RPC
+// node can make a mined transaction look dropped.
 //
 // Pure: no native imports, unit tested.
 import { SEPOLIA_CHAIN_ID } from '../config/chains';
@@ -95,8 +96,16 @@ export function transferKey(proof: ParsedProof): string {
 
 export type Verdict =
   | { status: 'verified' }
-  | { status: 'pending'; reason: string }
+  /** `recheckMs`: look again after this long instead of the usual interval. */
+  | { status: 'pending'; reason: string; recheckMs?: number }
   | { status: 'rejected'; reason: string };
+
+/**
+ * WDK's "dropped" (no receipt, and the sender's nonce moved on) is also what
+ * a mined transaction looks like on an RPC node that lags on receipts. So it
+ * is never a reason to reject: look again, less often.
+ */
+export const DROPPED_PROOF_RECHECK_MS = 60_000;
 
 export type ProofContext = {
   /** The request's amount in base units. */
@@ -141,7 +150,7 @@ export function verifyErc20Proof(transaction: EvmTransaction, context: Erc20Proo
     case 'pending':
       return { status: 'pending', reason: 'Waiting for the next block.' };
     case 'dropped':
-      return { status: 'rejected', reason: 'The transaction was replaced and never confirmed.' };
+      return { status: 'pending', reason: "The transaction hasn't confirmed yet.", recheckMs: DROPPED_PROOF_RECHECK_MS };
     case 'failed':
       return { status: 'rejected', reason: 'The transaction failed on chain.' };
     case 'succeeded':
