@@ -21,9 +21,8 @@ import {
   type PublicEndpointStatus,
 } from '../../paykit';
 import { AssetDot, Button, Divider, Text, colors, middleEllipsis, relativeTime, space } from '../../ui';
-import { useWalletAddresses } from '../../wallet';
+import { ASSETS, useWalletAddresses } from '../../wallet';
 
-const ASSET_LABELS: Record<PayeeAsset, string> = { btc: 'Bitcoin', usdt: 'USD₮' };
 
 function statusWords(status: PublicEndpointStatus | undefined): string {
   switch (status?.state) {
@@ -59,7 +58,7 @@ export function PublicEndpointsSection() {
     setCheck({ busy: true });
     try {
       const { options } = await resolvePublicPaymentOptions(service, service.publicKey);
-      const seen = acceptedAssets(options).map((asset) => ASSET_LABELS[asset]);
+      const seen = acceptedAssets(options).map((asset) => ASSETS[asset].displayName);
       setCheck({
         busy: false,
         result: seen.length > 0 ? `Anyone who looks up your pubky can pay you in ${seen.join(' and ')}.` : 'Your pubky shows no payment addresses.',
@@ -87,7 +86,7 @@ export function PublicEndpointsSection() {
             <View style={styles.row}>
               <AssetDot asset={asset} />
               <View style={styles.rowText}>
-                <Text>{ASSET_LABELS[asset]}</Text>
+                <Text>{ASSETS[asset].displayName}</Text>
                 <Text variant="monoSmall" color="graphite">
                   {address ? middleEllipsis(address) : '—'}
                 </Text>
@@ -98,7 +97,7 @@ export function PublicEndpointsSection() {
                 disabled={status?.state === 'publishing'}
                 trackColor={{ true: colors.seal, false: colors.rule }}
                 thumbColor={colors.sheet}
-                accessibilityLabel={`Publish my ${ASSET_LABELS[asset]} address`}
+                accessibilityLabel={`Publish my ${ASSETS[asset].displayName} address`}
                 testID={`publish-${asset}`}
               />
             </View>

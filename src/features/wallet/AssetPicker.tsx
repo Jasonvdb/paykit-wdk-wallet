@@ -19,7 +19,7 @@ export function AssetPicker({ value, onChange }: { value: PayableAsset; onChange
       onChange={onChange}
       options={PAYABLE_ASSETS.map((asset) => ({
         value: asset,
-        label: asset === 'btc' ? 'Bitcoin' : ASSETS[asset].symbol,
+        label: ASSETS[asset].displayName,
         leading: <AssetDot asset={asset} />,
         testID: `asset-${asset}`,
       }))}

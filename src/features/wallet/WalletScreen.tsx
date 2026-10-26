@@ -7,6 +7,10 @@
 // that is the first thing a new demo wallet needs. Activity rows open
 // Activity detail.
 //
+// Errors are sentences, never WDK's text: a balance that failed to load
+// says so under the balances, and failed history replaces the "No activity
+// yet" empty state (with "Try again") or sits above the cached rows.
+//
 // TODO(Phase 4 — Contacts): activity rows with people (seal + name) once
 // Paykit attribution exists.
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -14,7 +18,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import type { MainTabScreenProps } from '../../navigation/types';
 import { useConnectionNotice, useOwnProfile, usePaykitService } from '../../paykit';
 import { ASSET_DOT_SIZE, AssetAmount, AssetDot, Button, Divider, EmptyState, Row, Screen, Text, relativeTime, space } from '../../ui';
-import { formatAssetAmount, useActivity, useWalletBalances, type ActivityItem } from '../../wallet';
+import { ASSETS, formatAssetAmount, useActivity, useWalletBalances, type ActivityItem } from '../../wallet';
 import { activityStatusWords, activityTitle } from './activity/activityText';
 import { PersonSeal } from '../people/PersonSeal';
 import { GetTestUsdtButton } from './GetTestUsdtButton';
@@ -56,9 +60,9 @@ export function WalletScreen({ navigation }: MainTabScreenProps<'Wallet'>) {
       testID="wallet-screen"
     >
       <View style={styles.balances}>
-        <Row title="Bitcoin" leading={<AssetDot asset="btc" />} trailing={<AssetAmount value={balances.btc} asset="btc" />} testID="balance-btc" />
+        <Row title={ASSETS.btc.displayName} leading={<AssetDot asset="btc" />} trailing={<AssetAmount value={balances.btc} asset="btc" />} testID="balance-btc" />
         <Divider />
-        <Row title="Tether" leading={<AssetDot asset="usdt" />} trailing={<AssetAmount value={balances.usdt} asset="usdt" />} testID="balance-usdt" />
+        <Row title={ASSETS.usdt.displayName} leading={<AssetDot asset="usdt" />} trailing={<AssetAmount value={balances.usdt} asset="usdt" />} testID="balance-usdt" />
         <Text variant="caption" color="graphite" style={styles.gas} testID="balance-eth">
           gas {balances.eth === undefined ? '—' : formatAssetAmount(balances.eth, 'eth', { withSymbol: true })}
         </Text>
@@ -68,7 +72,7 @@ export function WalletScreen({ navigation }: MainTabScreenProps<'Wallet'>) {
           </View>
         ) : null}
         {error ? (
-          <Text variant="caption" color="alert">
+          <Text variant="caption" color="alert" testID="balance-error">
             {error}
           </Text>
         ) : null}
@@ -83,7 +87,18 @@ export function WalletScreen({ navigation }: MainTabScreenProps<'Wallet'>) {
       <Text variant="heading" style={styles.sectionTitle}>
         Activity
       </Text>
-      {activity.items.length === 0 ? (
+      {activity.error && activity.items.length > 0 ? (
+        <Text variant="caption" color="alert" testID="activity-error">
+          {activity.error}
+        </Text>
+      ) : null}
+      {activity.items.length === 0 && activity.error && !activity.isLoading ? (
+        <EmptyState
+          title="Couldn't load activity"
+          message={activity.error}
+          action={{ label: 'Try again', onPress: () => void activity.refresh() }}
+        />
+      ) : activity.items.length === 0 ? (
         <EmptyState
           title={activity.isLoading ? 'Loading activity…' : 'No activity yet'}
           message={activity.isLoading ? undefined : 'Receive some test funds to get started.'}
@@ -103,7 +118,7 @@ export function WalletScreen({ navigation }: MainTabScreenProps<'Wallet'>) {
 
 function ActivityRow({ item, onPress }: { item: ActivityItem; onPress: () => void }) {
   const when = item.status !== 'pending' && item.timestamp ? relativeTime(item.timestamp) : activityStatusWords(item);
-  const asset = item.asset === 'btc' ? 'Bitcoin' : item.asset === 'usdt' ? 'USD₮' : 'ETH';
+  const asset = ASSETS[item.asset].displayName;
   return (
     <Row
       title={activityTitle(item)}

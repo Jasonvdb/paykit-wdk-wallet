@@ -30,6 +30,7 @@ import {
   type PublicPaymentOptions,
 } from '../../../paykit';
 import { Button, Input, Text, space } from '../../../ui';
+import { ASSETS } from '../../../wallet';
 import { usePersonName } from '../../people/usePersonName';
 import { PersonHeader } from './PersonRecipient';
 import type { RecipientFieldProps, SendRecipient } from './recipient';
@@ -42,8 +43,6 @@ type Lookup =
   | { state: 'loading'; key: string }
   | { state: 'error'; key: string; message: string }
   | { state: 'ready'; key: string; publicKey: string; route: 'public' | 'private'; options?: PublicPaymentOptions; addresses: Partial<Record<PayeeAsset, string>> };
-
-const ASSET_NAMES: Record<PayeeAsset, string> = { btc: 'Bitcoin', usdt: 'USD₮' };
 
 export function PubkyRecipientField({ asset, initialText, onChange }: RecipientFieldProps) {
   const { service, log } = usePaykit();
@@ -172,7 +171,7 @@ export function PubkyRecipientField({ asset, initialText, onChange }: RecipientF
 class OwnKeyError extends Error {}
 
 function acceptsWords(ready: Extract<Lookup, { state: 'ready' }>): string {
-  const assets = (['btc', 'usdt'] as const).filter((a) => ready.addresses[a] !== undefined).map((a) => ASSET_NAMES[a]);
+  const assets = (['btc', 'usdt'] as const).filter((a) => ready.addresses[a] !== undefined).map((a) => ASSETS[a].displayName);
   if (assets.length === 0) return 'Accepts nothing by pubky';
   const how = ready.route === 'private' ? 'privately' : 'by pubky';
   return `Accepts ${assets.join(' and ')} ${how}`;

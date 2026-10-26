@@ -15,6 +15,7 @@
 //
 // This file has no native imports and is unit tested. The SDK enum is
 // mapped to `PublicPaymentStatus` in ./publicPayments.ts.
+import { ASSETS } from '../wallet/assets';
 import { parseEndpoint } from './endpoints';
 
 /** The assets a person can be paid in. */
@@ -65,7 +66,6 @@ export function acceptedAssets(options: PublicPaymentOptions): PayeeAsset[] {
   return (['btc', 'usdt'] as const).filter((asset) => options.addresses[asset] !== undefined);
 }
 
-const ASSET_NAMES: Record<PayeeAsset, string> = { btc: 'Bitcoin', usdt: 'USD₮' };
 
 /**
  * Why `name` can't be paid in `asset` by pubky, as a sentence with a next
@@ -81,8 +81,8 @@ export function cannotPayReason(options: PublicPaymentOptions, asset: PayeeAsset
   }
   const accepted = acceptedAssets(options);
   if (accepted.length > 0) {
-    const other = accepted.map((a) => ASSET_NAMES[a]).join(' or ');
-    return `${name} doesn't accept ${ASSET_NAMES[asset]} by pubky. Choose ${other} instead.`;
+    const other = accepted.map((a) => ASSETS[a].displayName).join(' or ');
+    return `${name} doesn't accept ${ASSETS[asset].displayName} by pubky. Choose ${other} instead.`;
   }
   if (options.status === 'unsupported') {
     return `${name} publishes payment details this wallet can't use. Ask them for a test-network address instead.`;

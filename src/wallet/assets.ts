@@ -13,6 +13,11 @@ export type AssetInfo = {
   /** What the user reads next to an amount. */
   symbol: string;
   name: string;
+  /**
+   * What screens call the asset in words: "Bitcoin", "USD₮" (docs/DESIGN.md).
+   * The one place for it, so no screen says "Tether" while another says "USD₮".
+   */
+  displayName: string;
   decimals: number;
   chain: Chain;
   /** Name of the smallest unit, for developer-facing text. */
@@ -24,6 +29,7 @@ export const ASSETS: Record<AssetId, AssetInfo> = {
     id: 'btc',
     symbol: 'BTC',
     name: 'Bitcoin',
+    displayName: 'Bitcoin',
     decimals: 8,
     chain: 'bitcoin',
     baseUnit: 'sats',
@@ -32,6 +38,7 @@ export const ASSETS: Record<AssetId, AssetInfo> = {
     id: 'usdt',
     symbol: 'USD₮',
     name: 'Tether USD',
+    displayName: 'USD₮',
     decimals: 6,
     chain: 'ethereum',
     baseUnit: 'micro USD₮',
@@ -40,6 +47,7 @@ export const ASSETS: Record<AssetId, AssetInfo> = {
     id: 'eth',
     symbol: 'ETH',
     name: 'Ether',
+    displayName: 'ETH',
     decimals: 18,
     chain: 'ethereum',
     baseUnit: 'wei',

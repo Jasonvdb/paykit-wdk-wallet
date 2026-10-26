@@ -13,7 +13,7 @@ import { BALANCE_POLL_MS } from '../config/sync';
 import { BTC, ETH, USDT } from '../config/wdk';
 import { parseBaseUnits } from './amounts';
 import { useAppActive } from './useAppActive';
-import type { AssetId } from './assets';
+import { ASSETS, type AssetId } from './assets';
 
 const SPENDING_ASSETS = [BTC, USDT, ETH];
 const BTC_ONLY = [BTC];
@@ -54,7 +54,13 @@ export function useWalletBalances(options: { pollMs?: number } = {}): WalletBala
     return result;
   }, [query.data]);
 
-  const failed = query.data?.find((item) => !item.success);
+  // WDK's own error text is for developers; screens get a sentence that
+  // says what failed and what to do (docs/DESIGN.md "Writing").
+  const failedAssets = (Object.keys(WDK_ASSET_IDS) as AssetId[]).filter((asset) =>
+    query.data?.some((item) => item.assetId === WDK_ASSET_IDS[asset] && !item.success),
+  );
+  const what = query.error ? 'your balances' : `your ${failedAssets.map((asset) => ASSETS[asset].displayName).join(' and ')} balance`;
+  const error = query.error || failedAssets.length > 0 ? `Couldn't load ${what}. Pull down to try again.` : undefined;
   const refetch = query.refetch;
   const refresh = useCallback(async () => {
     await refetch();
@@ -64,7 +70,7 @@ export function useWalletBalances(options: { pollMs?: number } = {}): WalletBala
     balances,
     isLoading: query.isLoading,
     isRefreshing: query.isFetching,
-    error: query.error?.message ?? (failed ? failed.error ?? 'Could not load a balance' : undefined),
+    error,
     updatedAt: query.dataUpdatedAt || undefined,
     refresh,
   };
