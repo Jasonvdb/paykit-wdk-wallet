@@ -23,10 +23,12 @@ export function PersonRecipient({ recipient, address }: { recipient: Extract<Sen
   return (
     <View style={styles.root} testID="review-person">
       <PersonHeader publicKey={recipient.publicKey} sealSize={36} />
-      <Text variant="caption" color={recipient.route === 'private' ? 'seal' : 'graphite'} testID="review-route">
+      <Text variant="caption" color={recipient.route === 'public' ? 'graphite' : 'seal'} testID="review-route">
         {recipient.route === 'private'
           ? `A private address ${name} shared only with you. Nobody else knows it is theirs.`
-          : 'The public address they publish for everyone:'}
+          : recipient.route === 'request'
+            ? `The address ${name} put in their request, sent to you privately:`
+            : 'The public address they publish for everyone:'}
       </Text>
       <KeyText value={address} full small copyable={false} testID="review-person-address" />
     </View>

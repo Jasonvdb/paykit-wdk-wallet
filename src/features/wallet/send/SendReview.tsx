@@ -9,6 +9,12 @@
 // If a send failed in a way that may still have reached the network
 // (`outcomeUnknown`), Send stays disabled for good and the only way on is
 // to close and check Activity: a second tap could pay twice.
+//
+// Paying a payment request (src/features/requests/PayRequestScreen.tsx)
+// uses this same review with the amount and recipient locked: no "Change"
+// button (`onEdit` left out), its own button label and a line saying which
+// request it pays.
+import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AssetAmount, Button, DetailRow, Divider, KeyText, Text, space } from '../../../ui';
@@ -29,8 +35,13 @@ export type SendReviewProps = {
   outcomeUnknown?: boolean;
   error?: string;
   onSend: () => void;
-  onEdit: () => void;
+  /** Left out when the amount and recipient are fixed (paying a request). */
+  onEdit?: () => void;
   onClose: () => void;
+  /** Replaces "Send 12 USD₮" ("Pay 12 USD₮"). */
+  sendLabel?: string;
+  /** Shown under the amount: what this payment is for. */
+  context?: ReactNode;
 };
 
 const NETWORK: Record<PayableAsset, string> = {
@@ -38,7 +49,7 @@ const NETWORK: Record<PayableAsset, string> = {
   usdt: `Ethereum Sepolia. Confirms in ${CONFIRMATION_TIME.ethereum}.`,
 };
 
-export function SendReview({ asset, amount, recipient, address, quote, problem, sending, outcomeUnknown, error, onSend, onEdit, onClose }: SendReviewProps) {
+export function SendReview({ asset, amount, recipient, address, quote, problem, sending, outcomeUnknown, error, onSend, onEdit, onClose, sendLabel, context }: SendReviewProps) {
   const amountText = formatAssetAmount(amount, asset, { withSymbol: true });
   return (
     <View style={styles.root} testID="send-review">
@@ -47,6 +58,7 @@ export function SendReview({ asset, amount, recipient, address, quote, problem, 
           You send
         </Text>
         <AssetAmount value={amount} asset={asset} size="hero" />
+        {context}
       </View>
 
       <View>
@@ -96,13 +108,13 @@ export function SendReview({ asset, amount, recipient, address, quote, problem, 
         ) : (
           <>
             <Button
-              label={sending ? 'Sending…' : `Send ${amountText}`}
+              label={sending ? 'Sending…' : (sendLabel ?? `Send ${amountText}`)}
               onPress={onSend}
               loading={sending}
               disabled={!!problem}
               testID="send-confirm"
             />
-            <Button label="Change amount or recipient" variant="secondary" onPress={onEdit} disabled={sending} testID="send-edit" />
+            {onEdit ? <Button label="Change amount or recipient" variant="secondary" onPress={onEdit} disabled={sending} testID="send-edit" /> : null}
           </>
         )}
       </View>

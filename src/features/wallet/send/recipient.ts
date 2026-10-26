@@ -11,6 +11,8 @@
 //   Phase 4                         the same field, for a linked contact:
 //                                   their private addresses ('pubky', route
 //                                   'private', from privatePaymentAddressesFor)
+//   Phase 5  PayRequestScreen       the address a payment request binds
+//                                   ('pubky', route 'request'), locked
 //
 // A new kind is only needed for a recipient that is neither an address nor
 // a pubky; the review, send and success steps stay the same either way.
@@ -31,10 +33,10 @@ export type SendRecipient =
       publicKey: string;
       /**
        * Which of their endpoints the addresses came from: 'public' (anyone
-       * can read them) or 'private' (shared only with you, as a linked
-       * contact).
+       * can read them), 'private' (shared only with you, as a linked
+       * contact) or 'request' (the address their payment request names).
        */
-      route: 'public' | 'private';
+      route: 'public' | 'private' | 'request';
       /** Only the assets they accept; a missing asset cannot be sent. */
       addresses: Partial<Record<AssetId, string>>;
     };

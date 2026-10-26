@@ -15,9 +15,11 @@ export type SendSuccessProps = {
   toIsName?: boolean;
   result: SendResult;
   onDone: () => void;
+  /** What happens next, for a payment that is part of something (a request). */
+  next?: string;
 };
 
-export function SendSuccess({ asset, amount, toLabel, toIsName, result, onDone }: SendSuccessProps) {
+export function SendSuccess({ asset, amount, toLabel, toIsName, result, onDone, next }: SendSuccessProps) {
   return (
     <View style={styles.root} testID="send-success">
       <View style={styles.headline}>
@@ -28,6 +30,11 @@ export function SendSuccess({ asset, amount, toLabel, toIsName, result, onDone }
             ? `It shows as pending in Activity until the next Mutinynet block, in ${CONFIRMATION_TIME.bitcoin}.`
             : `It shows as pending in Activity until the next Sepolia block, in ${CONFIRMATION_TIME.ethereum}.`}
         </Text>
+        {next ? (
+          <Text color="seal" testID="send-next">
+            {next}
+          </Text>
+        ) : null}
       </View>
       <View>
         <DetailRow label="To" value={toIsName ? toLabel : <KeyText value={toLabel} full small copyable={false} />} />

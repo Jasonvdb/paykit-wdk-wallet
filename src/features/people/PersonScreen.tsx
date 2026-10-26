@@ -6,7 +6,7 @@
 //                    away if it formed while you were adding them
 //                    (./justAdded.ts)
 //   link state       in words (docs/DESIGN.md, "Writing")
-//   Pay / Request    Send with them as the person; Request money (Phase 5)
+//   Pay / Request    Send with them as the person; Request money with them chosen
 //   your name        a local label (./person/LabelEditor.tsx)
 //   what they accept public endpoints and the private lists, both ways
 //                    (./person/WhatTheyAccept.tsx)

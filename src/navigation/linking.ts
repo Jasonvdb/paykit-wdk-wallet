@@ -14,6 +14,8 @@
 //   paykitwdk://receive?code=pubky           Receive, showing your pay-me code
 //   paykitwdk://profile                      Edit your name and photo
 //   paykitwdk://scan                         Scan a code (paste or a photo on simulators)
+//   paykitwdk://request-money?pubky=<key>    Request money, with the contact chosen
+//   paykitwdk://request?counterparty=<key>&requestId=<id>   one payment request
 // A send link only fills in the form: nothing moves until the person
 // reviews the fee and taps Send.
 import type { LinkingOptions } from '@react-navigation/native';
@@ -29,6 +31,8 @@ export const linking: LinkingOptions<RootStackParamList> = {
       Receive: 'receive',
       EditProfile: 'profile',
       ScanQr: 'scan',
+      RequestMoney: 'request-money',
+      RequestDetail: 'request',
       Main: {
         screens: {
           Wallet: 'wallet',

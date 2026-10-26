@@ -2,7 +2,8 @@
 // (docs/DESIGN.md). The person types decimals ("0.0005", "12.5"); the screen
 // parses them to base units with parseAssetAmount. "Max" fills in the most
 // this wallet can send: the whole USD₮ balance (gas is paid in ETH), or for
-// BTC what is left after the network fee.
+// BTC what is left after the network fee. Request money uses the same
+// field without Max: that amount is not paid from this wallet.
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { Text, colors, fonts, space, typography } from '../../../ui';
@@ -14,7 +15,8 @@ export type AmountFieldProps = {
   onChangeText: (text: string) => void;
   /** Spendable balance in base units, if loaded. */
   balance?: bigint;
-  onMax: () => void;
+  /** Leave out for an amount that is not paid from this wallet (Request money): no Max, no balance line. */
+  onMax?: () => void;
   maxLoading?: boolean;
   /** A parse error or an affordability problem. */
   error?: string;
@@ -43,20 +45,22 @@ export function AmountField({ asset, text, onChangeText, balance, onMax, maxLoad
           {symbol}
         </Text>
       </View>
-      <View style={styles.footer}>
-        <Text variant="caption" color="graphite" style={styles.balance}>
-          {balance === undefined ? 'Loading balance…' : `You have ${formatAssetAmount(balance, asset, { withSymbol: true })}`}
-        </Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="Send the maximum" onPress={onMax} disabled={maxLoading} hitSlop={8} testID="send-max">
-          {maxLoading ? (
-            <ActivityIndicator size="small" color={colors.seal} />
-          ) : (
-            <Text variant="bodyStrong" color="seal">
-              Max
-            </Text>
-          )}
-        </Pressable>
-      </View>
+      {onMax ? (
+        <View style={styles.footer}>
+          <Text variant="caption" color="graphite" style={styles.balance}>
+            {balance === undefined ? 'Loading balance…' : `You have ${formatAssetAmount(balance, asset, { withSymbol: true })}`}
+          </Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Send the maximum" onPress={onMax} disabled={maxLoading} hitSlop={8} testID="send-max">
+            {maxLoading ? (
+              <ActivityIndicator size="small" color={colors.seal} />
+            ) : (
+              <Text variant="bodyStrong" color="seal">
+                Max
+              </Text>
+            )}
+          </Pressable>
+        </View>
+      ) : null}
       {error ? (
         <Text variant="caption" color="alert" testID="send-amount-error">
           {error}

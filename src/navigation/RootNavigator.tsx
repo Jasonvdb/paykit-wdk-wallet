@@ -19,6 +19,7 @@ import { AddPersonScreen } from '../features/people/AddPersonScreen';
 import { ScanQrScreen } from '../features/people/ScanQrScreen';
 import { RequestDetailScreen } from '../features/requests/RequestDetailScreen';
 import { RequestMoneyScreen } from '../features/requests/RequestMoneyScreen';
+import { PayRequestScreen } from '../features/requests/PayRequestScreen';
 import { ActivityDetailScreen } from '../features/wallet/ActivityDetailScreen';
 import { ReceiveScreen } from '../features/wallet/ReceiveScreen';
 import { SendScreen } from '../features/wallet/SendScreen';
@@ -96,6 +97,7 @@ export function RootNavigator() {
             <Stack.Screen name="AddPerson" component={AddPersonScreen} />
             <Stack.Screen name="ScanQr" component={ScanQrScreen} />
             <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+            <Stack.Screen name="PayRequest" component={PayRequestScreen} />
           </Stack.Group>
         </>
       ) : (

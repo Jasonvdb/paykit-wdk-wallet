@@ -3,7 +3,7 @@
 // Root stack
 //   Onboarding (stack)  Welcome -> CreateOrRestore (-> BackupPhrase) -> InviteCode -> YourName -> Ready
 //   Main (tabs)         Wallet | People | Requests | You
-//   Modals              Send, Receive, RequestMoney, AddPerson, ScanQr, EditProfile
+//   Modals              Send, Receive, RequestMoney, AddPerson, ScanQr, EditProfile, PayRequest
 //   Pushed cards        Person, RequestDetail, ActivityDetail
 //
 // Params carry ids and public keys only, never records: screens read
@@ -40,7 +40,7 @@ export type RootStackParamList = {
   /** `code: 'pubky'` opens on your pay-me code instead of an asset. */
   Receive: { asset?: AssetId; code?: 'pubky' } | undefined;
   /** Ask a contact for money. */
-  RequestMoney: { pubky?: string } | undefined;
+  RequestMoney: { pubky?: string; asset?: AssetId } | undefined;
   /** Opened by the People tab, a scanned QR or paykitwdk://contact?pubky=<key>. */
   AddPerson: { pubky?: string } | undefined;
   ScanQr: undefined;
@@ -49,6 +49,11 @@ export type RootStackParamList = {
   ActivityDetail: { activityId: string };
   /** Your display name and photo (from You). */
   EditProfile: undefined;
+  /**
+   * Pay a request someone sent you: the Send review with their amount and
+   * address locked. `periodStart` picks the billing period of a recurring one.
+   */
+  PayRequest: { counterparty: string; requestId: string; periodStart?: string };
 };
 
 export type RootScreenProps<T extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, T>;
