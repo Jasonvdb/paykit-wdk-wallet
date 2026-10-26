@@ -8,8 +8,9 @@
 import { StyleSheet, View } from 'react-native';
 
 import type { MainTabScreenProps } from '../../navigation/types';
-import { useConnectionNotice, useContacts } from '../../paykit';
-import { Button, Divider, EmptyState, Row, Screen, Seal, Text, linkStateWords, middleEllipsis, sealRingFor, space } from '../../ui';
+import { useConnectionNotice, useContacts, usePersonProfile, type ContactSummary } from '../../paykit';
+import { Button, Divider, EmptyState, Row, Screen, Text, linkStateWords, middleEllipsis, sealRingFor, space } from '../../ui';
+import { PersonSeal } from './PersonSeal';
 
 export function PeopleScreen({ navigation }: MainTabScreenProps<'People'>) {
   const notice = useConnectionNotice();
@@ -35,18 +36,27 @@ export function PeopleScreen({ navigation }: MainTabScreenProps<'People'>) {
         contacts.map((contact, index) => (
           <View key={contact.publicKey}>
             {index > 0 ? <Divider inset={56} /> : null}
-            <Row
-              title={contact.name ?? middleEllipsis(contact.publicKey)}
-              subtitle={linkStateWords(contact.linkState)}
-              leading={<Seal pubky={contact.publicKey} size={44} ring={sealRingFor(contact.linkState)} />}
-              onPress={() => navigation.navigate('Person', { pubky: contact.publicKey })}
-              testID={`contact-${contact.publicKey}`}
-            />
+            <ContactRow contact={contact} onPress={() => navigation.navigate('Person', { pubky: contact.publicKey })} />
           </View>
         ))
       )}
       <View style={styles.spacer} />
     </Screen>
+  );
+}
+
+/** One contact: seal with photo, local label or published name, link state in words. */
+function ContactRow({ contact, onPress }: { contact: ContactSummary; onPress: () => void }) {
+  const hint = { displayName: contact.name, imageUri: contact.imageUri };
+  const profile = usePersonProfile(contact.publicKey, hint);
+  return (
+    <Row
+      title={contact.label || profile.displayName || middleEllipsis(contact.publicKey)}
+      subtitle={linkStateWords(contact.linkState)}
+      leading={<PersonSeal pubky={contact.publicKey} size={44} ring={sealRingFor(contact.linkState)} profileHint={hint} />}
+      onPress={onPress}
+      testID={`contact-${contact.publicKey}`}
+    />
   );
 }
 

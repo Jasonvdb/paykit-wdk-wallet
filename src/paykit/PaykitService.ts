@@ -7,6 +7,7 @@
 //                        state store, payment adapter, SDK handle, initialize
 //   setUpIdentity()      publish the Noise key authorization + app registry
 //   publishProfile()     name + optional avatar
+//   profiles             cached names and avatars for display (./profiles.ts)
 //   setPublicAddresses() hand over WDK's account-0 addresses; they are
 //                        published as public endpoints once the app is
 //                        registered (and retried each sync round until
@@ -54,13 +55,14 @@ import { ReceivingAddressCache } from './addressCache';
 import { SerialCallQueue, type CallPriority } from './callQueue';
 import { UserFacingError, describeError, isRetryablePaykitError } from './errors';
 import { SyncEventLog } from './eventLog';
-import { arrayBufferToBase64 } from './bytes';
+import { arrayBufferToBase64, sniffImageType } from './bytes';
 import { cleanKeyInput, shortKey } from './keys';
 import { WdkPaymentAdapter } from './paymentAdapter';
 import { connectSession, type SessionOrigin } from './session';
 import { loadOrCreateStorageKey } from './secureStorage';
 import { registerPrivatePaymentHooks } from './privatePayments';
 import { registerPaymentRequestHooks } from './requests';
+import { ProfileDirectory, cleanDisplayName } from './profiles';
 import { openPaykitAppStore, openStateStore } from './stateStore';
 import { PaykitSyncLoop } from './syncLoop';
 
@@ -80,9 +82,13 @@ export type ConnectOptions = {
   log: SyncEventLog;
 };
 
+/**
+ * A profile change. Leave a field out to keep what is published; pass an
+ * empty name to remove the name, or `avatar: null` to remove the photo.
+ */
 export type ProfileInput = {
   displayName?: string;
-  avatar?: { bytes: ArrayBuffer; contentType: 'image/jpeg' | 'image/png' };
+  avatar?: { bytes: ArrayBuffer; contentType: 'image/jpeg' | 'image/png' } | null;
 };
 
 export type PeerOverview = {
@@ -128,12 +134,21 @@ export class PaykitService {
       log,
       onRoundComplete: () => this.refreshState('background'),
     });
+    this.profiles = new ProfileDirectory({
+      resolveProfile: async (key) => {
+        const resolved = await this.call('resolveProfile', (sdk, signal) => sdk.resolveProfile(key, true, { signal }), 'background');
+        return resolved ? { displayName: resolved.displayName, imageUri: resolved.imageUri } : undefined;
+      },
+      fetchImage: (uri) => this.fetchImageDataUri(uri, 'background'),
+    });
     // Retries a failed or not-yet-possible endpoint publish. Costs nothing
     // (no SDK call) once the current addresses are published.
     this.syncLoop.addRoundHook('public-endpoints', () => this.publishPublicEndpointsIfNeeded('background'));
   }
 
   readonly syncLoop: PaykitSyncLoop;
+  /** Names and avatars for display, cached (10 minutes). Use the hooks in ./hooks.ts. */
+  readonly profiles: ProfileDirectory;
 
   /** The public key for a phrase, without connecting. Pure derivation, no network. */
   static publicKeyForMnemonic(mnemonic: string): string {
@@ -252,27 +267,31 @@ export class PaykitService {
 
   // Profile ---------------------------------------------------------------------
 
-  /** Publish name and avatar (/pub/paykit/profile.json). Uses the current revision, so it never clobbers blindly. */
+  /**
+   * Publish name and avatar (/pub/paykit/profile.json).
+   *
+   * Optimistic concurrency: it reads the published profile first and
+   * passes that revision as `expectedRevision`. If another device changed
+   * the profile in between, the SDK refuses (ConcurrentUpdate) instead of
+   * overwriting it, and the person tries again on fresh data. Fields the
+   * input leaves out (and `extraJson`) are carried over from that read.
+   */
   async publishProfile(input: ProfileInput): Promise<void> {
-    let imageUri: string | undefined;
-    if (input.avatar) {
-      const blob = await this.call('uploadProfileAvatar', (sdk, signal) =>
-        sdk.uploadProfileAvatar(input.avatar!.bytes, input.avatar!.contentType, { signal }),
-      );
-      imageUri = blob.uri;
+    const avatar = input.avatar;
+    let uploadedUri: string | undefined;
+    if (avatar) {
+      const blob = await this.call('uploadProfileAvatar', (sdk, signal) => sdk.uploadProfileAvatar(avatar.bytes, avatar.contentType, { signal }));
+      uploadedUri = blob.uri;
+      // Show the new photo everywhere at once, without downloading it again.
+      this.profiles.setImage(blob.uri, `data:${avatar.contentType};base64,${arrayBufferToBase64(avatar.bytes)}`);
     }
     const current = await this.call('fetchPaykitProfile', (sdk, signal) => sdk.fetchPaykitProfile(this.publicKey, { signal }));
+    const displayName = input.displayName === undefined ? current?.profile.displayName : cleanDisplayName(input.displayName);
+    const imageUri = avatar === null ? undefined : (uploadedUri ?? current?.profile.imageUri);
     await this.call('publishPaykitProfile', (sdk, signal) =>
-      sdk.publishPaykitProfile(
-        {
-          displayName: input.displayName?.trim() || current?.profile.displayName,
-          imageUri: imageUri ?? current?.profile.imageUri,
-          extraJson: current?.profile.extraJson,
-        },
-        current?.revision,
-        { signal },
-      ),
+      sdk.publishPaykitProfile({ displayName, imageUri, extraJson: current?.profile.extraJson }, current?.revision, { signal }),
     );
+    this.profiles.setProfile(this.publicKey, { displayName, imageUri });
     this.log.info('published profile');
   }
 
@@ -285,14 +304,21 @@ export class PaykitService {
     return this.call('resolveProfile', (sdk, signal) => sdk.resolveProfile(publicKey, true, { signal }));
   }
 
-  /** Download a pubky:// image (an avatar) as a data URI for <Image>. */
-  async fetchImageDataUri(uri: string): Promise<string | undefined> {
-    const bytes = await this.call('fetchPubkyFileBounded', (sdk, signal) =>
-      sdk.fetchPubkyFileBounded(uri, BigInt(MAX_AVATAR_BYTES), { signal }),
+  /**
+   * Download a pubky:// image (an avatar) as a data URI for <Image>.
+   * Someone else's file, so: capped at MAX_AVATAR_BYTES by the SDK, and the
+   * type comes from the bytes, not the name. Anything that is not a JPEG,
+   * PNG, WebP or GIF is dropped (undefined).
+   */
+  async fetchImageDataUri(uri: string, priority: CallPriority = 'user'): Promise<string | undefined> {
+    const bytes = await this.call(
+      'fetchPubkyFileBounded',
+      (sdk, signal) => sdk.fetchPubkyFileBounded(uri, BigInt(MAX_AVATAR_BYTES), { signal }),
+      priority,
     );
     if (!bytes) return undefined;
-    const type = /\.png$/i.test(uri) ? 'image/png' : /\.webp$/i.test(uri) ? 'image/webp' : 'image/jpeg';
-    return `data:${type};base64,${arrayBufferToBase64(bytes)}`;
+    const type = sniffImageType(bytes);
+    return type ? `data:${type};base64,${arrayBufferToBase64(bytes)}` : undefined;
   }
 
   // Public endpoints -----------------------------------------------------------

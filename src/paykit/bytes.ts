@@ -35,3 +35,21 @@ export function base64ToArrayBuffer(base64: string): ArrayBuffer {
   }
   return bytes.buffer.slice(0, byteIndex);
 }
+
+/** Image types we show as avatars. */
+export type AvatarImageType = 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif';
+
+/**
+ * The image type from the file's first bytes ("magic numbers"), or
+ * undefined if it is none of the types we show. Avatars come from other
+ * people's homeservers, so the app trusts the bytes, not the file name.
+ */
+export function sniffImageType(buffer: ArrayBuffer): AvatarImageType | undefined {
+  const b = new Uint8Array(buffer.slice(0, 12));
+  const ascii = (from: number, to: number) => String.fromCharCode(...b.slice(from, to));
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b[0] === 0x89 && ascii(1, 4) === 'PNG') return 'image/png';
+  if (ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') return 'image/webp';
+  if (ascii(0, 4) === 'GIF8') return 'image/gif';
+  return undefined;
+}

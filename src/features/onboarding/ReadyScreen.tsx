@@ -11,7 +11,8 @@ import { StyleSheet, View } from 'react-native';
 import { useOnboardingComplete } from '../../settings/appSettings';
 import type { OnboardingScreenProps } from '../../navigation/types';
 import { usePaykitService } from '../../paykit';
-import { Button, KeyText, Screen, Seal, Text, space } from '../../ui';
+import { Button, KeyText, Screen, Text, space } from '../../ui';
+import { PersonSeal } from '../people/PersonSeal';
 
 export function ReadyScreen(_props: OnboardingScreenProps<'Ready'>) {
   const service = usePaykitService();
@@ -20,7 +21,7 @@ export function ReadyScreen(_props: OnboardingScreenProps<'Ready'>) {
   return (
     <Screen footer={<Button label="Go to wallet" onPress={() => setOnboarded(true)} testID="go-to-wallet" />}>
       <View style={styles.body}>
-        {service ? <Seal pubky={service.publicKey} size={120} /> : null}
+        {service ? <PersonSeal pubky={service.publicKey} size={120} /> : null}
         <Text variant="title">You’re ready.</Text>
         <Text color="graphite">This is your seal. It is drawn from your public key, so it looks the same on every phone.</Text>
         {service ? <KeyText value={service.publicKey} full /> : null}

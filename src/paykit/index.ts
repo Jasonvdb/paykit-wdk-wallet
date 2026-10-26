@@ -23,3 +23,5 @@ export { describeError, userMessageFor } from './errors';
 export { clearSessionSecret } from './secureStorage';
 export type { SyncStatus, SyncRoundHook, SyncRoundContext } from './syncLoop';
 export type { SyncLogEntry } from './eventLog';
+export { useOwnProfile, usePersonProfile, type DisplayProfile } from './hooks';
+export type { PersonProfile } from './profiles';

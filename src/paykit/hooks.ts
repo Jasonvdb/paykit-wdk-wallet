@@ -4,13 +4,14 @@
 // every sync round and after user actions. It is display data: never use
 // it to decide whether a payment is allowed (the SDK's execution calls
 // re-check current state themselves).
-import { useContext, useMemo, useSyncExternalStore } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { FfiPaykitStateObservation } from '@synonymdev/react-native-paykit';
 
 import type { SyncLogEntry } from './eventLog';
 import { linkStateOf, type LinkState } from './linkState';
 import { PaykitContext, type PaykitContextValue } from './PaykitProvider';
 import type { PaykitService } from './PaykitService';
+import type { PersonProfile } from './profiles';
 import type { SyncStatus } from './syncLoop';
 
 const noopSubscribe = () => () => undefined;
@@ -120,4 +121,41 @@ export function useLinkState(publicKey: string | undefined): LinkState {
       isContact,
     );
   }, [state, publicKey]);
+}
+
+export type DisplayProfile = {
+  /** Their published name (or your own), if any. A local contact label is not included. */
+  displayName?: string;
+  /** The avatar as a data: URI, ready for <Seal imageUri> or <Image>. */
+  image?: string;
+};
+
+/**
+ * A person's published name and avatar, from the service's profile cache
+ * (./profiles.ts). Loads in the background on first use and every 10
+ * minutes after that. `hint` is what the caller already knows (a contact
+ * record's profile from observeState), shown until the cache has more.
+ */
+export function usePersonProfile(publicKey: string | undefined, hint?: PersonProfile): DisplayProfile {
+  const service = usePaykitService();
+  const directory = service?.profiles;
+  const subscribe = useCallback((listener: () => void) => (directory ? directory.subscribe(listener) : () => undefined), [directory]);
+  const cached = useSyncExternalStore(subscribe, () => (publicKey ? directory?.profile(publicKey) : undefined));
+  const displayName = cached?.displayName ?? hint?.displayName ?? undefined;
+  const imageUri = cached ? cached.imageUri : hint?.imageUri;
+  const image = useSyncExternalStore(subscribe, () => (imageUri ? directory?.image(imageUri) : undefined));
+
+  useEffect(() => {
+    if (directory && publicKey) void directory.ensureProfile(publicKey);
+  }, [directory, publicKey]);
+  useEffect(() => {
+    if (directory && imageUri) void directory.ensureImage(imageUri);
+  }, [directory, imageUri]);
+
+  return useMemo(() => ({ displayName, image }), [displayName, image]);
+}
+
+/** Your own published name and avatar. */
+export function useOwnProfile(): DisplayProfile {
+  return usePersonProfile(usePaykitService()?.publicKey);
 }

@@ -1,5 +1,6 @@
-// Wallet tab: your seal, balances (BTC, USD₮, ETH as gas), the three
-// actions, and recent activity.
+// Wallet tab: your seal (with your photo) and published name, balances
+// (BTC, USD₮, ETH as gas), the three actions, and recent activity. Tapping
+// your name opens the You tab, where you edit your profile.
 //
 // Balances are polled every ~15 s while the app is active (pull to
 // refresh). An empty USD₮ balance offers "Get test USD₮" right here, since
@@ -8,17 +9,19 @@
 //
 // TODO(Phase 4 — Contacts): activity rows with people (seal + name) once
 // Paykit attribution exists.
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import type { MainTabScreenProps } from '../../navigation/types';
-import { useConnectionNotice, usePaykitService } from '../../paykit';
-import { ASSET_DOT_SIZE, AssetAmount, AssetDot, Button, Divider, EmptyState, Row, Screen, Seal, Text, relativeTime, space } from '../../ui';
+import { useConnectionNotice, useOwnProfile, usePaykitService } from '../../paykit';
+import { ASSET_DOT_SIZE, AssetAmount, AssetDot, Button, Divider, EmptyState, Row, Screen, Text, relativeTime, space } from '../../ui';
 import { formatAssetAmount, useActivity, useWalletBalances, type ActivityItem } from '../../wallet';
 import { activityStatusWords, activityTitle } from './activity/activityText';
+import { PersonSeal } from '../people/PersonSeal';
 import { GetTestUsdtButton } from './GetTestUsdtButton';
 
 export function WalletScreen({ navigation }: MainTabScreenProps<'Wallet'>) {
   const service = usePaykitService();
+  const ownProfile = useOwnProfile();
   const notice = useConnectionNotice();
   const { balances, isRefreshing, refresh, error } = useWalletBalances();
   const activity = useActivity();
@@ -34,10 +37,18 @@ export function WalletScreen({ navigation }: MainTabScreenProps<'Wallet'>) {
       }}
       headerLeft={
         service ? (
-          <View style={styles.identity}>
-            <Seal pubky={service.publicKey} size={36} />
-            <Text variant="bodyStrong">You</Text>
-          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityHint="Opens the You tab"
+            onPress={() => navigation.navigate('Main', { screen: 'You' })}
+            style={styles.identity}
+            testID="wallet-identity"
+          >
+            <PersonSeal pubky={service.publicKey} size={36} />
+            <Text variant="bodyStrong" numberOfLines={1} style={styles.name}>
+              {ownProfile.displayName ?? 'You'}
+            </Text>
+          </Pressable>
         ) : (
           <Text color="graphite">{notice?.label}</Text>
         )
@@ -105,7 +116,8 @@ function ActivityRow({ item, onPress }: { item: ActivityItem; onPress: () => voi
 }
 
 const styles = StyleSheet.create({
-  identity: { flexDirection: 'row', alignItems: 'center', gap: space.s },
+  identity: { flexDirection: 'row', alignItems: 'center', gap: space.s, flexShrink: 1 },
+  name: { flexShrink: 1 },
   balances: { gap: 0 },
   // Line up with the asset names: dot width plus the Row's gap.
   gas: { marginLeft: ASSET_DOT_SIZE + space.m, marginTop: -space.s },
