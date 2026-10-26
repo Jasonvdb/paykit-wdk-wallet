@@ -15,6 +15,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@expo-google-fonts/atkinson-hyperlegible-mono": "0.4.1",
+    "@expo-google-fonts/atkinson-hyperlegible-next": "0.4.1",
+    "@expo-google-fonts/bricolage-grotesque": "0.4.1",
+    "@react-navigation/bottom-tabs": "7.20.0",
+    "@react-navigation/native": "7.5.0",
+    "@react-navigation/native-stack": "7.20.0",
     "@synonymdev/react-native-paykit": "file:vendor/synonymdev-react-native-paykit.tgz",
     "@tetherto/wdk": "1.0.0-beta.19",
     "@tetherto/wdk-react-native-core": "1.0.0-beta.21",
@@ -24,8 +30,15 @@
     "bare-node-runtime": "1.5.0",
     "expo": "55.0.31",
     "expo-build-properties": "55.0.18",
+    "expo-camera": "55.0.23",
+    "expo-clipboard": "55.0.17",
     "expo-crypto": "55.0.19",
     "expo-dev-client": "55.0.40",
+    "expo-font": "55.0.8",
+    "expo-haptics": "55.0.18",
+    "expo-image-manipulator": "55.0.21",
+    "expo-image-picker": "55.0.24",
+    "expo-linking": "55.0.17",
     "expo-status-bar": "55.0.6",
     "react": "19.2.0",
     "react-native": "0.83.10",
@@ -33,12 +46,20 @@
     "react-native-keychain": "10.0.0",
     "react-native-mmkv": "4.3.2",
     "react-native-nitro-modules": "0.36.1",
-    "react-native-safe-area-context": "5.6.2"
+    "react-native-qrcode-svg": "6.3.26",
+    "react-native-safe-area-context": "5.6.2",
+    "react-native-screens": "4.23.0",
+    "react-native-svg": "15.15.3"
   },
   "devDependencies": {
     "@scure/bip39": "2.4.0",
     "@tetherto/wdk-worklet-bundler": "1.0.0-beta.15",
+    "@types/jest": "29.5.14",
     "@types/react": "19.2.2",
+    "eslint": "9.39.4",
+    "eslint-config-expo": "55.0.1",
+    "jest": "29.7.0",
+    "jest-expo": "55.0.22",
     "typescript": "5.9.2"
   },
   "overrides": {
@@ -77,6 +98,7 @@
     "bare-type-stripper": "0.1.4",
     "bare-url": "2.5.4",
     "bare-worker": "4.4.0",
-    "bare-ws": "3.0.0"
+    "bare-ws": "3.0.0",
+    "@react-navigation/elements": "2.9.44"
   }
 }

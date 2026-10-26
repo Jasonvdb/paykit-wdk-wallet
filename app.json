@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#EEF1F4"
     },
     "ios": {
       "supportsTablet": false,
@@ -37,14 +37,34 @@
         {
           "android": {
             "minSdkVersion": 29,
-            "buildArchs": ["arm64-v8a"]
+            "buildArchs": [
+              "arm64-v8a"
+            ]
           },
           "ios": {
             "deploymentTarget": "15.1"
           }
         }
       ],
-      "./plugins/withPaykitSimulatorArchs"
-    ]
+      "./plugins/withPaykitSimulatorArchs",
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Scan a pay-me code to add a person.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose a profile photo that your contacts will see.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
+    ],
+    "backgroundColor": "#EEF1F4"
   }
 }
