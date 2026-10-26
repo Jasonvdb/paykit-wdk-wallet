@@ -10,25 +10,24 @@
 //   person says so explicitly and enters a code.
 //
 // The button shows each step ("Connecting your identity…", "Publishing
-// your payment keys…"). Sign-up failures share one message that names the
-// usual cause (a used or mistyped invite code); telling "used" from
-// "invalid" needs the homeserver's error codes, which the SDK does not
-// expose as tags yet.
+// your payment keys…"). A failed sign-up says which step failed
+// (src/paykit/signUpErrors.ts): the server refused to create the identity
+// (a used or mistyped code, or no connection; the SDK can't tell those
+// apart), or the identity exists and only signing in is left, in which
+// case the screen switches to Sign in so no second code is spent.
 //
 // A restored wallet can also bring back its contacts and requests: paste a
 // backup made in You (src/paykit/backup.ts). It is opened with the
 // recovery phrase and restored as part of signing in, before anything
 // else is written, because Paykit restores only into an identity with no
 // state on this phone yet.
-// TODO(Phase 6 — Polish): distinct messages per sign-up error once the SDK
-// reports them, and an optional Homegate self-serve invite.
 import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { demoPrefill } from '../../config/demo';
 import type { OnboardingScreenProps } from '../../navigation/types';
-import { describeError, looksLikeBackup, usePaykit, userMessageFor } from '../../paykit';
+import { describeError, identityExistsAfter, looksLikeBackup, signUpFailureMessage, signUpFailureOf, usePaykit, userMessageFor } from '../../paykit';
 import { walletOrigin } from '../../settings/appSettings';
 import { Button, Input, Screen, Text, space } from '../../ui';
 
@@ -67,15 +66,14 @@ export function InviteCodeScreen({ navigation }: OnboardingScreenProps<'InviteCo
       if (connected) {
         log.error(`set up identity: ${describeError(e)}`);
         setError(userMessageFor(e, "Couldn't publish your payment keys. Try again."));
+      } else if (isNewIdentity) {
+        log.error(`sign up: ${describeError(e)}`);
+        const failure = signUpFailureOf(e);
+        if (identityExistsAfter(failure)) setIsNewIdentity(false);
+        setError(signUpFailureMessage(failure) ?? userMessageFor(e, "Couldn't create your identity. Check the invite code; each one works only once."));
       } else {
-        setError(
-          userMessageFor(
-            e,
-            isNewIdentity
-              ? "Couldn't create your identity. Check the invite code; each one works only once."
-              : "Couldn't sign in. Try again in a minute.",
-          ),
-        );
+        log.error(`sign in: ${describeError(e)}`);
+        setError(userMessageFor(e, "Couldn't sign in. Try again in a minute."));
       }
     } finally {
       setStep(undefined);

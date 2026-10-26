@@ -104,3 +104,5 @@ export {
   type DurationChoice,
 } from './allowanceTerms';
 export { useAllowanceLedger, useAllowancesWith, useAutomaticPaymentNote } from './hooks';
+export { signUpFailureOf } from './errors';
+export { identityExistsAfter, signUpFailureMessage, type SignUpFailure } from './signUpErrors';

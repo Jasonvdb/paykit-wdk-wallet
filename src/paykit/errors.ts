@@ -12,6 +12,7 @@
 import { PaykitFfiError, PaykitFfiError_Tags } from '@synonymdev/react-native-paykit';
 
 import { CallTimeoutError } from './callQueue';
+import { signUpFailureFrom, type SignUpFailure } from './signUpErrors';
 
 /** An error whose message was written for people. Screens show it as is. */
 export class UserFacingError extends Error {
@@ -60,4 +61,9 @@ export function isRetryablePaykitError(error: unknown): boolean {
 export function asCallbackError(error: unknown, code: string, context: string): unknown {
   if (PaykitFfiError.instanceOf(error)) return error;
   return new PaykitFfiError.Storage({ code, context });
+}
+
+/** Which step of a sign-up failed (./signUpErrors.ts), read from the error's tag and context. */
+export function signUpFailureOf(error: unknown): SignUpFailure {
+  return PaykitFfiError.instanceOf(error) ? signUpFailureFrom(error.tag, error.inner.context) : 'unknown';
 }
