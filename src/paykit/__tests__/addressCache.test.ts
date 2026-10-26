@@ -85,7 +85,6 @@ describe('ReceivingAddressCache', () => {
     const details = cache.privateReceivingDetails(ALICE) ?? [];
     expect(details.map((d) => d.identifier)).toEqual([ENDPOINT_USDT, ENDPOINT_BTC]);
     expect(JSON.parse(details[1]!.payload)).toEqual({ value: 'tb1qalice' });
-    expect(cache.contactForBtcAddress('tb1qalice')).toBe(ALICE);
   });
 
   it('never returns a partial private list', () => {

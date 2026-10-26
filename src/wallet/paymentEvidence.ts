@@ -3,7 +3,7 @@
 // A payee that receives a Paykit payment proof does not trust it: it looks
 // the transaction up itself. These pure parsers turn what WDK returns over
 // its RPC bridge (JSON, bigints as strings) into small facts the
-// verification rules in src/paykit/paymentVerification.ts can check:
+// verification rules in src/paykit/paymentProofs.ts can check:
 //
 //   Bitcoin   WDK's `getTransfers` on the account that received the money
 //             (each contact pays us at their own Bitcoin account). Rows for

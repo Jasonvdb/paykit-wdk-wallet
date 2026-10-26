@@ -185,14 +185,6 @@ export class ReceivingAddressCache {
       .sort((a, b) => a.accountIndex - b.accountIndex);
   }
 
-  /** The contact whose BTC account has this address, if any. Used in Phase 4 to attribute incoming BTC. */
-  contactForBtcAddress(address: string): string | undefined {
-    for (const [pubky, index] of Object.entries(this.contactAccounts.accounts)) {
-      if (this.btcAddresses.get(index) === address) return pubky;
-    }
-    return undefined;
-  }
-
   setBtcAddress(accountIndex: number, address: string): void {
     if (this.btcAddresses.get(accountIndex) === address) return;
     this.btcAddresses.set(accountIndex, address);
