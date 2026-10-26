@@ -3,6 +3,10 @@
 //
 //   account 0      did our payment confirm; Sepolia transactions; sign a
 //                  USD₮ payment proof (src/wallet/usePaymentChecks.ts)
+//   automatic      a fee quote checked against the balance, and the send
+//   payments       itself, for payments made under an Allowance from a
+//                  round hook (src/paykit/automaticPayments.ts); the same
+//                  WDK send as the Pay review (useSend)
 //   each contact   what a Bitcoin payment paid into their account, for
 //   account        checking a proof they sent (one reader component per
 //                  account, since WDK's hooks are bound to one index)
@@ -12,15 +16,28 @@
 import { useEffect, useRef } from 'react';
 
 import { paymentRequestsOf, useContactAccounts, usePaykitService, type PaymentChain } from '../../paykit';
-import { useAccountZeroPaymentChecks, useBtcReceivedReader } from '../../wallet';
+import {
+  checkAffordable,
+  sendErrorMessage,
+  sendFailureFor,
+  useAccountZeroPaymentChecks,
+  useBtcReceivedReader,
+  useSend,
+  useWalletBalances,
+} from '../../wallet';
 
 type Reader = (txid: string, address: string) => ReturnType<PaymentChain['btcReceived']>;
 
 export function PaymentChainBridge() {
   const service = usePaykitService();
   const accountZero = useAccountZeroPaymentChecks();
+  const wallet = useSend();
+  const { balances } = useWalletBalances();
   const accounts = useContactAccounts();
   const readers = useRef(new Map<number, Reader>());
+  // The latest balances, read when a round hook asks (not a dependency: the chain stays attached).
+  const latestBalances = useRef(balances);
+  latestBalances.current = balances;
 
   useEffect(() => {
     if (!service) return;
@@ -31,9 +48,30 @@ export function PaymentChainBridge() {
         if (!read) throw new Error(`Bitcoin account ${accountIndex} is not loaded yet`);
         return read(txid, address);
       },
+      quoteSend: async (asset, to, amount) => {
+        // Like the Pay review: the balance first, then WDK's fee, then amount + fee.
+        const early = checkAffordable({ asset, amount, balances: latestBalances.current });
+        if (early) return { ok: false, problem: early.message };
+        try {
+          const quote = await wallet.quote({ asset, to, amount });
+          const problem = checkAffordable({ asset, amount, balances: latestBalances.current, fee: quote.fee });
+          return problem ? { ok: false, problem: problem.message } : { ok: true, feeRate: quote.feeRate };
+        } catch (error) {
+          return { ok: false, problem: sendErrorMessage(error, asset) };
+        }
+      },
+      send: async (asset, to, amount, feeRate) => {
+        try {
+          const result = await wallet.send({ asset, to, amount, feeRate });
+          return { hash: result.hash };
+        } catch (error) {
+          const failure = sendFailureFor(error, asset);
+          return { failure: failure.outcome, message: failure.message };
+        }
+      },
     };
     return paymentRequestsOf(service).attachChain(chain);
-  }, [service, accountZero]);
+  }, [service, accountZero, wallet]);
 
   return (
     <>

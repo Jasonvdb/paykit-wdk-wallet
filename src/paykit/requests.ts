@@ -119,6 +119,14 @@ export type PaymentChain = {
   findSentPayment(query: SentTransferQuery): Promise<SentTransferMatch>;
   /** Sign a USD₮ payment proof with EVM account 0 (WDK signTypedData; refuses any other typed data). */
   signErc20Payment(typedData: Erc20PaymentTypedData): Promise<string>;
+  /**
+   * Automatic payments (./automaticPayments.ts): WDK's fee quote for a send
+   * from account 0, checked against the balance (and ETH for gas). A
+   * problem is a sentence for the request page.
+   */
+  quoteSend(asset: RequestAsset, to: string, amount: bigint): Promise<{ ok: true; feeRate?: bigint } | { ok: false; problem: string }>;
+  /** Send from account 0 with WDK. A failure says whether it may have left (sendFailureFor). */
+  send(asset: RequestAsset, to: string, amount: bigint, feeRate?: bigint): Promise<{ hash: string } | { failure: 'not-sent' | 'unknown'; message: string }>;
 };
 
 /** Per-service state: the request book and the attached wallet. */
@@ -229,6 +237,8 @@ export type ProofView = {
   ours: boolean;
   /** Ours only: whether it has left the outbound queue. */
   delivery?: Delivery;
+  /** The Allowance the payer says it paid under (optional attribution; informational). */
+  allowanceId?: string;
 };
 
 /** A request for screens: the record's facts in plain data, plus the terms read once. */
@@ -277,6 +287,7 @@ export function requestViewOf(record: FfiPaymentRequestRecord): RequestView {
       recordedAtMs: parseTime(proof.recordedAt),
       ours: proof.outboundMessageId !== undefined,
       delivery: deliveryOf(proof.outboundStatus),
+      allowanceId: proof.allowanceId,
     };
   });
   const view: RequestView = {
@@ -325,12 +336,14 @@ export function requestFactsOf(view: RequestView, book: RequestBook, receipts: R
     const facts = factsFor(recurrence ? proof.period : undefined);
     facts.proofRecorded = true;
     facts.txHash ??= proof.txHash;
+    if (proof.allowanceId) facts.automatic = true;
   }
   for (const payment of book.allOutgoing()) {
     if (payment.counterparty !== view.counterparty || payment.requestId !== view.requestId) continue;
     const facts = factsFor(recurrence ? payment.period : undefined);
     facts.outgoing = payment.stage;
     facts.txHash ??= payment.txHash;
+    if (payment.allowanceId) facts.automatic = true;
   }
   if (!recurrence && byKey.size === 0) factsFor(undefined);
   for (const facts of byKey.values()) {
@@ -454,7 +467,7 @@ export async function cancelRequest(service: PaykitService, counterparty: string
  * uncertain ones stay reserved. A production wallet would reconcile its
  * own complete payment records here instead.
  */
-async function ensureLedgerReady(service: PaykitService): Promise<void> {
+export async function ensureLedgerReady(service: PaykitService): Promise<void> {
   const state = await service.call('allowanceAccountingState', (sdk, signal) => sdk.allowanceAccountingState({ signal }));
   if (state && !state.requiresReconciliation) return;
   await service.call('reconcileAllowanceAccounting', (sdk, signal) =>
@@ -472,7 +485,7 @@ async function ensureLedgerReady(service: PaykitService): Promise<void> {
 }
 
 /** A ledger refusal in words. */
-function blockedMessage(reason: FfiAllowanceAccountingBlock): string {
+export function blockedMessage(reason: FfiAllowanceAccountingBlock): string {
   switch (reason.tag) {
     case 'PaymentAlreadyRecorded':
       return 'This payment is already recorded. Check Activity before paying again.';
@@ -540,22 +553,7 @@ export async function preparePayment(service: PaykitService, counterparty: strin
   if (paidAlready || book.outgoing(key)) throw new UserFacingError('This payment is already on its way. Check the request for its status.');
 
   const identifier = ENDPOINT_FOR_ASSET[terms.asset];
-  let resolution: FfiPrivateContactPaymentResolution;
-  try {
-    const prepared = await service.call('prepareAndResolvePrivatePaymentRequest', (sdk, signal) =>
-      sdk.prepareAndResolvePrivatePaymentRequest(counterparty, requestId, undefined, PAYKIT_LINK_ADVANCE_STEPS, { signal }),
-    );
-    resolution = prepared.resolution;
-  } catch (error) {
-    service.log.warn(`prepare request payment to ${shortKey(counterparty)}: ${describeError(error)}; resolving from saved state`);
-    resolution = await service.call('resolvePrivatePaymentRequest', (sdk, signal) =>
-      sdk.resolvePrivatePaymentRequest(counterparty, requestId, undefined, { signal }),
-    );
-  }
-  const endpoint = pickEndpoint(resolution, counterparty, identifier);
-  if (!endpoint) throw new UserFacingError("Couldn't find where to pay this request. Try again in a moment.");
-  // The request binds the address; the resolution must agree with it.
-  if (terms.endpoint && terms.endpoint.address !== endpoint.address) throw new UserFacingError("The request's address doesn't match. Don't pay it.");
+  const endpoint = await resolveRequestAddress(service, counterparty, requestId, { ...terms, asset: terms.asset });
 
   return {
     key,
@@ -573,14 +571,53 @@ export async function preparePayment(service: PaykitService, counterparty: strin
   };
 }
 
-function executionChecks(prepared: PreparedPayment): FfiPaymentExecutionChecks {
+/**
+ * Where a request is paid: refresh the link and resolve the address the
+ * request allows (prepareAndResolvePrivatePaymentRequest, or from saved
+ * state if that fails). Never a public fallback, and it must equal the
+ * address bound in the request's terms. The request must be claimed first.
+ */
+export async function resolveRequestAddress(
+  service: PaykitService,
+  counterparty: string,
+  requestId: string,
+  terms: RequestTermsView & { asset: RequestAsset },
+): Promise<{ address: string; appId: string }> {
+  const identifier = ENDPOINT_FOR_ASSET[terms.asset];
+  let resolution: FfiPrivateContactPaymentResolution;
+  try {
+    const prepared = await service.call('prepareAndResolvePrivatePaymentRequest', (sdk, signal) =>
+      sdk.prepareAndResolvePrivatePaymentRequest(counterparty, requestId, undefined, PAYKIT_LINK_ADVANCE_STEPS, { signal }),
+    );
+    resolution = prepared.resolution;
+  } catch (error) {
+    service.log.warn(`prepare request payment to ${shortKey(counterparty)}: ${describeError(error)}; resolving from saved state`);
+    resolution = await service.call('resolvePrivatePaymentRequest', (sdk, signal) =>
+      sdk.resolvePrivatePaymentRequest(counterparty, requestId, undefined, { signal }),
+    );
+  }
+  const endpoint = pickEndpoint(resolution, counterparty, identifier);
+  if (!endpoint) throw new UserFacingError("Couldn't find where to pay this request. Try again in a moment.");
+  // The request binds the address; the resolution must agree with it.
+  if (terms.endpoint && terms.endpoint.address !== endpoint.address) throw new UserFacingError("The request's address doesn't match. Don't pay it.");
+  return endpoint;
+}
+
+/**
+ * The wallet's attestation to the ledger for one payment. `trustedTime`
+ * is this phone's clock (a demo simplification: a production wallet would
+ * use a time source it trusts). Automatic acceptance must pass the same
+ * time in its selection and its checks.
+ */
+export function executionChecks(prepared: Pick<PreparedPayment, 'endpointIdentifier' | 'amount' | 'asset'>, trustedTime: string = toRfc3339(Date.now())): FfiPaymentExecutionChecks {
   return {
-    trustedTime: toRfc3339(Date.now()),
+    trustedTime,
     paymentEndpointIdentifier: prepared.endpointIdentifier,
     actualAmount: new FfiAccountingAmount(toPaykitDecimal(prepared.amount, prepared.asset), prepared.asset),
     // Our endpoints are stable addresses: always current, never consumed.
     endpointCurrent: true,
-    // The person tapped Pay on the review that showed this exact payment.
+    // Manual: the person tapped Pay on the review that showed this exact
+    // payment. Automatic: an accepted Allowance and a funded wallet.
     localEnabled: true,
     // preparePayment checked the period is on the schedule and has started.
     recurrenceEligible: true,
@@ -592,9 +629,10 @@ function findRequestRecord(service: PaykitService, counterparty: string, request
   return service.getState()?.paymentRequests.find((r) => r.counterparty === counterparty && r.paymentRequestId === requestId);
 }
 
-/** What the book remembers for a payment the ledger admitted. */
-function outgoingFor(prepared: PreparedPayment, attemptId: string, stage: OutgoingPayment['stage']): OutgoingPayment {
+/** What the book remembers for a payment the ledger admitted. `allowanceId` marks an automatic payment. */
+export function outgoingFor(prepared: PreparedPayment, attemptId: string, stage: OutgoingPayment['stage'], allowanceId?: string): OutgoingPayment {
   return {
+    allowanceId,
     counterparty: prepared.counterparty,
     requestId: prepared.requestId,
     period: prepared.period,
@@ -811,7 +849,9 @@ export async function submitProof(service: PaykitService, key: string, payment: 
           billingPeriod: payment.period,
           paymentAppId: payment.paymentAppId,
           paymentEndpointIdentifier: payment.endpointIdentifier,
-          allowanceId: undefined,
+          // Automatic payments name the Allowance they used (optional
+          // attribution, specs/allowances.md); manual ones must not.
+          allowanceId: payment.allowanceId,
           conversionQuoteId: undefined,
           proof: new FfiPrivateJsonObject(proofJson),
         },

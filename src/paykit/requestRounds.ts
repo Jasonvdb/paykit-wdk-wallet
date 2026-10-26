@@ -23,8 +23,9 @@
 //
 // Recurring requests need no round hook of their own: which period is due
 // is computed from the terms when a screen asks (./recurrence.ts), and each
-// period is paid by the person, one tap each (there is no Allowance for
-// automatic payment in this app).
+// period is paid by the person with a tap, or automatically under an
+// Allowance (./automaticPayments.ts, its own round hook). Either way the
+// payment is finished here.
 import {
   FfiPaymentOutcome,
   FfiPaymentReference,

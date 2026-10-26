@@ -31,7 +31,8 @@
 // Extension points for later phases (private payments, payment requests):
 // - `call(label, task)` runs any SDK method through the queue;
 // - round hooks: registerPrivatePaymentHooks (./privatePayments.ts) and
-//   registerPaymentRequestHooks (./requests.ts) are called once per service,
+//   registerPaymentRequestHooks (./requests.ts) and registerAllowanceHooks
+//   (./automaticPayments.ts) are called once per service,
 //   here in connect(), before the loop starts. Each phase fills in its own
 //   function with `service.syncLoop.addRoundHook(name, hook)`;
 // - `addressCache` and `reservationInputsFor` (./paymentAdapter.ts) give the
@@ -72,7 +73,8 @@ import { backupKeyFrom, backupOpenMessage, openBackup, readEnvelope, sealBackup,
 import { loadOrCreateStorageKey } from './secureStorage';
 import { registerPrivatePaymentHooks } from './privatePayments';
 import { PrivateListStore } from './privatePaymentLists';
-import { paymentsWithUndeliveredProof, registerPaymentRequestHooks } from './requests';
+import { paymentRequestsOf, paymentsWithUndeliveredProof, registerPaymentRequestHooks } from './requests';
+import { registerAllowanceHooks } from './automaticPayments';
 import { ProfileDirectory, cleanDisplayName } from './profiles';
 import { MemoryStateBlobStore, openPaykitAppStore, openStateStore } from './stateStore';
 import { PaykitSyncLoop } from './syncLoop';
@@ -296,6 +298,7 @@ export class PaykitService {
     );
     registerPrivatePaymentHooks(service);
     registerPaymentRequestHooks(service);
+    registerAllowanceHooks(service, paymentRequestsOf(service));
     liveService = service;
     return service;
   }

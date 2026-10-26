@@ -50,6 +50,8 @@ export type OutgoingPayment = {
   endpointIdentifier: string;
   paymentAppId: string;
   attemptId: string;
+  /** Set for an automatic payment: the Allowance it was admitted under (./automaticPayments.ts). */
+  allowanceId?: string;
   stage: 'sending' | 'broadcast' | 'proof-sent' | 'unknown' | 'not-sent';
   txHash?: string;
   /** Outcome recorded in the ledger (recordPaymentOutcome). */

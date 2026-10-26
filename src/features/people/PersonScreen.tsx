@@ -29,6 +29,7 @@ import { useContactAccounts, useContacts, useLinkState, usePersonProfile } from 
 import { Button, KeyText, PushedScreen, Text, linkStateWords, sealRingFor, space } from '../../ui';
 import { ContactAccountRow } from '../you/ContactAccountsSection';
 import { takeJustAdded } from './justAdded';
+import { AutomaticPayments } from './person/AutomaticPayments';
 import { LabelEditor } from './person/LabelEditor';
 import { PersonActions } from './person/PersonActions';
 import { PersonHistory } from './person/PersonHistory';
@@ -93,6 +94,12 @@ export function PersonScreen({ navigation, route }: RootScreenProps<'Person'>) {
           {blocked ? null : (
             <Section title="What they accept">
               <WhatTheyAccept publicKey={pubky} name={name} linkState={linkState} />
+            </Section>
+          )}
+
+          {blocked ? null : (
+            <Section title="Automatic payments">
+              <AutomaticPayments pubky={pubky} name={name} linkState={linkState} onSetUp={() => navigation.navigate('AutomaticPayments', { pubky })} />
             </Section>
           )}
 

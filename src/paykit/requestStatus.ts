@@ -46,6 +46,8 @@ export type PaymentFacts = {
   /** Payee: receipt issued; payer: receipt retrieved. */
   receipt?: 'preparing' | 'sent' | 'failed' | 'received';
   deferred?: boolean;
+  /** Paid automatically, under an Allowance (our book, or the proof's attribution). */
+  automatic?: boolean;
 };
 
 export type RequestFacts = {
@@ -100,19 +102,20 @@ function paidCount(facts: RequestFacts): number {
 /** One payment's status in words (one-time requests and each recurring period). */
 export function paymentWords(payment: PaymentFacts | undefined, facts: Pick<RequestFacts, 'role' | 'name'>): string | undefined {
   if (!payment) return undefined;
+  const paid = payment.automatic ? 'Paid automatically' : 'Paid';
   if (facts.role === 'payer') {
-    if (payment.receipt === 'received') return 'Paid, receipt received';
+    if (payment.receipt === 'received') return `${paid}, receipt received`;
     if (payment.outgoing === 'unknown') return 'May have been paid. Check Activity';
-    if (payment.outgoing === 'sending') return 'Paying…';
+    if (payment.outgoing === 'sending') return payment.automatic ? 'Paying automatically…' : 'Paying…';
     if (payment.outgoing === 'not-sent') return "The last try didn't go through. You can pay it again";
-    if (payment.outgoing === 'broadcast') return 'Paid, sending the proof';
-    if (payment.proofRecorded || payment.outgoing === 'proof-sent') return `Paid, waiting for ${facts.name}'s receipt`;
+    if (payment.outgoing === 'broadcast') return `${paid}, sending the proof`;
+    if (payment.proofRecorded || payment.outgoing === 'proof-sent') return `${paid}, waiting for ${facts.name}'s receipt`;
     if (payment.deferred) return 'Put off for now';
     return undefined;
   }
-  if (payment.check === 'verified') return payment.receipt === 'sent' ? 'Paid, receipt sent' : 'Paid and checked on chain';
+  if (payment.check === 'verified') return payment.receipt === 'sent' ? `${paid}, receipt sent` : `${paid} and checked on chain`;
   if (payment.check === 'rejected') return "The payment didn't check out";
-  if (payment.proofRecorded) return 'Paid, checking on chain';
+  if (payment.proofRecorded) return `${paid}, checking on chain`;
   return undefined;
 }
 

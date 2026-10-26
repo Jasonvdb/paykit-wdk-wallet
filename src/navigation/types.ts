@@ -3,7 +3,8 @@
 // Root stack
 //   Onboarding (stack)  Welcome -> CreateOrRestore (-> BackupPhrase) -> InviteCode -> YourName -> Ready
 //   Main (tabs)         Wallet | People | Requests | You
-//   Modals              Send, Receive, RequestMoney, AddPerson, ScanQr, EditProfile, PayRequest
+//   Modals              Send, Receive, RequestMoney, AddPerson, ScanQr, EditProfile, PayRequest,
+//                       AutomaticPayments
 //   Pushed cards        Person, RequestDetail, ActivityDetail
 //
 // Params carry ids and public keys only, never records: screens read
@@ -54,6 +55,8 @@ export type RootStackParamList = {
    * address locked. `periodStart` picks the billing period of a recurring one.
    */
   PayRequest: { counterparty: string; requestId: string; periodStart?: string };
+  /** Offer a contact automatic payments within limits (an Allowance). */
+  AutomaticPayments: { pubky: string };
 };
 
 export type RootScreenProps<T extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, T>;

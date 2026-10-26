@@ -120,3 +120,9 @@ describe('what counts as paid', () => {
     expect(isPaymentHandled(payment())).toBe(false);
   });
 });
+
+it('says when a payment was made automatically', () => {
+  expect(paymentWords(payment({ outgoing: 'sending', automatic: true }), { role: 'payer', name: 'Ana' })).toBe('Paying automatically…');
+  expect(paymentWords(payment({ proofRecorded: true, automatic: true }), { role: 'payer', name: 'Ana' })).toBe("Paid automatically, waiting for Ana's receipt");
+  expect(paymentWords(payment({ proofRecorded: true, check: 'verified', receipt: 'sent', automatic: true }), { role: 'payee', name: 'Ana' })).toBe('Paid automatically, receipt sent');
+});

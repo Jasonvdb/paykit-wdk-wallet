@@ -7,6 +7,8 @@
 import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { FfiPaykitStateObservation } from '@synonymdev/react-native-paykit';
 
+import { allowancesOf, type AllowanceLedger, type AllowanceView, type Allowances } from './allowances';
+import { automaticPaymentNotesOf } from './automaticPayments';
 import type { SyncLogEntry } from './eventLog';
 import { linkStateOf, type LinkState } from './linkState';
 import { PaykitContext, type PaykitContextValue } from './PaykitProvider';
@@ -298,4 +300,48 @@ export function useRequestLinks(): ReadonlyMap<string, RequestLink> {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the book is mutable; its revision says when it changed
     [requests, state, book, revision],
   );
+}
+
+// Automatic payments (Phase 6) ------------------------------------------------------
+
+/** Re-render when the Allowance cache changes; returns it (or undefined while disconnected). */
+function useAllowanceStore(): Allowances | undefined {
+  const service = usePaykitService();
+  const store = service ? allowancesOf(service) : undefined;
+  useSyncExternalStore(
+    store ? (listener) => store.subscribe(listener) : noopSubscribe,
+    () => store?.getRevision(),
+  );
+  useEffect(() => {
+    // First use after a launch: read the SDK now instead of on the next round.
+    if (store && store.getRevision() === 0) void store.refresh('background');
+  }, [store]);
+  return store;
+}
+
+/** Allowances with one contact (both roles, every state), newest first. Display data. */
+export function useAllowancesWith(publicKey: string | undefined): AllowanceView[] {
+  const store = useAllowanceStore();
+  const revision = store?.getRevision();
+  return useMemo(
+    () => (store && publicKey ? store.withPerson(publicKey) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the store is mutable; its revision says when it changed
+    [store, publicKey, revision],
+  );
+}
+
+/** The payment ledger as last read (usage per Allowance, which request uses which). */
+export function useAllowanceLedger(): AllowanceLedger | undefined {
+  return useAllowanceStore()?.getLedger();
+}
+
+/** Why the last automatic try for a request or payment key didn't pay, if it didn't. */
+export function useAutomaticPaymentNote(key: string | undefined): string | undefined {
+  const service = usePaykitService();
+  const notes = service ? automaticPaymentNotesOf(service) : undefined;
+  useSyncExternalStore(
+    notes ? (listener) => notes.subscribe(listener) : noopSubscribe,
+    () => notes?.getRevision(),
+  );
+  return key ? notes?.note(key) : undefined;
 }
