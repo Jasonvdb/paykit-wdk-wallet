@@ -73,3 +73,11 @@ describe('parseScannedCode: everything else', () => {
     expect(parseScannedCode(`\u0000${BEN}\u0007`)).toEqual({ kind: 'person', pubky: BEN });
   });
 });
+
+describe('parseScannedCode and contracts', () => {
+  it('never pays the token or faucet contract', () => {
+    expect(parseScannedCode(SEPOLIA_USDT).kind).toBe('unsupported');
+    expect(parseScannedCode(`ethereum:${SEPOLIA_USDT}@11155111`).kind).toBe('unsupported');
+    expect(parseScannedCode(`paykitwdk://send?to=${SEPOLIA_USDT}`).kind).toBe('unsupported');
+  });
+});

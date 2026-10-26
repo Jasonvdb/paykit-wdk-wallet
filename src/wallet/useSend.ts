@@ -18,7 +18,7 @@ import { useCallback, useMemo } from 'react';
 import { useAccount, type IAsset } from '@tetherto/wdk-react-native-core';
 
 import { BTC, BTC_NETWORK, ETH, EVM_NETWORK, USDT } from '../config/wdk';
-import { isAddressForChain } from './addressFormat';
+import { isAddressForChain, isKnownContract } from './addressFormat';
 import { parseBaseUnits } from './amounts';
 import { ASSETS, feeAssetFor, type AssetId } from './assets';
 import { transactionUrl } from './explorers';
@@ -59,6 +59,9 @@ function checkRequest(request: SendRequest): void {
   if (!isAddressForChain(request.to, chain)) {
     throw new Error(chain === 'bitcoin' ? 'That is not a testnet Bitcoin address (tb1…).' : 'That is not an Ethereum address (0x…).');
   }
+  // Last line of defence behind checkRecipientAddress: tokens sent to the
+  // token or faucet contract are lost.
+  if (chain === 'ethereum' && isKnownContract(request.to.trim())) throw new Error('That is a contract address, not a wallet.');
   if (request.amount <= 0n) throw new Error('Enter an amount above zero.');
 }
 

@@ -16,9 +16,15 @@
 // It only checks shapes. A pubky is validated for real by the SDK
 // (PaykitService.normalizeKey) before Add person, and Send re-checks
 // addresses against the chosen asset. Pure; unit tested.
-import { SEPOLIA_CHAIN_ID, SEPOLIA_USDT } from '../../../config/chains';
 import { pubkyFromText } from '../../../paykit/keys';
-import { checkRecipientAddress, isBtcTestnetAddress, isEvmAddress, sameEvmAddress } from '../../../wallet/addressFormat';
+import {
+  checkRecipientAddress,
+  isBtcTestnetAddress,
+  isEvmAddress,
+  isKnownContract,
+  parseQueryParams,
+  payeeOfEthereumUri,
+} from '../../../wallet/addressFormat';
 
 export type ScannedAsset = 'btc' | 'usdt';
 
@@ -38,53 +44,29 @@ function unsupported(message = NOT_SUPPORTED): ScannedCode {
   return { kind: 'unsupported', message };
 }
 
-/** Query parameters of `a=1&b=2`, decoded. Repeated keys keep the first value. */
-function queryParams(query: string): Map<string, string> {
-  const params = new Map<string, string>();
-  for (const part of query.split('&')) {
-    const [rawKey, ...rest] = part.split('=');
-    if (!rawKey) continue;
-    try {
-      const key = decodeURIComponent(rawKey);
-      if (!params.has(key)) params.set(key, decodeURIComponent(rest.join('=')));
-    } catch {
-      // Malformed percent-encoding: skip the parameter.
-    }
-  }
-  return params;
-}
-
 function assetParam(value: string | undefined): ScannedAsset | undefined {
   return value === 'btc' || value === 'usdt' ? value : undefined;
 }
 
 /** A paykitwdk://send link: `to` must be a pubky or one of our addresses. */
 function parseSendLink(query: string): ScannedCode {
-  const params = queryParams(query);
+  const params = parseQueryParams(query);
   const to = params.get('to')?.trim() ?? '';
   const asset = assetParam(params.get('asset'));
   const pubky = pubkyFromText(to);
   if (pubky) return { kind: 'pay', to: pubky, asset };
   if (isBtcTestnetAddress(to)) return asset === 'usdt' ? unsupported('That link asks for USD₮ but holds a Bitcoin address.') : { kind: 'pay', to, asset: 'btc' };
+  if (isEvmAddress(to) && isKnownContract(to)) return unsupported("That link pays a token contract, not someone's wallet.");
   if (isEvmAddress(to)) return asset === 'btc' ? unsupported('That link asks for Bitcoin but holds an Ethereum address.') : { kind: 'pay', to, asset: 'usdt' };
   return unsupported('That payment link has no pubky or address in it.');
 }
 
-/** ethereum:… (EIP-681): a plain address, or a token transfer of our USD₮. */
+/** ethereum:… (EIP-681): shared with the Send screen's address check (src/wallet/addressFormat.ts). */
 function parseEthereumUri(rest: string): ScannedCode {
-  // ethereum:<target>[@chainId][/function][?params]
-  const match = /^(?:pay-)?(0x[0-9a-fA-F]{40})(?:@(\d+))?(?:\/([A-Za-z]+))?(?:\?(.*))?$/.exec(rest);
-  if (!match) return unsupported('That Ethereum code is not an address this wallet can pay.');
-  const [, target = '', chainId, fn, query = ''] = match;
-  if (chainId !== undefined && chainId !== String(SEPOLIA_CHAIN_ID)) {
-    return unsupported('That code is for another Ethereum network. This wallet pays on Sepolia only.');
-  }
-  if (fn === undefined) return { kind: 'pay', to: target, asset: 'usdt' };
-  if (fn !== 'transfer' || !sameEvmAddress(target, SEPOLIA_USDT)) {
-    return unsupported('That code asks for a token this wallet does not hold. It pays test USD₮ only.');
-  }
-  const payee = queryParams(query).get('address') ?? '';
-  return isEvmAddress(payee) ? { kind: 'pay', to: payee, asset: 'usdt' } : unsupported('That USD₮ request has no address to pay.');
+  const payee = payeeOfEthereumUri(rest);
+  if (!payee.ok) return unsupported(payee.message);
+  if (isKnownContract(payee.address)) return unsupported("That code pays a token contract, not someone's wallet.");
+  return { kind: 'pay', to: payee.address, asset: 'usdt' };
 }
 
 export function parseScannedCode(raw: string): ScannedCode {
@@ -111,7 +93,7 @@ export function parseScannedCode(raw: string): ScannedCode {
 
   // bitcoin:… (BIP-21) and bare addresses. checkRecipientAddress strips the
   // URI and says why mainnet or other networks are refused.
-  if (isEvmAddress(text)) return { kind: 'pay', to: text, asset: 'usdt' };
+  if (isEvmAddress(text)) return isKnownContract(text) ? unsupported("That is a token contract, not someone's wallet.") : { kind: 'pay', to: text, asset: 'usdt' };
   const btc = checkRecipientAddress(text, 'bitcoin');
   if (btc.ok) return { kind: 'pay', to: btc.address, asset: 'btc' };
   if (btc.reason === 'mainnet' || btc.reason === 'unsupported') return unsupported(btc.message);

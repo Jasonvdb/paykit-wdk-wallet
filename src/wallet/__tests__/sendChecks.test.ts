@@ -1,9 +1,11 @@
+import { AAVE_SEPOLIA_FAUCET, SEPOLIA_USDT } from '../../config/chains';
 import { addressFromPaymentText, checkRecipientAddress } from '../addressFormat';
 import { parseRecommendedFeeRate, parseTransactionStatus } from '../mutinynet';
 import { checkAffordable, formatFee, sendErrorMessage } from '../sendChecks';
 
 const TB1 = 'tb1qh3z4yzs97s9sq9awmgm55t3auxjuc4j5srz0pg';
 const EVM = '0x83A881Ddad0F675A3d57d306F3F4E6b352b95CD0';
+const OTHER_TOKEN = '0x1111111111111111111111111111111111111111';
 const PUBKY = 'pubky5fpe1iozempar1row5gyyn51y4i1sir7r7eu9krab1x3i5oen1gy';
 
 describe('checkRecipientAddress', () => {
@@ -16,6 +18,25 @@ describe('checkRecipientAddress', () => {
     expect(addressFromPaymentText(`bitcoin:${TB1}?amount=0.001`)).toBe(TB1);
     expect(addressFromPaymentText(`ethereum:${EVM}@11155111`)).toBe(EVM);
     expect(checkRecipientAddress(`bitcoin:${TB1}`, 'bitcoin')).toEqual({ ok: true, address: TB1 });
+  });
+
+  it('pays the payee of an EIP-681 USD₮ transfer, never the token contract', () => {
+    const transfer = `ethereum:${SEPOLIA_USDT}@11155111/transfer?address=${EVM}&uint256=1000000`;
+    expect(checkRecipientAddress(transfer, 'ethereum')).toEqual({ ok: true, address: EVM });
+    expect(addressFromPaymentText(transfer)).toBe(EVM);
+    expect(checkRecipientAddress(`ethereum:${SEPOLIA_USDT}/transfer?uint256=1`, 'ethereum')).toMatchObject({ ok: false, reason: 'unsupported' });
+  });
+
+  it('refuses EIP-681 codes for other networks, tokens or functions', () => {
+    expect(checkRecipientAddress(`ethereum:${EVM}@1`, 'ethereum')).toMatchObject({ ok: false, reason: 'unsupported' });
+    expect(checkRecipientAddress(`ethereum:${OTHER_TOKEN}@11155111/transfer?address=${EVM}`, 'ethereum')).toMatchObject({ ok: false, reason: 'unsupported' });
+    expect(checkRecipientAddress(`ethereum:${SEPOLIA_USDT}/approve?address=${EVM}`, 'ethereum')).toMatchObject({ ok: false, reason: 'unsupported' });
+  });
+
+  it('refuses the token and faucet contracts as recipients', () => {
+    expect(checkRecipientAddress(SEPOLIA_USDT, 'ethereum')).toMatchObject({ ok: false, reason: 'contract' });
+    expect(checkRecipientAddress(SEPOLIA_USDT.toLowerCase(), 'ethereum')).toMatchObject({ ok: false, reason: 'contract' });
+    expect(checkRecipientAddress(`ethereum:${AAVE_SEPOLIA_FAUCET}`, 'ethereum')).toMatchObject({ ok: false, reason: 'contract' });
   });
 
   it('refuses mainnet Bitcoin addresses', () => {

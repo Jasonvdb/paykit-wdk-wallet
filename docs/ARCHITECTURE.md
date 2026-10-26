@@ -109,7 +109,8 @@ formatAssetAmount(value: bigint, asset: AssetId, opts?): string
 parseAssetAmount(text: string, asset: AssetId): ParseResult
 toPaykitDecimal(value: bigint, asset): string / fromPaykitDecimal(text, asset): ParseResult
 isBtcTestnetAddress / isEvmAddress / chainOfAddress / transactionUrl / addressUrl
-checkRecipientAddress(text, chain): { ok: true; address } | { ok: false; reason; message }  // refuses mainnet, wrong chain, pubkys
+checkRecipientAddress(text, chain): { ok: true; address } | { ok: false; reason; message }  // refuses mainnet, wrong chain, pubkys, known contracts
+payeeOfPaymentText(text) / payeeOfEthereumUri(rest)                                        // BIP-21 / EIP-681: the payee, never the token contract
 checkAffordable({ asset, amount, balances, fee? }): SendProblem | undefined                // balance, amount + fee, "Not enough ETH for gas"
 formatFee(fee, asset) / sendErrorMessage(error, asset)                                     // display text; never shows the raw WDK error
 fetchBtcFeeRate() / fetchBtcTransactionStatus(txid)                                        // Mutinynet esplora (src/wallet/mutinynet.ts)
@@ -347,6 +348,13 @@ with the recipient filled in. It caps the length, strips control
 characters, refuses mainnet and other EVM chains, and for an EIP-681 token
 transfer pays the `address=` payee, never the token contract. Amounts in
 codes are ignored: the payer types the amount and reviews the fee.
+
+The URI rules live in one place, `src/wallet/addressFormat.ts`
+(`payeeOfPaymentText`), and every way an address gets in uses them: the
+scanner, the Send screen's address field, and a `paykitwdk://send?to=…`
+link, which React Navigation hands straight to Send's route params. The
+USD₮ token and Aave faucet contracts are refused as recipients there and
+again in `useSend` (tokens sent to them are lost).
 
 ### The sync loop
 
