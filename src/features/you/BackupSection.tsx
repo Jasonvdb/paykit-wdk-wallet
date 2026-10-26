@@ -112,8 +112,9 @@ export function BackupSection() {
         }
       } else {
         // Android always reports "shared", even when the sheet was dismissed.
+        // Opening the sheet usually sends the app to the background, which drops the text, so "copy it" may mean making it again.
         setUnconfirmed(meta);
-        setMessage({ text: "Android doesn't tell the app whether you saved it. If you did, tap “I saved it”. If not, copy it instead.", tone: 'graphite' });
+        setMessage({ text: "Android doesn't tell the app whether you saved it. If you did, tap “I saved it”. If not, make it again and copy it.", tone: 'graphite' });
       }
     } catch (e) {
       log.warn(`share backup: ${describeError(e)}`);
