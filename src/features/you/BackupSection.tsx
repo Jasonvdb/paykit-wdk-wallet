@@ -10,7 +10,11 @@
 //   Back up   seal a backup with a key from the recovery phrase, then Copy
 //             it or Share it (Files, AirDrop, a note). The text is held in
 //             memory only until it is copied or shared, or the app leaves
-//             the foreground; it is never shown, stored or logged.
+//             the foreground; it is never shown, stored or logged. "Last
+//             backup" changes only once it was kept: on Copy, or a Share
+//             that iOS confirms. Android's share sheet never says whether
+//             anything was saved, so there the person says so ("I saved
+//             it").
 //   Check     open a backup from the clipboard and restore it into a
 //             throwaway store, then say what it holds. Nothing here changes.
 //   Resume    after a restore that paused automatic payments
@@ -22,7 +26,7 @@
 // into an identity that has no contacts or requests on this phone yet.
 import * as Clipboard from 'expo-clipboard';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Share, StyleSheet, View } from 'react-native';
+import { Alert, Platform, Share, StyleSheet, View } from 'react-native';
 
 import {
   backupOpenMessage,
@@ -31,10 +35,12 @@ import {
   describeError,
   exportBackup,
   readBackupStatus,
+  recordBackupKept,
   resumeAfterRestore,
   usePaykit,
   userMessageFor,
   useRestoreReview,
+  type BackupMeta,
   type BackupStatus,
 } from '../../paykit';
 import { Button, Text, formatDateTime, relativeTime, space, useForegroundSecret } from '../../ui';
@@ -43,7 +49,9 @@ export function BackupSection() {
   const { service, log } = usePaykit();
   const [status, setStatus] = useState<BackupStatus>();
   // The sealed backup, until it is copied or shared. Dropped when the app leaves the foreground.
-  const [sealed, setSealed] = useForegroundSecret<string>();
+  const [sealed, setSealed] = useForegroundSecret<{ text: string; meta: BackupMeta }>();
+  // Android only: shared, but the platform can't say whether it was saved. Not secret.
+  const [unconfirmed, setUnconfirmed] = useState<BackupMeta>();
   const [running, setRunning] = useState<'export' | 'check'>();
   const [message, setMessage] = useState<{ text: string; tone: 'graphite' | 'alert' }>();
 
@@ -64,9 +72,9 @@ export function BackupSection() {
     if (!service || running) return;
     setRunning('export');
     setMessage(undefined);
+    setUnconfirmed(undefined);
     try {
       setSealed(await exportBackup(service));
-      void loadStatus();
     } catch (e) {
       log.warn(`make backup: ${describeError(e)}`);
       setMessage({ text: userMessageFor(e, "Couldn't make the backup. Try again."), tone: 'alert' });
@@ -75,24 +83,48 @@ export function BackupSection() {
     }
   };
 
+  const kept = (meta: BackupMeta) => {
+    if (!service) return;
+    recordBackupKept(service, meta);
+    setUnconfirmed(undefined);
+    void loadStatus();
+  };
+
   const onCopy = async () => {
     if (!sealed) return;
-    await Clipboard.setStringAsync(sealed);
+    await Clipboard.setStringAsync(sealed.text);
+    kept(sealed.meta);
     setSealed(undefined);
     setMessage({ text: 'Backup copied. Paste it somewhere safe, such as a note or a file.', tone: 'graphite' });
   };
 
   const onShare = async () => {
     if (!sealed) return;
+    const { text, meta } = sealed;
     try {
-      const result = await Share.share({ message: sealed, title: 'Wallet contacts and requests backup' });
-      if (result.action === Share.sharedAction) {
-        setSealed(undefined);
-        setMessage({ text: 'Backup saved.', tone: 'graphite' });
+      const result = await Share.share({ message: text, title: 'Wallet contacts and requests backup' });
+      if (Platform.OS === 'ios') {
+        // iOS says whether the person picked somewhere to send it.
+        if (result.action === Share.sharedAction) {
+          kept(meta);
+          setSealed(undefined);
+          setMessage({ text: 'Backup saved.', tone: 'graphite' });
+        }
+      } else {
+        // Android always reports "shared", even when the sheet was dismissed.
+        setUnconfirmed(meta);
+        setMessage({ text: "Android doesn't tell the app whether you saved it. If you did, tap “I saved it”. If not, copy it instead.", tone: 'graphite' });
       }
     } catch (e) {
       log.warn(`share backup: ${describeError(e)}`);
     }
+  };
+
+  const onSavedOnAndroid = () => {
+    if (!unconfirmed) return;
+    kept(unconfirmed);
+    setSealed(undefined);
+    setMessage({ text: 'Backup saved.', tone: 'graphite' });
   };
 
   const onCheck = async () => {
@@ -133,10 +165,12 @@ export function BackupSection() {
             ? `Last backup ${relativeTime(last.exportedAt).toLowerCase()}. ${status.changedSinceBackup ? 'Something changed since then.' : 'Nothing changed since then.'}`
             : 'Not backed up on this phone yet.'}
       </Text>
-      {sealed ? (
+      {sealed || unconfirmed ? (
         <View style={styles.buttons}>
-          <Button label="Copy backup" onPress={() => void onCopy()} testID="backup-copy" />
-          <Button label="Share backup…" variant="secondary" onPress={() => void onShare()} testID="backup-share" />
+          {sealed ? <Button label="Copy backup" onPress={() => void onCopy()} testID="backup-copy" /> : null}
+          {sealed ? <Button label="Share backup…" variant="secondary" onPress={() => void onShare()} testID="backup-share" /> : null}
+          {unconfirmed ? <Button label="I saved it" variant="secondary" onPress={onSavedOnAndroid} testID="backup-saved" /> : null}
+          {sealed ? null : <Button label="Make it again" variant="secondary" compact onPress={() => void onExport()} loading={running === 'export'} testID="backup-again" />}
         </View>
       ) : (
         <Button
@@ -160,11 +194,6 @@ export function BackupSection() {
       {message ? (
         <Text variant="secondary" color={message.tone} testID="backup-message">
           {message.text}
-        </Text>
-      ) : null}
-      {status ? (
-        <Text variant="caption" color="graphite">
-          Backup revision {status.revision.slice(0, 12)}
         </Text>
       ) : null}
     </View>

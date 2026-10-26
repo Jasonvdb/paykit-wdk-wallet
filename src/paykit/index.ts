@@ -77,11 +77,11 @@ export {
 export { isPaymentHandled, isPaymentMade, isPaymentSettled, isTerminal, paymentWords, requestStatusWords, requestTimeline, type PaymentFacts, type RequestFacts, type TimelineStep } from './requestStatus';
 export { intervalWords, scheduleWords, nextPeriodAfter, paymentCount, periodKey, unpaidPeriods, parseTime, type BillingPeriod, type Recurrence } from './recurrence';
 export { paymentKey } from './requestBook';
-// Backup and restore (Phase 6)
-export { backupSummaryWords, checkBackup, exportBackup, readBackupStatus, type BackupStatus, type BackupSummary } from './backup';
+// Backup and restore
+export { backupSummaryWords, checkBackup, exportBackup, readBackupStatus, recordBackupKept, type BackupMeta, type BackupStatus, type BackupSummary } from './backup';
 export { backupOpenMessage, looksLikeBackup } from './backupCrypto';
 export { resumeAfterRestore, type RestoreReview } from './restoreReview';
-// Automatic payments under an Allowance (Phase 6)
+// Automatic payments under an Allowance
 export {
   acceptAutomaticPayments,
   declineAutomaticPayments,

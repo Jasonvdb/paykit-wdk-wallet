@@ -17,8 +17,10 @@
 // never stores, logs or shows it.
 //
 // Three operations:
-//   exportBackup   seal the SDK backup and the app keys; remember when and
-//                  the backup revision (backupStateRevision) at that time
+//   exportBackup   seal the SDK backup and the app keys, with the backup
+//                  revision (backupStateRevision) at that time; the screen
+//                  calls recordBackupKept once the person copied or shared
+//                  it, so "Last backup" never names one that was dropped
 //   checkBackup    open a backup and restore it into a throwaway SDK handle
 //                  with an in-memory store (PaykitService.inScratchState),
 //                  then count what it holds. Nothing on this phone changes:
@@ -107,9 +109,10 @@ export async function readBackupStatus(service: PaykitService): Promise<BackupSt
 
 /**
  * Make a sealed backup of this identity's Paykit state and the app keys.
- * Returns the text to copy or share. It is never stored or logged here.
+ * Returns the text to copy or share (never stored or logged here) and the
+ * meta to record with recordBackupKept once the person has kept it.
  */
-export async function exportBackup(service: PaykitService): Promise<string> {
+export async function exportBackup(service: PaykitService): Promise<{ text: string; meta: BackupMeta }> {
   const revision = await service.call('backupStateRevision', (sdk, signal) => sdk.backupStateRevision({ signal }));
   const paykit = await service.call('exportBackupString', (sdk, signal) => sdk.exportBackupString({ signal }));
   const app: Record<string, string> = {};
@@ -120,9 +123,14 @@ export async function exportBackup(service: PaykitService): Promise<string> {
   const now = Date.now();
   const envelope = buildEnvelope({ createdAtMs: now, publicKey: service.publicKey, paykit, app });
   const text = service.sealBackup(asciiJson(envelope), Crypto.getRandomBytes(24));
-  service.appStore.set(META_KEY, JSON.stringify({ exportedAt: now, revision } satisfies BackupMeta));
   service.log.info(`made a backup (revision ${revision.slice(0, 8)})`);
-  return text;
+  return { text, meta: { exportedAt: now, revision } };
+}
+
+/** The person copied or saved the backup: from now on You says when it was made and whether anything changed since. */
+export function recordBackupKept(service: PaykitService, meta: BackupMeta): void {
+  service.appStore.set(META_KEY, JSON.stringify(meta));
+  service.log.info(`backup kept (revision ${meta.revision.slice(0, 8)})`);
 }
 
 /**
