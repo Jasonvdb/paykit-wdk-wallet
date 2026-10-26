@@ -19,9 +19,11 @@
 //                                                      one-time request is
 //                                                      also checked against
 //                                                      the limits here)
-//   accepted / when the acceptance has left the outbound queue, for the one
-//   active     occurrence due (a one-time request, or the oldest unpaid
-//              billing period of a recurring one):
+//   accepted / when the acceptance has left the outbound queue before the
+//   active     request expired (./acceptanceTiming.ts: one that left later
+//              is never paid automatically, as the payee ignores its
+//              proof), for the one occurrence due (a one-time request, or
+//              the oldest unpaid billing period of a recurring one):
 //                5. claim, resolve, fee and balance again
 //                6. reserveAutomaticPayment  the ledger admits this occurrence
 //                                            under the chosen Allowance and its
@@ -47,8 +49,15 @@
 // payments), the contact accepts, and from then on that contact's
 // requests within the limits are accepted and paid without a tap. Over a
 // limit, the request waits for the person, as before.
-import { FfiLinkedPeerState, FfiOutboundPrivateMessageStatus, FfiPaymentAttemptDecision, FfiPaymentOutcome } from '@synonymdev/react-native-paykit';
+import {
+  FfiLinkedPeerState,
+  FfiOutboundPrivateMessageStatus,
+  FfiPaymentAttemptDecision,
+  FfiPaymentOutcome,
+  type FfiPaymentRequestRecord,
+} from '@synonymdev/react-native-paykit';
 
+import { nextAcceptanceTiming, type AcceptanceTiming } from './acceptanceTiming';
 import { allowanceCovers, automaticBlockWords, automaticFeeProblem } from './allowanceTerms';
 import { allowancesOf, requestKey, type AllowanceLedger, type AllowanceView, type Allowances } from './allowances';
 import { describeError, paykitErrorTag } from './errors';
@@ -126,6 +135,48 @@ export function automaticPaymentNotesOf(service: PaykitService): AutomaticPaymen
   return notes;
 }
 
+/** App store key: final acceptance timings ('in-time' / 'too-late') per request, so a restart after the expiry keeps them. */
+const ACCEPTANCE_TIMING_KEY = 'acceptance-timing-v1';
+
+/** Per service: whether our acceptance of each request left before it expired (see ./acceptanceTiming.ts). */
+const acceptanceTimings = new WeakMap<PaykitService, Map<string, AcceptanceTiming>>();
+
+function loadTimings(service: PaykitService): Map<string, AcceptanceTiming> {
+  try {
+    const saved = JSON.parse(service.appStore.getString(ACCEPTANCE_TIMING_KEY) ?? '{}') as Record<string, unknown>;
+    return new Map(Object.entries(saved).filter((entry): entry is [string, AcceptanceTiming] => entry[1] === 'in-time' || entry[1] === 'too-late'));
+  } catch {
+    return new Map();
+  }
+}
+
+/** Watch every request we accepted, every round, so the paying step knows whether the acceptance left in time. */
+function observeAcceptances(service: PaykitService, records: readonly FfiPaymentRequestRecord[], nowMs: number): Map<string, AcceptanceTiming> {
+  let timings = acceptanceTimings.get(service);
+  if (!timings) {
+    timings = loadTimings(service);
+    acceptanceTimings.set(service, timings);
+  }
+  let settled = false;
+  for (const record of records) {
+    // Undefined: accepted before this app saw it, or not ours to send.
+    if (record.acceptedOutboundStatus === undefined) continue;
+    const view = requestViewOf(record);
+    if (view.role !== 'payer') continue;
+    const key = requestKey(view.counterparty, view.requestId);
+    const previous = timings.get(key);
+    const sent = record.acceptedOutboundStatus === FfiOutboundPrivateMessageStatus.Sent;
+    const next = nextAcceptanceTiming(previous, sent, view.terms?.expiresAtMs, nowMs);
+    timings.set(key, next);
+    if (next !== previous && next !== 'waiting') settled = true;
+  }
+  if (settled) {
+    const final = Object.fromEntries([...timings].filter(([, timing]) => timing !== 'waiting'));
+    service.appStore.set(ACCEPTANCE_TIMING_KEY, JSON.stringify(final));
+  }
+  return timings;
+}
+
 /** Called once per connected service, after the payment request hooks (PaykitService.connect). */
 export function registerAllowanceHooks(service: PaykitService, requests: PaymentRequests): void {
   const allowances = allowancesOf(service);
@@ -135,9 +186,11 @@ export function registerAllowanceHooks(service: PaykitService, requests: Payment
 
 async function payAutomatically(service: PaykitService, requests: PaymentRequests, allowances: Allowances): Promise<void> {
   const state = service.getState();
+  if (!state) return;
+  const timings = observeAcceptances(service, state.paymentRequests, Date.now());
   const chain = requests.getChain();
   const usable = allowances.usableAsPayer();
-  if (!state || !chain || usable.length === 0) return;
+  if (!chain || usable.length === 0) return;
   const ledger = allowances.getLedger();
   const notes = automaticPaymentNotesOf(service);
   const linked = new Set(state.linkedPeers.filter((p) => p.state === FfiLinkedPeerState.Linked).map((p) => p.counterparty));
@@ -164,8 +217,17 @@ async function payAutomatically(service: PaykitService, requests: PaymentRequest
     if (view.state !== 'accepted' && view.state !== 'active') continue;
     const association = ledger.associations.get(rkey);
     if (!association || !mine.some((a) => a.allowanceId === association.allowanceId)) continue;
-    // Pay only once our acceptance has left (the payee judges it by when it arrives).
-    if (record.acceptedOutboundStatus !== undefined && record.acceptedOutboundStatus !== FfiOutboundPrivateMessageStatus.Sent) continue;
+    // Pay only once our acceptance has left, and only if it left before the
+    // request expired: the payee judges it by when it arrives, and ignores
+    // a proof for a request it saw accepted too late.
+    if (record.acceptedOutboundStatus !== undefined) {
+      const timing = timings.get(rkey);
+      if (timing === 'too-late') {
+        notes.set(rkey, 'Not paid automatically. Your answer may have reached them only after the request expired, so they might not count a payment. Ask them to send it again.', RETRY_BLOCKED_MS);
+        continue;
+      }
+      if (timing !== 'in-time') continue;
+    }
     const period = nextDue(view, requests, ledger, now);
     if (period === null) continue;
     const key = paymentKey(view.counterparty, view.requestId, period);
