@@ -6,12 +6,18 @@
 // base-unit strings and are converted to bigint here, so screens never
 // touch floating point. Electrum counts unconfirmed incoming BTC, so a
 // payment from the other simulator shows up within seconds.
-import { useCallback, useMemo } from 'react';
+//
+// A failed poll keeps each asset's last balance on screen, and the error
+// line shows only after a run of failures (./failureStreak.ts): Electrum
+// and the public Sepolia RPC drop a request now and then, and the next
+// poll usually works.
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useBalancesForWallets, useBalancesForWallet } from '@tetherto/wdk-react-native-core';
 
 import { BALANCE_POLL_MS } from '../config/sync';
 import { BTC, ETH, USDT } from '../config/wdk';
 import { parseBaseUnits } from './amounts';
+import { nextFailureStreak, NO_FAILURES, shouldReportFailure } from './failureStreak';
 import { useAppActive } from './useAppActive';
 import { ASSETS, type AssetId } from './assets';
 
@@ -44,7 +50,7 @@ export function useWalletBalances(options: { pollMs?: number } = {}): WalletBala
     refetchInterval: active ? (options.pollMs ?? BALANCE_POLL_MS) : false,
   });
 
-  const balances = useMemo(() => {
+  const fresh = useMemo(() => {
     const result: Partial<Record<AssetId, bigint>> = {};
     for (const asset of Object.keys(WDK_ASSET_IDS) as AssetId[]) {
       const entry = query.data?.find((item) => item.assetId === WDK_ASSET_IDS[asset]);
@@ -59,8 +65,21 @@ export function useWalletBalances(options: { pollMs?: number } = {}): WalletBala
   const failedAssets = (Object.keys(WDK_ASSET_IDS) as AssetId[]).filter((asset) =>
     query.data?.some((item) => item.assetId === WDK_ASSET_IDS[asset] && !item.success),
   );
+  const failed = Boolean(query.error) || failedAssets.length > 0;
+
+  // The last good value per asset, and how many polls in a row failed.
+  const [kept, setKept] = useState<Partial<Record<AssetId, bigint>>>({});
+  const [streak, setStreak] = useState(NO_FAILURES);
+  const fetchedAt = Math.max(query.dataUpdatedAt, query.errorUpdatedAt);
+  useEffect(() => {
+    if (!fetchedAt) return;
+    setStreak((current) => nextFailureStreak(current, !failed));
+    setKept((current) => ({ ...current, ...fresh }));
+  }, [fetchedAt, failed, fresh]);
+  const balances = useMemo(() => ({ ...kept, ...fresh }), [kept, fresh]);
+
   const what = query.error ? 'your balances' : `your ${failedAssets.map((asset) => ASSETS[asset].displayName).join(' and ')} balance`;
-  const error = query.error || failedAssets.length > 0 ? `Couldn't load ${what}. Pull down to try again.` : undefined;
+  const error = failed && shouldReportFailure(streak, Object.keys(balances).length > 0) ? `Couldn't load ${what}. Pull down to try again.` : undefined;
   const refetch = query.refetch;
   const refresh = useCallback(async () => {
     await refetch();

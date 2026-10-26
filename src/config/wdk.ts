@@ -18,6 +18,17 @@ export const EVM_NETWORK = 'ethereum';
  */
 export const WALLET_ID = 'paykit-wdk-demo';
 
+/**
+ * Electrum reconnects. WDK's Bitcoin client (@mempool/electrum-client)
+ * reopens its socket after a close, but by default only twice per session
+ * (`maxRetry: 2`), and every close counts, including one while the app was
+ * in the background. After that every Bitcoin read fails with "Connection
+ * to server lost" until the app restarts. This keeps reconnecting, a second
+ * after each close, for as long as the app runs. Reads also retry once
+ * quietly (src/wallet/electrumRetry.ts).
+ */
+const ELECTRUM_RECONNECT = { maxRetry: 100_000, retryPeriod: 1_000 } as const;
+
 export const wdkConfigs: WdkConfigs = {
   networks: {
     [BTC_NETWORK]: {
@@ -28,7 +39,7 @@ export const wdkConfigs: WdkConfigs = {
         // is right for Mutinynet.
         network: 'testnet',
         bip: 84,
-        client: { type: 'electrum', clientConfig: { ...MUTINYNET_ELECTRUM } },
+        client: { type: 'electrum', clientConfig: { ...MUTINYNET_ELECTRUM, ...ELECTRUM_RECONNECT } },
       },
     },
     [EVM_NETWORK]: {

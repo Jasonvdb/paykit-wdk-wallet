@@ -14,6 +14,10 @@
 // Per-contact BTC accounts have their own history: contacts' private
 // payments land there. ./useContactAccountActivity.ts collects it and it is
 // merged in here, with each Collect shown once (collapseInternalMoves).
+//
+// A failed poll keeps the last list. Electrum's dropped connection gets one
+// quiet retry (./electrumRetry.ts), and the screen hears about a failure
+// only after a run of them (./failureStreak.ts).
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useAccount } from '@tetherto/wdk-react-native-core';
 
@@ -30,6 +34,8 @@ import {
   parseBtcTransfers,
   type ActivityItem,
 } from './activity';
+import { retryIfElectrumDropped } from './electrumRetry';
+import { nextFailureStreak, NO_FAILURES, shouldReportFailure, type FailureStreak } from './failureStreak';
 import { sentTransactions, subscribeSentTransactions } from './sentTransactions';
 import { useAppActive } from './useAppActive';
 import { useContactAccountActivity } from './useContactAccountActivity';
@@ -92,6 +98,7 @@ export function useActivity(options: { pollMs?: number } = {}): WalletActivity {
   });
   const [error, setError] = useState<string>();
   const inFlight = useRef(false);
+  const streaks = useRef<{ btc: FailureStreak; evm: FailureStreak }>({ btc: NO_FAILURES, evm: NO_FAILURES });
 
   const btcReady = btcAccount.address !== null;
   const evmAddress = evmAccount.address;
@@ -101,24 +108,32 @@ export function useActivity(options: { pollMs?: number } = {}): WalletActivity {
     if (inFlight.current || !btcReady || !evmAddress) return;
     inFlight.current = true;
     if (lastFetched.owner !== evmAddress) Object.assign(lastFetched, { owner: evmAddress, btc: [], evm: [] });
-    const failures: string[] = [];
+    const track = (source: 'btc' | 'evm', succeeded: boolean) => {
+      streaks.current[source] = nextFailureStreak(streaks.current[source], succeeded);
+    };
     try {
       await Promise.all([
-        extension()
-          .getTransfers({ limit: BTC_HISTORY_FETCH_LIMIT })
+        retryIfElectrumDropped(() => extension().getTransfers({ limit: BTC_HISTORY_FETCH_LIMIT }))
           .then((transfers) => {
             lastFetched.btc = newestItems(parseBtcTransfers(transfers, 0), HISTORY_LIMIT);
             setBtcItems(lastFetched.btc);
+            track('btc', true);
           })
-          .catch(() => failures.push('Bitcoin history')),
+          .catch(() => track('btc', false)),
         fetchEvmActivity(evmAddress)
           .then((items) => {
             lastFetched.evm = items;
             setEvmItems(items);
+            track('evm', true);
           })
-          .catch(() => failures.push('Ethereum history')),
+          .catch(() => track('evm', false)),
       ]);
-      setError(failures.length ? `Couldn't load ${failures.join(' and ')}. We'll keep trying.` : undefined);
+      // Older lists stay on screen; only a run of failures is worth a line.
+      const failing = [
+        shouldReportFailure(streaks.current.btc, lastFetched.btc.length > 0) ? 'Bitcoin history' : undefined,
+        shouldReportFailure(streaks.current.evm, lastFetched.evm.length > 0) ? 'Ethereum history' : undefined,
+      ].filter((name): name is string => name !== undefined);
+      setError(failing.length ? `Couldn't load ${failing.join(' and ')}. We'll keep trying.` : undefined);
     } finally {
       inFlight.current = false;
       setIsLoading(false);

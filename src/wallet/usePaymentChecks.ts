@@ -43,6 +43,7 @@ import {
   type SentTransferMatch,
   type SentTransferQuery,
 } from './paymentEvidence';
+import { retryIfElectrumDropped } from './electrumRetry';
 import { sentTransactions } from './sentTransactions';
 import { fetchEvmActivity } from './useActivity';
 
@@ -91,7 +92,7 @@ export function useAccountZeroPaymentChecks(): AccountZeroPaymentChecks {
           // What this app sent this session (not indexed yet), then the indexer.
           return matchSentTransfer([...sentTransactions(), ...(await fetchEvmActivity(evmAddress))], query);
         }
-        const items = sentTransferCandidates(parseBtcTransfers(await btc().getTransfers({ limit: BTC_HISTORY_FETCH_LIMIT }), 0), query);
+        const items = sentTransferCandidates(parseBtcTransfers(await retryIfElectrumDropped(() => btc().getTransfers({ limit: BTC_HISTORY_FETCH_LIMIT })), 0), query);
         // WDK's transfers carry a block height, not a time.
         for (const item of items) {
           if (item.status === 'confirmed') item.timestamp = (await fetchBtcTransactionStatus(item.hash))?.blockTime;
@@ -116,7 +117,7 @@ export function useBtcReceivedReader(accountIndex: number): ((txid: string, addr
   const { extension } = account;
   const read = useCallback(
     async (txid: string, address: string) => {
-      const receipt = btcReceiptFromTransfers(await extension().getTransfers({ limit: BTC_HISTORY_FETCH_LIMIT }), txid, address);
+      const receipt = btcReceiptFromTransfers(await retryIfElectrumDropped(() => extension().getTransfers({ limit: BTC_HISTORY_FETCH_LIMIT })), txid, address);
       // The payee checks when it was paid (paymentProofs.ts); WDK gives only the height.
       if (receipt.confirmed) receipt.blockTimeMs = (await fetchBtcTransactionStatus(txid))?.blockTime;
       return receipt;

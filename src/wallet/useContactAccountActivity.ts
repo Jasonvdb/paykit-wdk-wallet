@@ -18,6 +18,7 @@ import { useAccount } from '@tetherto/wdk-react-native-core';
 import { BALANCE_POLL_MS } from '../config/sync';
 import { BTC_NETWORK } from '../config/wdk';
 import { BTC_HISTORY_FETCH_LIMIT, newestItems, parseBtcTransfers, type ActivityItem } from './activity';
+import { retryIfElectrumDropped } from './electrumRetry';
 import { useAppActive } from './useAppActive';
 
 /** How many transfers to keep per contact account. */
@@ -71,7 +72,7 @@ export function useContactAccountWatcher(accountIndex: number): void {
     const load = async () => {
       try {
         // WDK returns the oldest transfers first; fetch all, keep the newest (see ./useActivity.ts).
-        const all = await extension().getTransfers({ limit: BTC_HISTORY_FETCH_LIMIT });
+        const all = await retryIfElectrumDropped(() => extension().getTransfers({ limit: BTC_HISTORY_FETCH_LIMIT }));
         if (cancelled) return;
         byAccount.set(accountIndex, newestItems(parseBtcTransfers(all, accountIndex), HISTORY_LIMIT));
         publish();

@@ -21,6 +21,7 @@ import { BTC, BTC_NETWORK } from '../config/wdk';
 import { fetchBtcFeeRate } from './mutinynet';
 import { parseBaseUnits } from './amounts';
 import { BTC_HISTORY_FETCH_LIMIT, newestItems, parseBtcTransfers, type ActivityItem } from './activity';
+import { retryIfElectrumDropped } from './electrumRetry';
 import { transactionUrl } from './explorers';
 import { recordSentTransaction } from './sentTransactions';
 
@@ -47,7 +48,7 @@ export function useBtcContactAccount(accountIndex: number) {
     const [balance] = await getBalance([BTC]);
     setSats(balance?.success ? parseBaseUnits(balance.balance) : undefined);
     // WDK returns the oldest transfers first; fetch all, keep the newest (see ./useActivity.ts).
-    const all = await extension().getTransfers({ limit: BTC_HISTORY_FETCH_LIMIT });
+    const all = await retryIfElectrumDropped(() => extension().getTransfers({ limit: BTC_HISTORY_FETCH_LIMIT }));
     setTransfers(newestItems(parseBtcTransfers(all, accountIndex), HISTORY_LIMIT));
   }, [ready, getBalance, extension, accountIndex]);
 
