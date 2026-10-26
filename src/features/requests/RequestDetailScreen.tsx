@@ -10,6 +10,8 @@
 //                      submitted proof is not a settlement.
 //   payments           recurring only: one row per billing period, with
 //                      Pay now / Not now for the payer (./RecurringPayments.tsx)
+//   automatic          a note when automatic payments cover it, and why the
+//                      last automatic try didn't pay (./AutomaticPaymentNote.tsx)
 //   actions            payer: Accept and pay, Accept (pay later), Decline,
 //                      Pay request, Stop these payments; payee: Cancel request
 //
@@ -42,7 +44,9 @@ import { AssetAmount, Button, Chip, DetailRow, Divider, EmptyState, KeyText, Pus
 import { ASSETS } from '../../wallet';
 import { PersonSeal } from '../people/PersonSeal';
 import { usePersonName } from '../people/usePersonName';
+import { AutomaticPaymentNote } from './AutomaticPaymentNote';
 import { RecurringPayments } from './RecurringPayments';
+import { scheduleStatus } from './requestSchedule';
 import { RequestTimeline } from './RequestTimeline';
 import { useNow } from './useNow';
 
@@ -180,6 +184,8 @@ export function RequestDetailScreen({ navigation, route }: RootScreenProps<'Requ
         ) : null}
         {terms ? <DetailRow label="Reference" value={terms.reference} hint="Goes with every payment and receipt for this request." /> : null}
       </View>
+
+      <AutomaticPaymentNote view={view} name={name} duePeriod={recurrence ? scheduleStatus(recurrence, facts, nowMs)?.due[0] : undefined} />
 
       <View style={styles.section}>
         <Text variant="heading">Status</Text>

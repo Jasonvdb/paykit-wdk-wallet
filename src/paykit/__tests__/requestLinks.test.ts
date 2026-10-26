@@ -61,4 +61,14 @@ describe('requestLinksOf', () => {
     expect(links.get(BEN_TX)).toMatchObject({ role: 'payer', receipt: 'received' });
     expect(links.get(STRANGER_TX)).toMatchObject({ role: 'payer', requestId: 'r9' });
   });
+
+  it('marks automatic payments: ours from the book or our proof, theirs from a verified proof that names an Allowance', () => {
+    const ours = view({ role: 'payer', counterparty: 'pubkyana', proofs: [proof({ txHash: BEN_TX, ours: true, allowanceId: 'a1' })] });
+    const inFlight = { counterparty: 'pubkyana', requestId: 'r9', txHash: STRANGER_TX, allowanceId: 'a1' } as OutgoingPayment;
+    const links = requestLinksOf([ours], bookWith({}, [inFlight]), new Set());
+    expect(links.get(BEN_TX)?.automatic).toBe(true);
+    expect(links.get(STRANGER_TX)?.automatic).toBe(true);
+    const theirs = view({ proofs: [proof({ txHash: BEN_TX, allowanceId: 'a1' })] });
+    expect(requestLinksOf([theirs], bookWith({ 'pubkyben|r1|': check('verified', BEN_TX) }), new Set()).get(BEN_TX)?.automatic).toBe(true);
+  });
 });

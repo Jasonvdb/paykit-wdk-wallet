@@ -16,8 +16,9 @@ import { usePersonName } from '../../people/usePersonName';
 
 /** The row subtitle's words for a transaction that paid a request ("Paid Ana's request", "Receipt from Ana"). */
 export function requestLinkWords(link: RequestLink, name: string): string {
-  if (link.role === 'payer') return link.receipt === 'received' ? `Receipt from ${name}` : `Paid ${name}'s request`;
-  return link.receipt === 'sent' ? 'Paid your request, receipt sent' : 'Paid your request, checked on chain';
+  const how = link.automatic ? ' automatically' : '';
+  if (link.role === 'payer') return link.receipt === 'received' ? (link.automatic ? `Paid automatically, receipt from ${name}` : `Receipt from ${name}`) : `Paid ${name}'s request${how}`;
+  return link.receipt === 'sent' ? `Paid your request${how}, receipt sent` : `Paid your request${how}, checked on chain`;
 }
 
 export function useRequestLinkFor(item: ActivityItem): RequestLink | undefined {
@@ -34,7 +35,7 @@ export function ActivityPaykitLinks({ item, onOpenRequest }: { item: ActivityIte
       <Text variant="heading">Payment request</Text>
       <Row
         title={payer ? `${name}'s request` : `Your request to ${name}`}
-        subtitle={link.period ? 'One payment of a recurring request' : 'Paid with this transaction'}
+        subtitle={`${link.period ? 'One payment of a recurring request' : 'Paid with this transaction'}${link.automatic ? ', paid automatically' : ''}`}
         leading={<PersonSeal pubky={link.counterparty} size={36} />}
         onPress={() => onOpenRequest(link)}
         testID="activity-request-link"

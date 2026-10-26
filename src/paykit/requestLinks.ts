@@ -30,6 +30,8 @@ export type RequestLink = {
   period?: BillingPeriod;
   /** Payer: receipt retrieved. Payee: receipt sent. */
   receipt?: 'received' | 'sent';
+  /** Paid under an Allowance: our own automatic payment, or (payee) the verified proof says so. */
+  automatic?: boolean;
 };
 
 /** Transaction hash (lowercase) -> the request it paid. */
@@ -53,16 +55,16 @@ export function requestLinksOf(
       const key = paymentKey(view.counterparty, view.requestId, period);
       if (view.role === 'payer') {
         if (!proof.ours) continue;
-        add(proof.txHash, { counterparty: view.counterparty, requestId: view.requestId, role: 'payer', period, receipt: receipts.has(key) ? 'received' : undefined });
+        add(proof.txHash, { counterparty: view.counterparty, requestId: view.requestId, role: 'payer', period, receipt: receipts.has(key) ? 'received' : undefined, automatic: !!proof.allowanceId });
         continue;
       }
       const check = book.check(key);
       if (proof.ours || check?.status !== 'verified' || check.txHash?.toLowerCase() !== proof.txHash.toLowerCase()) continue;
-      add(proof.txHash, { counterparty: view.counterparty, requestId: view.requestId, role: 'payee', period, receipt: check.receipt === 'sent' ? 'sent' : undefined });
+      add(proof.txHash, { counterparty: view.counterparty, requestId: view.requestId, role: 'payee', period, receipt: check.receipt === 'sent' ? 'sent' : undefined, automatic: !!proof.allowanceId });
     }
   }
   for (const payment of book.allOutgoing()) {
-    if (payment.txHash) add(payment.txHash, { counterparty: payment.counterparty, requestId: payment.requestId, role: 'payer', period: payment.period });
+    if (payment.txHash) add(payment.txHash, { counterparty: payment.counterparty, requestId: payment.requestId, role: 'payer', period: payment.period, automatic: !!payment.allowanceId });
   }
   return links;
 }
