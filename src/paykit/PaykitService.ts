@@ -55,7 +55,7 @@ import { ReceivingAddressCache, type PublicEndpointChoice } from './addressCache
 import { SerialCallQueue, type CallPriority } from './callQueue';
 import { UserFacingError, describeError, isRetryablePaykitError } from './errors';
 import { SyncEventLog } from './eventLog';
-import { arrayBufferToBase64, sniffImageType } from './bytes';
+import { arrayBufferToBase64, isSafeAvatarSize, readImageSize, sniffImageType } from './bytes';
 import { cleanKeyInput, shortKey } from './keys';
 import { WdkPaymentAdapter } from './paymentAdapter';
 import { connectSession, type SessionOrigin } from './session';
@@ -322,7 +322,10 @@ export class PaykitService {
    * Download a pubky:// image (an avatar) as a data URI for <Image>.
    * Someone else's file, so: capped at MAX_AVATAR_BYTES by the SDK, and the
    * type comes from the bytes, not the name. Anything that is not a JPEG,
-   * PNG, WebP or GIF is dropped (undefined).
+   * PNG, WebP or GIF is dropped (undefined), and so is an image whose
+   * header declares more than 2048 px a side or 4 MP: a small file can
+   * declare a huge canvas, and decoding it in every seal that shows this
+   * person could run the app out of memory each time.
    */
   async fetchImageDataUri(uri: string, priority: CallPriority = 'user'): Promise<string | undefined> {
     const bytes = await this.call(
@@ -332,7 +335,12 @@ export class PaykitService {
     );
     if (!bytes) return undefined;
     const type = sniffImageType(bytes);
-    return type ? `data:${type};base64,${arrayBufferToBase64(bytes)}` : undefined;
+    if (!type) return undefined;
+    if (!isSafeAvatarSize(readImageSize(bytes, type))) {
+      this.log.warn('dropped an avatar: its declared size is too large or unreadable');
+      return undefined;
+    }
+    return `data:${type};base64,${arrayBufferToBase64(bytes)}`;
   }
 
   // Public endpoints -----------------------------------------------------------

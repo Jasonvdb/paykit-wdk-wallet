@@ -174,7 +174,7 @@ class PaykitService {
                                                            // left out = keep, '' = remove name, null = remove photo
   currentProfile(): Promise<FfiProfileResolution | undefined>;
   resolveProfile(publicKey: string): Promise<FfiProfileResolution | undefined>;
-  fetchImageDataUri(pubkyUri: string, priority?): Promise<string | undefined>;  // size-capped, type from magic bytes
+  fetchImageDataUri(pubkyUri: string, priority?): Promise<string | undefined>;  // byte- and pixel-capped, type from magic bytes
   setPublicAddresses(addresses: { btc: string; evm: string }): void;  // cache + publish once the app is registered
   publicEndpointChoice(): { btc: boolean; usdt: boolean };
   setPublicEndpointChoice(choice): Promise<void>;          // persist, then publish / remove to match
@@ -319,7 +319,9 @@ hint)` (the hint is a contact record's profile from `observeState`) and
 Profiles are someone else's data. Only `pubky://` images are fetched,
 through the SDK with a 512 KB cap (an `https` URL could be used to see who
 views a profile), the image type comes from the file's magic bytes rather
-than its name, and names lose control, bidi-override, zero-width and other
+than its name, an image whose header declares more than 2048 px a side or
+4 MP is dropped before anything decodes it (`readImageSize` in `bytes.ts`;
+a small file can declare a huge canvas), and names lose control, bidi-override, zero-width and other
 invisible format characters and are cut at 128 characters (hints from
 contact records too). Display order for a person's name, in one place
 (`usePersonName`): your local label, then their published name, then the
