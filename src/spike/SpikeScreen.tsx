@@ -58,7 +58,7 @@ export function SpikeScreen() {
   const [busy, setBusy] = useState<string | null>(null);
   const [balances, setBalances] = useState<{ btc?: string; eth?: string; usdt?: string }>({});
   const [ownPubky, setOwnPubky] = useState<string>('');
-  const [peerInput, setPeerInput] = useState('');
+  const [peerInput, setPeerInput] = useState(demoPrefill.peerPubky ?? '');
   const [linkState, setLinkState] = useState<string>('-');
 
   // The mnemonic lives only in memory and only to derive the Pubky key.

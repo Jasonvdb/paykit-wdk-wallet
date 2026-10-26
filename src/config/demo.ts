@@ -9,6 +9,8 @@ import { Platform } from 'react-native';
 export type DemoPrefill = {
   mnemonic?: string;
   signupCode?: string;
+  /** The other simulator's pubky (public), to prefill the peer field. */
+  peerPubky?: string;
 };
 
 type DemoLocal = { ios?: DemoPrefill; android?: DemoPrefill };

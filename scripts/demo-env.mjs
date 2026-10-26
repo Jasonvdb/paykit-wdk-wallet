@@ -5,6 +5,8 @@
 // .env.demo keys:
 //   IOS_SIGNUP_CODE, ANDROID_SIGNUP_CODE   single-use Pubky staging signup codes
 //   IOS_MNEMONIC, ANDROID_MNEMONIC         BIP-39 phrases for the two identities
+//   IOS_PUBKY, ANDROID_PUBKY               public keys, recorded after signup; each
+//                                          platform gets the other one as its peer
 //
 // With --generate-missing, a missing mnemonic is generated here (12 words,
 // CSPRNG) and appended to .env.demo, so a reinstall restores the same
@@ -50,13 +52,14 @@ for (const key of ['IOS_MNEMONIC', 'ANDROID_MNEMONIC']) {
 chmodSync(envPath, 0o600);
 env = parseEnv(readFileSync(envPath, 'utf8'));
 
-const prefill = (prefix) => ({
+const prefill = (prefix, peerPrefix) => ({
   mnemonic: env[`${prefix}_MNEMONIC`] || undefined,
   signupCode: env[`${prefix}_SIGNUP_CODE`] || undefined,
+  peerPubky: env[`${peerPrefix}_PUBKY`] || undefined,
 });
 const body = {
-  ios: prefill('IOS'),
-  android: prefill('ANDROID'),
+  ios: prefill('IOS', 'ANDROID'),
+  android: prefill('ANDROID', 'IOS'),
 };
 writeFileSync(
   outPath,
