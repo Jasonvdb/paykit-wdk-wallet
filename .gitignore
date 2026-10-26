@@ -3,3 +3,14 @@ vendor/*.tgz
 node_modules/
 .paykit-build.log
 .env.demo
+
+# app
+.expo/
+ios/
+android/
+.wdk-bundle/
+.wdk/
+dist/
+*.tsbuildinfo
+.DS_Store
+src/config/demo.local.ts

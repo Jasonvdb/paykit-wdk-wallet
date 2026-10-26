@@ -1,0 +1,43 @@
+{
+  "name": "paykit-wdk-wallet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Example React Native wallet: Tether WDK for keys and money, Pubky Paykit for payable contacts. Testnet only.",
+  "license": "MIT",
+  "main": "index.ts",
+  "scripts": {
+    "postinstall": "wdk-worklet-bundler generate",
+    "demo-env": "node scripts/demo-env.mjs",
+    "start": "expo start --dev-client",
+    "prebuild": "expo prebuild --clean",
+    "ios": "expo run:ios",
+    "android": "expo run:android",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@synonymdev/react-native-paykit": "file:vendor/synonymdev-react-native-paykit.tgz",
+    "@tetherto/wdk": "1.0.0-beta.19",
+    "@tetherto/wdk-react-native-core": "1.0.0-beta.21",
+    "@tetherto/wdk-wallet-btc": "1.0.0-beta.17",
+    "@tetherto/wdk-wallet-evm": "1.0.0-beta.21",
+    "bare-node-runtime": "1.5.1",
+    "expo": "55.0.31",
+    "expo-build-properties": "55.0.18",
+    "expo-crypto": "55.0.19",
+    "expo-dev-client": "55.0.40",
+    "expo-status-bar": "55.0.6",
+    "react": "19.2.0",
+    "react-native": "0.83.10",
+    "react-native-bare-kit": "0.14.5",
+    "react-native-keychain": "10.0.0",
+    "react-native-mmkv": "4.3.2",
+    "react-native-nitro-modules": "0.36.1",
+    "react-native-safe-area-context": "5.6.2"
+  },
+  "devDependencies": {
+    "@scure/bip39": "2.4.0",
+    "@tetherto/wdk-worklet-bundler": "1.0.0-beta.15",
+    "@types/react": "19.2.2",
+    "typescript": "5.9.2"
+  }
+}
