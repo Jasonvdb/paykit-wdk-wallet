@@ -85,3 +85,10 @@ describe('afterEmptySearch', () => {
     expect(afterEmptySearch(state, SEARCH_GIVE_UP_MS).neverSent).toBe(true);
   });
 });
+
+it('remembers when we asked, across restarts', () => {
+  const store = memoryStore();
+  new RequestBook(store).setAskedAt('ben', 'r1', 42);
+  expect(new RequestBook(store).askedAt('ben', 'r1')).toBe(42);
+  expect(new RequestBook(store).askedAt('ben', 'r2')).toBeUndefined();
+});

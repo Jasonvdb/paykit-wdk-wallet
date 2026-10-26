@@ -25,6 +25,11 @@ export type BtcReceipt = {
   received: bigint;
   /** In a block (height > 0). */
   confirmed: boolean;
+  /**
+   * The block's time (ms), once confirmed and read. WDK's transfers carry
+   * only a height, so the bridge reads it from Mutinynet's esplora.
+   */
+  blockTimeMs?: number;
 };
 
 type TransferRow = { txid?: unknown; direction?: unknown; value?: unknown; height?: unknown; address?: unknown };

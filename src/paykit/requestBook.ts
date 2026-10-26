@@ -10,7 +10,8 @@
 //          stops after the broadcast, the next sync round finishes the job
 //          from here (submit the proof, record the outcome) instead of
 //          offering to pay again.
-//   payee  each proof check: pending / verified / rejected and why, which
+//   payee  when it asked (a payment must not be older than the request),
+//          each proof check: pending / verified / rejected and why, which
 //          transfer it used (one transfer pays one request or period), and
 //          the receipt issued for it.
 //   both   recurring periods the payer put off (deferPaymentOccurrence).
@@ -151,9 +152,11 @@ type BookData = {
   claimedTransfers: Record<string, string>;
   /** paymentKey -> when the payer put that period off. */
   deferred: Record<string, number>;
+  /** Payee: paymentKey(counterparty, requestId) -> when we proposed it (a payment must not be older). */
+  asked: Record<string, number>;
 };
 
-const EMPTY: BookData = { outgoing: {}, checks: {}, claimedTransfers: {}, deferred: {} };
+const EMPTY: BookData = { outgoing: {}, checks: {}, claimedTransfers: {}, deferred: {}, asked: {} };
 
 export class RequestBook {
   private data: BookData;
@@ -172,6 +175,7 @@ export class RequestBook {
         checks: parsed?.checks ?? {},
         claimedTransfers: parsed?.claimedTransfers ?? {},
         deferred: parsed?.deferred ?? {},
+        asked: parsed?.asked ?? {},
       };
     } catch {
       return { ...EMPTY };
@@ -240,6 +244,16 @@ export class RequestBook {
     const current = this.data.checks[key];
     if (!current) return;
     this.setCheck(key, { ...current, ...change });
+  }
+
+  /** When we proposed this request, if this wallet did (since the payment-time rule). */
+  askedAt(counterparty: string, requestId: string): number | undefined {
+    return this.data.asked[paymentKey(counterparty, requestId)];
+  }
+
+  setAskedAt(counterparty: string, requestId: string, at: number): void {
+    this.data.asked[paymentKey(counterparty, requestId)] = at;
+    this.save();
   }
 
   /** Which payment a transfer already paid, if any. */

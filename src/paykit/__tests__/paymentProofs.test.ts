@@ -4,9 +4,20 @@ import { Wallet, type HDNodeWallet } from 'ethers';
 import { SEPOLIA_CHAIN_ID, SEPOLIA_USDT } from '../../config/chains';
 import { ERC20_TRANSFER_TOPIC, erc20PaymentTypedData, type Erc20RequestBinding } from '../../wallet/erc20PaymentProof';
 import type { EvmTransaction } from '../../wallet/paymentEvidence';
-import { btcProofJson, erc20ProofJson, parseProof, proofTransactionHash, transferKey, verifyBtcProof, verifyErc20Proof } from '../paymentProofs';
+import {
+  btcProofJson,
+  erc20ProofJson,
+  latestSepoliaBlockTimeMs,
+  parseProof,
+  paymentNotBefore,
+  proofTransactionHash,
+  transferKey,
+  verifyBtcProof,
+  verifyErc20Proof,
+} from '../paymentProofs';
 
 const TXID = 'ab'.repeat(32);
+const NOW = Date.parse('2026-10-26T12:00:00Z');
 const HASH = `0x${'cd'.repeat(32)}`;
 const PAYEE_EVM = '0x6620afba9eb4ae3ca540ce715420ffeb70ba3b0a';
 const pad = (address: string) => `0x${'0'.repeat(24)}${address.slice(2).toLowerCase()}`;
@@ -37,7 +48,7 @@ describe('proof JSON', () => {
 });
 
 describe('verifyBtcProof', () => {
-  const context = { amount: 10_000n, address: 'tb1q', paymentKey: 'k1' };
+  const context = { amount: 10_000n, address: 'tb1q', paymentKey: 'k1', nowMs: NOW };
   it('waits for a transaction it has not seen or that is unconfirmed', () => {
     expect(verifyBtcProof({ found: false, received: 0n, confirmed: false }, context).status).toBe('pending');
     expect(verifyBtcProof({ found: true, received: 10_000n, confirmed: false }, context).status).toBe('pending');
@@ -83,6 +94,7 @@ describe('verifyErc20Proof', () => {
     amount: 5_000_000n,
     address: PAYEE_EVM,
     paymentKey: 'k1',
+    nowMs: NOW,
     token: SEPOLIA_USDT,
     chainId: SEPOLIA_CHAIN_ID,
     binding,
@@ -94,6 +106,15 @@ describe('verifyErc20Proof', () => {
 
   it('verifies a signed transfer from the signer to us', async () => {
     expect(verifyErc20Proof(mined([otherLog as never, transferLog(payer.address)]), await context())).toEqual({ status: 'verified' });
+  });
+
+  it('rejects an older transfer from the payer that was never tied to this request', async () => {
+    const minedHoursAgo: EvmTransaction = { state: 'succeeded', confirmations: 1_000, logs: [otherLog as never, transferLog(payer.address)] };
+    const notBefore = { ms: NOW - 60 * 60_000, what: 'request' as const };
+    // 1000 confirmations: mined at least 999 slots (about 3.3 h) ago, before we asked an hour ago.
+    expect(verifyErc20Proof(minedHoursAgo, await context({ notBefore }))).toEqual({ status: 'rejected', reason: 'It was paid before you asked for it.' });
+    // 100 confirmations (at most 20 min ago): it may well be newer, so it passes.
+    expect(verifyErc20Proof({ ...minedHoursAgo, confirmations: 100 }, await context({ notBefore })).status).toBe('verified');
   });
 
   it('waits while the transaction is not mined', async () => {
@@ -128,5 +149,36 @@ describe('verifyErc20Proof', () => {
     expect(verifyErc20Proof(mined([otherLog as never, transferLog(payer.address, PAYEE_EVM, 4_999_999n)]), await context()).status).toBe('rejected');
     expect(verifyErc20Proof(tx, await context({ chainId: 1 })).status).toBe('rejected');
     expect(verifyErc20Proof(tx, await context({ transferClaimedBy: 'k2' })).status).toBe('rejected');
+  });
+});
+
+describe('payment time', () => {
+  const asked = { ms: NOW - 60 * 60_000, what: 'request' as const };
+  const btc = { amount: 10_000n, address: 'tb1q', paymentKey: 'k1', nowMs: NOW, notBefore: asked };
+
+  it('takes the later of when we asked and when the period began', () => {
+    expect(paymentNotBefore(1_000, undefined)).toEqual({ ms: 1_000, what: 'request' });
+    expect(paymentNotBefore(1_000, 5_000)).toEqual({ ms: 5_000, what: 'period' });
+    expect(paymentNotBefore(5_000, 1_000)).toEqual({ ms: 5_000, what: 'request' });
+    expect(paymentNotBefore(undefined, undefined)).toBeUndefined();
+  });
+
+  it('rejects a Bitcoin payment confirmed before we asked (an earlier private send, say)', () => {
+    const before = { found: true, received: 10_000n, confirmed: true, blockTimeMs: asked.ms - 11 * 60_000 };
+    expect(verifyBtcProof(before, btc)).toEqual({ status: 'rejected', reason: 'It was paid before you asked for it.' });
+    expect(verifyBtcProof(before, { ...btc, notBefore: { ms: asked.ms, what: 'period' } })).toEqual({ status: 'rejected', reason: 'It was paid before this payment was due.' });
+  });
+
+  it('allows block timestamps and clocks to drift a little, and waits while the block time is unknown', () => {
+    expect(verifyBtcProof({ found: true, received: 10_000n, confirmed: true, blockTimeMs: asked.ms - 5 * 60_000 }, btc).status).toBe('verified');
+    expect(verifyBtcProof({ found: true, received: 10_000n, confirmed: true }, btc).status).toBe('pending');
+    // A request from before the rule has no time to compare.
+    expect(verifyBtcProof({ found: true, received: 10_000n, confirmed: true }, { ...btc, notBefore: undefined }).status).toBe('verified');
+  });
+
+  it('bounds a Sepolia block time from its confirmations: at most one block per 12 s slot', () => {
+    expect(latestSepoliaBlockTimeMs(1, NOW)).toBe(NOW);
+    expect(latestSepoliaBlockTimeMs(301, NOW)).toBe(NOW - 3_600_000);
+    expect(latestSepoliaBlockTimeMs(0, NOW)).toBe(NOW);
   });
 });

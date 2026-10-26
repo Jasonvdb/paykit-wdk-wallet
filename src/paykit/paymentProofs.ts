@@ -22,7 +22,16 @@
 //   - USD₮: the selected log is a Transfer of the USD₮ contract, and the
 //     signature over the request binding recovers to the Transfer's sender;
 //   - the same transfer has not already paid another request or period
-//     (the caller passes what is already claimed).
+//     (the caller passes what is already claimed);
+//   - it was not paid before we asked, or before the billing period began
+//     (paymentNotBefore): otherwise any earlier, unclaimed transfer from
+//     the payer to that address, such as a plain private send, would pass
+//     as payment. Bitcoin: the block's timestamp. USD₮: Sepolia makes at
+//     most one block per 12 s slot, so a transaction with n confirmations
+//     was mined at least (n-1)·12 s ago (latestSepoliaBlockTimeMs), an
+//     upper bound read through WDK alone. A payment after a cancellation
+//     is not rejected: the spec forbids rejecting a proof only because a
+//     cancellation came first.
 // A missing, unconfirmed or "dropped" transaction is "pending", never
 // "rejected": a proof often arrives before its block, and a lagging RPC
 // node can make a mined transaction look dropped.
@@ -110,6 +119,10 @@ export const DROPPED_PROOF_RECHECK_MS = 60_000;
 export type ProofContext = {
   /** The request's amount in base units. */
   amount: bigint;
+  /** The payment must not be older than this (paymentNotBefore). */
+  notBefore?: NotBefore;
+  /** The payee's clock, for the time rules. */
+  nowMs: number;
   /** The address bound in the request (ours). */
   address: string;
   /** Who else already used this transfer: the request/period key, if any. */
@@ -117,6 +130,35 @@ export type ProofContext = {
   /** This request/period's key, so a repeated proof for the same payment is fine. */
   paymentKey: string;
 };
+
+/** A payment's earliest allowed time: when we asked, or when its billing period began. */
+export type NotBefore = { ms: number; what: 'request' | 'period' };
+
+/** Bitcoin block timestamps can trail real time, and phone clocks drift. */
+export const BTC_PAYMENT_TIME_ALLOWANCE_MS = 10 * 60_000;
+/** The USD₮ bound is safe on its own; this covers the two phones' clocks. */
+export const EVM_PAYMENT_TIME_ALLOWANCE_MS = 5 * 60_000;
+export const SEPOLIA_SLOT_MS = 12_000;
+
+/**
+ * The earliest a payment may be from: the later of when we asked
+ * (`askedAtMs`, saved when we proposed) and the billing period's start.
+ * Undefined when neither is known (a request from before this rule).
+ */
+export function paymentNotBefore(askedAtMs: number | undefined, periodStartMs: number | undefined): NotBefore | undefined {
+  if (periodStartMs !== undefined && (askedAtMs === undefined || periodStartMs > askedAtMs)) return { ms: periodStartMs, what: 'period' };
+  return askedAtMs !== undefined ? { ms: askedAtMs, what: 'request' } : undefined;
+}
+
+/** Sepolia: one block per 12 s slot at most, so n confirmations mean mined at least (n-1) slots ago. */
+export function latestSepoliaBlockTimeMs(confirmations: number, nowMs: number): number {
+  return nowMs - Math.max(0, confirmations - 1) * SEPOLIA_SLOT_MS;
+}
+
+function tooEarly(blockTimeMs: number, notBefore: NotBefore, allowanceMs: number): Verdict | undefined {
+  if (blockTimeMs >= notBefore.ms - allowanceMs) return undefined;
+  return { status: 'rejected', reason: notBefore.what === 'period' ? 'It was paid before this payment was due.' : 'It was paid before you asked for it.' };
+}
 
 function claimProblem(context: ProofContext): Verdict | undefined {
   if (context.transferClaimedBy && context.transferClaimedBy !== context.paymentKey) {
@@ -131,6 +173,11 @@ export function verifyBtcProof(receipt: BtcReceipt, context: ProofContext): Verd
   if (!receipt.found) return { status: 'pending', reason: 'Not seen on the network yet.' };
   if (receipt.received < context.amount) return { status: 'rejected', reason: 'It paid less than the request asked for.' };
   if (!receipt.confirmed) return { status: 'pending', reason: 'Waiting for the next block.' };
+  if (context.notBefore) {
+    if (receipt.blockTimeMs === undefined) return { status: 'pending', reason: 'Checking when it was paid.', recheckMs: DROPPED_PROOF_RECHECK_MS };
+    const early = tooEarly(receipt.blockTimeMs, context.notBefore, BTC_PAYMENT_TIME_ALLOWANCE_MS);
+    if (early) return early;
+  }
   return { status: 'verified' };
 }
 
@@ -161,6 +208,10 @@ export function verifyErc20Proof(transaction: EvmTransaction, context: Erc20Proo
   if (transfer.token !== context.token.toLowerCase()) return { status: 'rejected', reason: 'It moved a different token.' };
   if (transfer.to !== context.address.toLowerCase()) return { status: 'rejected', reason: 'It paid a different address.' };
   if (transfer.amount < context.amount) return { status: 'rejected', reason: 'It paid less than the request asked for.' };
+  if (context.notBefore) {
+    const early = tooEarly(latestSepoliaBlockTimeMs(transaction.confirmations, context.nowMs), context.notBefore, EVM_PAYMENT_TIME_ALLOWANCE_MS);
+    if (early) return early;
+  }
   const typed = erc20PaymentTypedData(context.chainId, {
     transactionHash: context.proof.transactionHash,
     receiptLogIndex: context.proof.receiptLogIndex,

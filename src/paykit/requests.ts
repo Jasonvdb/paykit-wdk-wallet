@@ -395,6 +395,8 @@ export async function requestMoney(service: PaykitService, input: RequestMoneyIn
     metadata: new FfiPrivateJsonObject(JSON.stringify(terms.metadata)),
   };
   const record = await service.call('proposePaymentRequest', (sdk, signal) => sdk.proposePaymentRequest(payer, ffiTerms, { signal }));
+  // The payment-time rule (paymentProofs.ts): nothing paid before now counts.
+  paymentRequestsOf(service).book.setAskedAt(payer, record.paymentRequestId, nowMs);
   service.log.info(`requested ${terms.amount.asset}${terms.recurrence ? ' (recurring)' : ''} from ${shortKey(payer)}: ${record.paymentRequestId.slice(0, 8)}`);
   await service.refreshState();
   service.syncLoop.flush();

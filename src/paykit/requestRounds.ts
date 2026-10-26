@@ -41,7 +41,7 @@ import { toPaykitDecimal } from '../wallet/amounts';
 import { describeError } from './errors';
 import { bareKey, shortKey } from './keys';
 import type { PaykitService } from './PaykitService';
-import { erc20ProofJson, btcProofJson, parseProof, transferKey, verifyBtcProof, verifyErc20Proof, type Verdict } from './paymentProofs';
+import { erc20ProofJson, btcProofJson, parseProof, paymentNotBefore, transferKey, verifyBtcProof, verifyErc20Proof, type Verdict } from './paymentProofs';
 import { isScheduledPeriod, parseTime, periodKey } from './recurrence';
 import {
   afterDroppedCheck,
@@ -347,7 +347,18 @@ async function verdictFor(service: PaykitService, requests: PaymentRequests, vie
   }
   const parsed = parseProof(proof.proofJson);
   if (!parsed) return { status: 'rejected', reason: "The proof isn't in a form this wallet reads." };
-  const context = { amount: terms.amount, address: terms.endpoint.address, transferClaimedBy: requests.book.claimedBy(transferKey(parsed)), paymentKey: key };
+  const context = {
+    amount: terms.amount,
+    address: terms.endpoint.address,
+    transferClaimedBy: requests.book.claimedBy(transferKey(parsed)),
+    paymentKey: key,
+    // Requests from before the rule have no saved time; a recurring one still has its start.
+    notBefore: paymentNotBefore(
+      requests.book.askedAt(view.counterparty, view.requestId) ?? parseTime(terms.recurrence?.startsAt),
+      terms.recurrence ? parseTime(proof.period?.startsAt) : undefined,
+    ),
+    nowMs: Date.now(),
+  };
 
   if (parsed.kind === 'btc') {
     if (terms.asset !== 'btc') return { status: 'rejected', reason: 'The proof is for another asset.' };
@@ -360,7 +371,9 @@ async function verdictFor(service: PaykitService, requests: PaymentRequests, vie
 
   if (terms.asset !== 'usdt') return { status: 'rejected', reason: 'The proof is for another asset.' };
   const ours = service.addressCache.getPublicAddresses().evm;
-  if (!ours || ours.toLowerCase() !== terms.endpoint.address.toLowerCase()) return { status: 'rejected', reason: 'The request names an address that is not ours.' };
+  // The addresses load from WDK after the chain attaches: wait, don't reject.
+  if (!ours) return { status: 'pending', reason: 'Waiting for the wallet to load your address.' };
+  if (ours.toLowerCase() !== terms.endpoint.address.toLowerCase()) return { status: 'rejected', reason: 'The request names an address that is not ours.' };
   return verifyErc20Proof(await chain.evmTransaction(parsed.transactionHash), {
     ...context,
     proof: parsed,

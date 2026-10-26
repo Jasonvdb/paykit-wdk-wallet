@@ -5,7 +5,8 @@
 //   btcReceived(..)          a contact account's getTransfers: what did a
 //                            transaction pay into it? (useBtcReceivedReader,
 //                            one per account: WDK's hooks are bound to one
-//                            account index each)
+//                            account index each), plus the block's time
+//                            from Mutinynet's esplora
 //   evmTransaction(hash)     getTransaction on Sepolia: finality, success, logs
 //   findSentPayment(query)   a payment the app lost track of (no hash):
 //                            account 0's sent transfers. Bitcoin from WDK's
@@ -114,7 +115,12 @@ export function useBtcReceivedReader(accountIndex: number): ((txid: string, addr
   const ready = account.address !== null;
   const { extension } = account;
   const read = useCallback(
-    async (txid: string, address: string) => btcReceiptFromTransfers(await extension().getTransfers({ limit: BTC_HISTORY_FETCH_LIMIT }), txid, address),
+    async (txid: string, address: string) => {
+      const receipt = btcReceiptFromTransfers(await extension().getTransfers({ limit: BTC_HISTORY_FETCH_LIMIT }), txid, address);
+      // The payee checks when it was paid (paymentProofs.ts); WDK gives only the height.
+      if (receipt.confirmed) receipt.blockTimeMs = (await fetchBtcTransactionStatus(txid))?.blockTime;
+      return receipt;
+    },
     [extension],
   );
   return ready ? read : undefined;
