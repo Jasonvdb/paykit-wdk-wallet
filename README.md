@@ -12,8 +12,9 @@ and [Pubky Paykit](https://github.com/pubky/paykit-rs) work together:
 
 ## Status
 
-Phases 1 (foundation), 2 (wallet), 3 (identity and public payments) and
-4 (contacts and private payments) are done: the app skeleton, design system, navigation, the wallet and
+Phases 1 (foundation), 2 (wallet), 3 (identity and public payments),
+4 (contacts and private payments) and 5 (payment requests and receipts)
+are done: the app skeleton, design system, navigation, the wallet and
 Paykit service layers, and the WDK side of the app: receive cards with QR
 codes, sending to an address with a fee review, activity with a detail
 screen, the recovery phrase, "Get test USD₮", collecting BTC from contact
@@ -27,12 +28,27 @@ your own label for them, a People list sorted by link state, a Person page
 Collect, Remove), Private Payment Lists shared and read over each Encrypted
 Link, paying a linked contact at the private address they shared only with
 you, activity rows that name the contact ("Ben paid you"), and the seal
-closing when a link forms. Phase 5 adds payment requests and receipts.
+closing when a link forms. Phase 5 adds payment requests: Request money
+(once, or on a short demo schedule such as every minute for a number of
+payments), a Requests tab with Incoming and Sent, a request page with a
+Requested -> Accepted -> Paid -> Verified -> Receipt timeline, Accept and
+pay through the Send review with the amount and address locked, Decline,
+Cancel, Stop payments and Not now for a recurring payment, payment
+proofs (a signed EIP-712 proof for USD₮), the payee's on-chain check
+through WDK, encrypted receipts, and activity rows linked to their
+request and receipt.
 
 Phase 4 was checked on both simulators without money: the demo wallets
 were empty, so private payments were resolved up to Review (iOS resolves
 Ben's private Bitcoin address, his contact account for Ana, not his public
 one, and the other way round) but not broadcast, and Collect was not run.
+
+Phase 5 was checked on both simulators without money as well: requests
+went both ways (one-time USD₮, recurring Bitcoin and USD₮), and decline,
+accept, cancel by either side and putting a recurring payment off worked
+end to end; paying stopped at "Not enough …" before the broadcast. The
+payment, proof, on-chain check and receipt steps are covered by unit
+tests only so far.
 
 Known gaps left for Phase 6 (polish): the recovery phrase screens do not
 block screenshots yet (Android `FLAG_SECURE` needs a native module and a
@@ -80,6 +96,8 @@ adb shell am force-stop com.jasonvdb.paykitwdkwallet && \
 ```
 
 After editing `wdk.config.js`, run `npm run wdk-bundle` and relaunch cold.
+The bundle is JavaScript loaded through Metro, so no native rebuild is
+needed.
 
 ### First launch
 
@@ -124,6 +142,8 @@ xcrun simctl openurl booted "paykitwdk://send?to=<pubky>&asset=usdt"    # pay a 
 xcrun simctl openurl booted "paykitwdk://profile"                      # edit your name and photo
 xcrun simctl openurl booted "paykitwdk://scan"                         # scan a code (camera, photo or paste)
 xcrun simctl openurl booted "paykitwdk://you"                          # also wallet, people, requests
+xcrun simctl openurl booted "paykitwdk://request-money?pubky=<pubky>"  # ask a contact for money
+xcrun simctl openurl booted "paykitwdk://request?counterparty=<pubky>&requestId=<id>"  # one request
 ```
 
 To test the scanner on a simulator, put a screenshot of the other phone's
@@ -189,7 +209,7 @@ npm test
 ```
 
 Screenshots of each phase on both platforms are in
-[`docs/screenshots/`](docs/screenshots/) (`phase1/` to `phase4/`); the Phase 0 spike
+[`docs/screenshots/`](docs/screenshots/) (`phase1/` to `phase5/`); the Phase 0 spike
 screenshots are in [`docs/spike/`](docs/spike/).
 
 Before taking screenshots, hide the dev client's floating tools button so

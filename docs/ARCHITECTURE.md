@@ -63,7 +63,8 @@ This app has two engines and one UI:
 | `src/features/people/PersonSeal.tsx` | A seal with the person's profile photo from the profile cache. Every screen that shows a person uses it. |
 | `src/features/people/usePersonName.ts`, `personName.ts` | What to call a person (your label, else their published name, else the short key) and whether that name is a contact's or self-chosen. Every screen that names a person uses it. |
 | `src/features/people/person/` | The Person page's parts: `LabelEditor` (your local name for them), `WhatTheyAccept` (public endpoints and private lists both ways), `PersonHistory`, and the pure `personWords.ts`. `contactOrder.ts` sorts the People list; `justAdded.ts` lets the page play the seal closing when the link formed during Add. |
-| `src/features/wallet/activity/` | Activity rows: `activityText.ts` (words), `activityPeople.ts` (which contact a transaction involves, pure), `useActivityPeople.ts`, `ActivityRow.tsx`, and `ContactAccountWatchers.tsx` (feeds contact accounts' history into Activity). |
+| `src/features/wallet/activity/` | Activity rows: `activityText.ts` (words), `activityPeople.ts` (which contact a transaction involves, pure), `useActivityPeople.ts`, `ActivityRow.tsx`, `ContactAccountWatchers.tsx` (feeds contact accounts' history into Activity) and `ActivityPaykitLinks.tsx` (the request and receipt a transaction belongs to). |
+| `src/features/requests/` | Payment requests: `RequestMoneyScreen`, `RequestsScreen` (+ `RequestRow`), `RequestDetailScreen` (+ `RequestTimeline`, `RecurringPayments`), `PayRequestScreen` (the Send review, locked), `requestSchedule.ts` (what is due, pure) and `PaymentChainBridge.tsx` (hands the round hooks WDK; mounted in `MainTabs`). |
 | `src/media/pickProfilePhoto.ts` | Pick, crop and shrink a profile photo for upload; `photoDataUri` previews it. |
 | Shared across features | A few feature components are used by other features on purpose: `wallet/receive/PayMeCode.tsx` (Receive, You, onboarding Ready), `you/RecoveryPhraseSection.tsx` (You, and onboarding before replacing a wallet), `people/PersonSeal.tsx` and `people/usePersonName.ts` (every screen that shows a person), `wallet/GetTestUsdtButton.tsx` (Wallet, Receive, You), `wallet/activity/ActivityRow.tsx` and `useActivityPeople.ts` (Wallet, Person history), `you/ContactAccountsSection.tsx`'s `ContactAccountRow` (You, Person), `wallet/send/PersonRecipient.tsx`'s `PersonHeader` (Send, Request money). Import them from their home folder; everything else crosses features only through `src/ui`, `src/wallet` and `src/paykit`. |
 | `wdk.config.js` | Which WDK wallet modules go into the worklet, and which account methods the app may call. |
@@ -122,6 +123,11 @@ formatFee(fee, asset) / sendErrorMessage(error, asset)                          
 sendFailureFor(error, asset): { outcome: 'not-sent' | 'unknown'; message }                // after a send: 'unknown' = may have been broadcast, do not retry
 parseTypedAmount(text, asset): ParseResult                                                // decimal comma vs thousands separator; '1,000' is 'ambiguous'
 fetchBtcFeeRate() / fetchBtcTransactionStatus(txid)                                        // Mutinynet esplora (src/wallet/mutinynet.ts)
+// payment requests (Phase 5)
+useAccountZeroPaymentChecks(): { btcSent(txid); evmTransaction(hash); signErc20Payment(typedData) }   // WDK getTransaction / signTypedData
+useBtcReceivedReader(accountIndex): ((txid, address) => Promise<BtcReceipt>) | undefined              // WDK getTransfers on one account
+erc20PaymentTypedData / erc20PaymentDigest / erc20PaymentSigner / isErc20PaymentTypedData            // src/wallet/erc20PaymentProof.ts, pure
+btcReceiptFromTransfers / evmTransactionFrom / erc20TransferFromLog / findErc20TransferLog         // src/wallet/paymentEvidence.ts, pure
 ```
 
 BTC fee rate: WDK estimates a fee rate itself but never reports it. `quote`
@@ -222,6 +228,16 @@ loadReceivedPrivateList(service, pubky, priority?)         // currentPrivatePaym
 usePrivateLists(pubky): { incoming?; outgoing? }           // what they shared with you / whether yours reached them
 usePrivateListSummary() / usePrivateAddressOwners() / useContactAccounts()
 loadNetworkDetails(service): Promise<NetworkDetails>       // identityStatus + our own app registry
+// payment requests (Phase 5, ./requests.ts; see "Payment requests")
+requestMoney(service, { payer, asset, amount, note, expiry, repeat, count }): Promise<RequestView>
+acceptRequest / declineRequest / cancelRequest(service, counterparty, requestId, ...)
+preparePayment(service, counterparty, requestId, period?): Promise<PreparedPayment>     // claim + resolve; nothing reserved
+startPayment(service, prepared): Promise<attemptId>                                    // accept if needed, ledger reserve + begin
+finishPayment(service, prepared, attemptId, { hash } | { failure })                    // book, outcome, BTC proof
+deferPayment(service, counterparty, requestId, period)                                 // deferPaymentOccurrence
+paymentRequestsOf(service): { book: RequestBook; attachChain(chain: PaymentChain) }
+usePaymentRequests() / usePaymentRequest(cp, id) / useRequestFacts(view, name) / useRequestBook() / useRequestLinks()
+requestStatusWords(facts) / requestTimeline(facts, payment) / paymentWords(...)          // ./requestStatus.ts, pure
 // presentation, in src/ui: linkStateWords(state), sealRingFor(state)
 ```
 
@@ -247,7 +263,13 @@ loadNetworkDetails(service): Promise<NetworkDetails>       // identityStatus + o
 | `networkDetails.ts` | `loadNetworkDetails` for You > Network details. |
 | `privatePayments.ts` | Private Payment Lists over the sync loop (share ours, read theirs) and paying a contact privately (`privatePaymentAddressesFor`). See "Private payments". |
 | `privatePaymentLists.ts` | Pure: when to share (`planPrivateListShares`), checking received endpoints, and the `PrivateListStore` screens read. Unit tested. |
-| `requests.ts` | Extension point for Phase 5. |
+| `requests.ts` | Payment requests: propose, accept, decline, cancel, pay (claim, resolve, ledger, proof), views of the SDK records, and `registerPaymentRequestHooks`. See "Payment requests". |
+| `requestRounds.ts` | The three request round hooks: finish our payments, check arrived proofs and issue receipts, retrieve receipts. |
+| `requestTerms.ts` | Pure: build our terms (bound address, schedule, note) within one private message; read anyone's. Unit tested. |
+| `recurrence.ts` | Pure: billing periods from a schedule, what has started, what is due. Unit tested. |
+| `paymentProofs.ts` | Pure: Bitcoin and ERC-20 proof JSON and the payee's on-chain rules. Unit tested. |
+| `requestBook.ts` | The wallet's own persisted notes: payments in flight, proof checks, claimed transfers, deferred periods. Unit tested. |
+| `requestStatus.ts` | Pure: status words and the five-step timeline. Unit tested. |
 
 ### Why the callbacks are synchronous, and the address cache
 
@@ -413,7 +435,9 @@ every 3 s (paused in the background):
    confirmations);
 6. extension hooks (`syncLoop.addRoundHook(name, hook)`): the service's
    own retry of a public endpoint publish that has not worked yet, then
-   `private-payment-lists` and `received-private-lists` (Phase 4);
+   `private-payment-lists` and `received-private-lists` (Phase 4), then
+   `payment-request-payments`, `payment-request-proofs` and
+   `payment-request-receipts` (Phase 5);
 7. `observeState()`, which feeds the React hooks.
 
 `syncLoop.flush()` runs a round immediately; call it after a user action
@@ -524,11 +548,178 @@ names the contact: a receive on their account ("Ben paid you"), a send to an
 address they shared privately ("You paid Ben"), or USD₮ from their address.
 Bitcoin received on account 0 carries no sender, so it stays "Received".
 
+### Payment requests
+
+A payment request is a conversation over the Encrypted Link: the payee
+asks, the payer answers and pays, the payer proves it, the payee checks
+the proof on chain and sends a receipt. Paykit carries every step as a
+private Event Message (FIFO per direction, confirmed by delivery
+confirmations, retried until confirmed) and keeps the records; the
+wallets do the paying, the checking and the scheduling
+(`specs/payment-requests.md`).
+
+**The state machine.** The SDK derives each request's lifecycle from the
+ordered events (`FfiPaymentRequestLifecycleState`):
+
+```text
+              payee: proposePaymentRequest
+                          │
+                          ▼
+   ┌──────────────── Proposed ─────────── time passes proposal_expires_at ──▶ ProposalExpired
+   │                      │                                                       │
+   │ payer: reject        │ payer: claimAndAcceptPaymentRequest                   │ payer: reject
+   ▼                      ▼                                                       ▼
+Rejected        one-time: Accepted ── payer: submitPaymentProof ──▶ ProofSubmitted     Rejected
+(terminal)      recurring: ActiveRecurring ── a proof per billing period; stays ActiveRecurring
+
+   either side: cancelPaymentRequest from Proposed, ProposalExpired, Accepted,
+   ActiveRecurring or ProofSubmitted ──▶ Canceled (terminal)
+```
+
+- Rejected and Canceled are terminal; a later acceptance cannot reopen
+  them. A cancel and an acceptance that cross on the wire are both kept;
+  the request stays Canceled.
+- A proof after cancellation is still allowed for a payment that left
+  before the payer saw the cancel (the spec's "irreversible boundary"),
+  and it does not reopen the request. This app relies on that: a payment
+  already broadcast always gets its proof.
+- ProofSubmitted means a proof arrived, not that money settled. Recurring
+  requests never reach it: each proof covers one billing period.
+- RecoveryRequired and InvalidConflict are shown as "Reconnecting" and
+  "Couldn't read this request".
+
+Next to the SDK state, the app keeps its own facts apart and the
+timeline (Requested -> Accepted -> Paid -> Verified -> Receipt,
+`requestStatus.ts`) shows each one separately: whether our own event left
+the outbound queue, our payment in flight (payer), our on-chain check
+(payee), and the receipt. The payer never sees the payee's check; it
+learns the payment was verified when the receipt arrives.
+
+**Asking (payee).** Request money builds the terms (`requestTerms.ts`):
+the amount as Paykit decimal text, a reference (`pkw-…`, copied into
+every proof and receipt), how long the payer can accept, an optional
+schedule, the one accepted rail, `required_app_id` = our app, a note in
+`metadata`, and the exact address to pay, bound in `payment_endpoints`:
+the payer's own contact Bitcoin account (an address only they have) or
+our USD₮ address. Binding the address means the on-chain check compares
+against the terms alone, not against whatever list we share later. The
+proposal is one private message, so its size is checked against 1000
+bytes before `proposePaymentRequest`. Only Linked contacts can be asked.
+
+**Paying (payer)**, in the order the Rust SDK expects
+(`requests.ts`, `PayRequestScreen`):
+
+1. `claimPaymentRequestForPreparation`: take the request for this app.
+   It is the current form of `claimPaymentRequestForExecution` (that one
+   is kept for compatibility and does not refuse a blocked peer).
+2. `prepareAndResolvePrivatePaymentRequest` (falls back to
+   `resolvePrivatePaymentRequest` from saved state): the address the
+   request allows. It must equal the address bound in the terms.
+3. The Send review shows the amount and that address, locked, with
+   WDK's fee. Without the balance (or ETH for gas) the screen stops here
+   and says so.
+4. On Pay: `claimAndAcceptPaymentRequest` if still Proposed (claim and
+   queue the acceptance in one transaction, naming the proposal the
+   person saw), so the acceptance precedes the proof in our send order.
+5. The payment ledger: `reconcileAllowanceAccounting` once per install
+   (the ledger refuses every payment until the wallet attests its
+   history; see below), then `reserveManualPayment` (admits exactly this
+   request, or this billing period, once) and `beginPaymentExecution`
+   (issues the handoff). The attempt id goes into the request book
+   before WDK sends.
+6. WDK sends. The transaction hash goes into the book at once.
+7. Bitcoin: `submitPaymentProof` right away. USD₮: the proof names the
+   Transfer's position in the transaction receipt, so the round hook
+   waits for the block, finds the log, has WDK sign the proof
+   (`signTypedData`) and submits it.
+8. `recordPaymentOutcome`: Succeeded once the transaction is confirmed,
+   Failed when the send never left or reverted (the request can be paid
+   again), Unknown when we cannot tell.
+
+`quotePaymentRequest` is not used: this app requests and pays the same
+asset, so there is no conversion rate to agree on.
+
+**No double payment.** A ref guards the Pay button; the ledger refuses a
+second reserve for the same request or period while any attempt is not
+Failed; the book records the attempt before the send and the hash right
+after; a send whose outcome is unclear (`sendFailureFor` says
+"unknown") is recorded as Unknown, which keeps the reservation, and the
+review offers only "Close and check Activity". If the app stops after
+the broadcast, the `payment-request-payments` round hook finds the
+payment in the book and finishes it (proof, outcome) instead of anything
+offering to pay again.
+
+**Proofs and the payee's check** (`paymentProofs.ts`, the
+`payment-request-proofs` round hook). Paykit leaves proof contents to
+the wallets. This app uses:
+
+- Bitcoin: `{"type":"bitcoin-onchain-tx","network":"mutinynet","txid":"…"}`.
+  The payee reads that transaction from the payer's contact account with
+  WDK `getTransfers` and requires at least the amount paid to the bound
+  address, in a block.
+- USD₮: the spec's `erc20-transfer-eip712` profile
+  (`specs/erc20-payment-proofs.md`): chain id, transaction hash, receipt
+  log index and an EIP-712 signature over the request binding (payer,
+  payee, app, request id, reference, endpoint, billing period). Our USD₮
+  address is public, so without the signature anyone could claim someone
+  else's transfer. The payee reads the transaction with WDK
+  `getTransaction`, requires success and a block, a Transfer of the USD₮
+  contract to our address of at least the amount at that log, and
+  recovers the signer (`src/wallet/erc20PaymentProof.ts`, checked against
+  the spec's test vectors) to equal the Transfer's sender. It rebuilds the
+  binding from the request it knows, never from the proof.
+- Both: a recurring proof's period must be one of the schedule's and must
+  have started; one transfer pays one request or period (the book keeps
+  which); a missing or unconfirmed transaction is "pending", rechecked
+  every 10 s, never "rejected".
+
+**Receipts.** Once a payment checks out, the payee issues a receipt
+(`issueReceipt` with a receipt id chosen and saved first, which makes it
+retry-safe: it prepares the issuance, stores the encrypted receipt on our
+homeserver and queues Receipt Access, the `prepareReceiptIssuance` +
+`processReceiptIssuance` pair in one call). The payer's
+`payment-request-receipts` hook reads `receiptAccess` when a contact sent
+something (or every 30 s while a receipt is expected) and fetches each
+new one with `retrieveReceipt`; retrieved receipts appear in
+`observeState().receipts`.
+
+**Recurring requests.** Paykit carries the schedule and runs no
+scheduler. `recurrence.ts` derives the billing periods from the
+immutable terms (anchor + k × every × unit, inside `starts_at` and
+`ends_at`; this app proposes minute schedules with a number of
+payments). The payer sees started periods without a payment as due and
+pays each with a tap (there are no Allowances for automatic payment
+here); "Not now" records `deferPaymentOccurrence`. Either side can
+cancel to stop future payments.
+
+**Round hooks** (`requestRounds.ts`) are cheap and idempotent: they read
+the last observed state and the book, call the SDK or WDK only for work
+that is due, and check what is already done before each step. WDK
+reaches them through a `PaymentChain` that `PaymentChainBridge` attaches
+from React (WDK's API is hooks bound to one account each).
+
+**Activity.** `useRequestLinks` maps transaction hashes to requests
+through the proofs (and our payments in flight). Rows say "Paid Ana's
+request" or "Receipt from Ana" (payee: "Paid your request, receipt
+sent"), and Activity detail links to the request and its receipt.
+
+**Demo simplifications**, each a decision a production wallet would
+make differently:
+
+- The ledger is reconciled with an empty history on first use. That is
+  true here (only this module pays requests, and the ledger keeps every
+  attempt), and an empty history never erases what the SDK holds. A
+  production wallet would attest its complete payment records.
+- One confirmation is enough (Mutinynet blocks come every 30 s, Sepolia
+  every 12 s). Reorgs are not handled.
+- A Bitcoin payment made to the contact's address before the request
+  could be claimed as its proof once (it is their money to that address
+  either way).
+- `signTypedData` is allowed in `wdk.config.js` for the app to call; the
+  app only ever signs the proof domain (`isErc20PaymentTypedData`).
+
 ### Extension points for later phases
 
-- **Payment requests and receipts (Phase 5)** go in `src/paykit/requests.ts`.
-  The inbox is already in `usePaykitState().paymentRequests`. The Person
-  page's Request button opens Request money with `pubky` filled in.
 - Round hooks are registered in `registerPrivatePaymentHooks` and
   `registerPaymentRequestHooks`. `PaykitService.connect` calls both once
   per service, before the loop starts, so neither phase edits the service or
@@ -570,6 +761,7 @@ another, not in parallel**:
 | `src/features/wallet/SendScreen.tsx` | 2 (address send), 3 (pay a pubky), 4 (pay a contact privately) |
 | `src/features/wallet/ReceiveScreen.tsx` | 2 (receive card), 3 (pay-me code) |
 | `src/features/wallet/ActivityDetailScreen.tsx` | 2 (transaction), 5 (request and receipt links) |
+| `src/features/wallet/send/SendReview.tsx`, `SendSuccess.tsx` | 2 (address send), 5 (paying a request: locked, own label, what happens next) |
 | `src/features/you/YouScreen.tsx` | 2 (phrase, faucet, collect), 3 (profile, endpoints, network details) |
 
 A phase that adds to one of these screens should put its part in its own
@@ -594,6 +786,8 @@ existing ones, so merges stay trivial.
 | Profiles and avatars of people | Memory only (`ProfileDirectory`) | Public data; reloaded after a restart. |
 | Contacts, labels, links, received Private Payment Lists | Paykit SDK state | Labels never leave the phone. |
 | What we shared / received, for display | Memory only (`service.privateLists`) | Rebuilt by the sync loop within a few rounds after a restart. |
+| Payment requests, proofs, receipts, the payment ledger | Paykit SDK state | Records are not redacted in JS: never log them. |
+| Request book (payments in flight, proof checks, claimed transfers, deferred periods) | Encrypted MMKV `paykit-app-<id>` (`payment-requests-v1`) | What the wallet must remember to never pay twice and to finish after a restart. |
 | Onboarding flag, wallet origin | Plain MMKV `app-settings` | Not secret. The origin ('created' or 'restored') decides sign-up vs sign-in. |
 
 On iOS, Keychain items survive an app uninstall, while MMKV files do not.
