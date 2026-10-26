@@ -29,7 +29,10 @@ export type WalletLifecycle = {
   /** Safe-to-show error text when status is 'error'. */
   error?: string;
   createWallet: () => Promise<void>;
-  /** Restore from a phrase. Replaces a wallet that exists but was never finished onboarding. */
+  /**
+   * Restore from a phrase. Deletes any wallet already on the device first,
+   * without asking: the caller must confirm (onboarding does).
+   */
   restoreWallet: (mnemonic: string) => Promise<void>;
   unlock: () => Promise<void>;
   /** The phrase, for deriving the Pubky identity or the reveal screen. Keep it out of state and logs. */
@@ -81,8 +84,10 @@ export function useWalletLifecycle(): WalletLifecycle {
     async (mnemonic: string) => {
       const phrase = normalizeMnemonic(mnemonic);
       if (!validateMnemonic(phrase)) throw new Error('A recovery phrase has 12 or 24 words.');
-      // Onboarding only: a wallet left over from an unfinished onboarding is
-      // replaced. WDK refuses to restore over an existing id otherwise.
+      // Onboarding only, after the person confirmed: the wallet already on
+      // the device (an unfinished onboarding, or one an earlier install left
+      // in the Keychain) is deleted. WDK refuses to restore over an existing
+      // id otherwise.
       if (manager.status === 'UNLOCKED') await manager.lock();
       if (await hasStoredWallet()) await manager.deleteWallet(WALLET_ID);
       await manager.restoreWallet(phrase, WALLET_ID);

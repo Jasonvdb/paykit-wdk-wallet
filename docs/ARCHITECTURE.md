@@ -76,7 +76,7 @@ useWalletLifecycle(): {
   status: 'starting' | 'no-wallet' | 'locked' | 'ready' | 'error';
   error?: string;
   createWallet(): Promise<void>;
-  restoreWallet(mnemonic: string): Promise<void>;   // replaces an unfinished wallet
+  restoreWallet(mnemonic: string): Promise<void>;   // deletes any existing wallet first; callers confirm
   unlock(): Promise<void>;
   getMnemonic(): Promise<string>;                   // for Paykit identity derivation and reveal
   isValidMnemonic(text: string): boolean;           // word count; WDK/Paykit check the checksum
