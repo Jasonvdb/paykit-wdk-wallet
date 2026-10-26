@@ -20,6 +20,7 @@ function loadDemoLocal(): DemoLocal {
   try {
     // Metro treats a require inside try/catch as optional, so a missing
     // file is not a bundling error.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- optional file, see above
     return (require('./demo.local') as { default: DemoLocal }).default ?? {};
   } catch {
     return {};

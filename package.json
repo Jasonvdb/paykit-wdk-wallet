@@ -12,7 +12,10 @@
     "prebuild": "expo prebuild --clean",
     "ios": "expo run:ios",
     "android": "expo run:android",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "jest",
+    "wdk-bundle": "wdk-worklet-bundler generate"
   },
   "dependencies": {
     "@expo-google-fonts/atkinson-hyperlegible-mono": "0.4.1",
@@ -100,5 +103,17 @@
     "bare-worker": "4.4.0",
     "bare-ws": "3.0.0",
     "@react-navigation/elements": "2.9.44"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "testMatch": [
+      "<rootDir>/src/**/__tests__/**/*.test.ts?(x)"
+    ],
+    "modulePathIgnorePatterns": [
+      "<rootDir>/ios/",
+      "<rootDir>/android/",
+      "<rootDir>/.paykit-build/",
+      "<rootDir>/vendor/"
+    ]
   }
 }
