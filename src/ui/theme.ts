@@ -28,6 +28,19 @@ export const colors = {
   alert: '#B42318',
 } as const;
 
+/**
+ * Translucent tints of the palette, as 8-digit hex (#RRGGBBAA). Named here
+ * so components never append alpha to a color themselves.
+ */
+export const tints = {
+  /** A pressed row. */
+  pressed: `${colors.rule}40`,
+  /** Chip outlines, one per chip tone. */
+  chipNeutral: `${colors.graphite}55`,
+  chipSeal: `${colors.seal}55`,
+  chipAlert: `${colors.alert}55`,
+} as const;
+
 /** The dot and amount color of each asset. ETH is gas, shown in Graphite. */
 export const assetColors: Record<AssetId, string> = {
   btc: colors.amber,

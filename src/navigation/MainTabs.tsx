@@ -5,7 +5,7 @@ import { PeopleScreen } from '../features/people/PeopleScreen';
 import { RequestsScreen } from '../features/requests/RequestsScreen';
 import { WalletScreen } from '../features/wallet/WalletScreen';
 import { YouScreen } from '../features/you/YouScreen';
-import { colors, fonts } from '../ui';
+import { colors, fonts, typography } from '../ui';
 import { PeopleIcon, RequestsIcon, WalletIcon, YouIcon } from '../ui/icons';
 import type { MainTabParamList } from './types';
 
@@ -19,7 +19,7 @@ export function MainTabs() {
         tabBarActiveTintColor: colors.ink,
         tabBarInactiveTintColor: colors.graphite,
         tabBarStyle: { backgroundColor: colors.paper, borderTopColor: colors.rule },
-        tabBarLabelStyle: { fontFamily: fonts.text, fontSize: 12 },
+        tabBarLabelStyle: { fontFamily: fonts.text, fontSize: typography.caption.fontSize },
         sceneStyle: { backgroundColor: colors.paper },
       }}
     >

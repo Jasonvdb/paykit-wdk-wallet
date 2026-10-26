@@ -3,14 +3,15 @@
 import { StyleSheet, View } from 'react-native';
 
 import { Text } from './Text';
-import { colors, radii, space } from './theme';
+import { colors, radii, space, tints } from './theme';
 
 export type ChipTone = 'neutral' | 'seal' | 'alert';
 
 export function Chip({ label, tone = 'neutral' }: { label: string; tone?: ChipTone }) {
   const color = tone === 'seal' ? 'seal' : tone === 'alert' ? 'alert' : 'graphite';
+  const borderColor = tone === 'seal' ? tints.chipSeal : tone === 'alert' ? tints.chipAlert : tints.chipNeutral;
   return (
-    <View style={[styles.chip, { borderColor: colors[color] + '55' }]}>
+    <View style={[styles.chip, { borderColor }]}>
       <Text variant="caption" color={color}>
         {label}
       </Text>

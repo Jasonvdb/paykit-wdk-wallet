@@ -11,7 +11,7 @@ import { StyleSheet, View } from 'react-native';
 
 import type { MainTabScreenProps } from '../../navigation/types';
 import { useConnectionNotice, usePaykitService } from '../../paykit';
-import { AssetAmount, AssetDot, Button, Divider, EmptyState, Row, Screen, Seal, Text, relativeTime, space } from '../../ui';
+import { ASSET_DOT_SIZE, AssetAmount, AssetDot, Button, Divider, EmptyState, Row, Screen, Seal, Text, relativeTime, space } from '../../ui';
 import { formatAssetAmount, useActivity, useWalletBalances, type ActivityItem } from '../../wallet';
 
 export function WalletScreen({ navigation }: MainTabScreenProps<'Wallet'>) {
@@ -98,7 +98,8 @@ function ActivityRow({ item, onPress }: { item: ActivityItem; onPress: () => voi
 const styles = StyleSheet.create({
   identity: { flexDirection: 'row', alignItems: 'center', gap: space.s },
   balances: { gap: 0 },
-  gas: { marginLeft: 22, marginTop: -space.s },
+  // Line up with the asset names: dot width plus the Row's gap.
+  gas: { marginLeft: ASSET_DOT_SIZE + space.m, marginTop: -space.s },
   actions: { flexDirection: 'row', gap: space.s, marginTop: space.xl },
   action: { flex: 1, paddingHorizontal: space.s },
   sectionTitle: { marginTop: space.xxl, marginBottom: space.s },

@@ -7,12 +7,12 @@
 // verification and receipt. Keep request, payment, proof and verification
 // statuses separate: a submitted proof is not a settlement.
 import type { RootScreenProps } from '../../navigation/types';
-import { Button, Screen, Text } from '../../ui';
+import { PushedScreen, Text } from '../../ui';
 
 export function RequestDetailScreen({ navigation }: RootScreenProps<'RequestDetail'>) {
   return (
-    <Screen title="Request" footer={<Button label="Back" variant="secondary" onPress={() => navigation.goBack()} />}>
+    <PushedScreen title="Request" onBack={() => navigation.goBack()}>
       <Text color="graphite">Coming in Phase 5.</Text>
-    </Screen>
+    </PushedScreen>
   );
 }

@@ -13,7 +13,7 @@ import { StyleSheet, View } from 'react-native';
 
 import type { RootScreenProps } from '../../navigation/types';
 import { useContacts, useLinkState } from '../../paykit';
-import { Button, KeyText, Screen, Seal, Text, linkStateWords, middleEllipsis, sealRingFor, space } from '../../ui';
+import { KeyText, PushedScreen, Seal, Text, linkStateWords, middleEllipsis, sealRingFor, space } from '../../ui';
 
 export function PersonScreen({ navigation, route }: RootScreenProps<'Person'>) {
   const { pubky } = route.params;
@@ -21,11 +21,7 @@ export function PersonScreen({ navigation, route }: RootScreenProps<'Person'>) {
   const contact = useContacts().find((c) => c.publicKey === pubky);
 
   return (
-    <Screen
-      scroll
-      testID="person-screen"
-      headerLeft={<Button label="Back" compact variant="secondary" onPress={() => navigation.goBack()} />}
-    >
+    <PushedScreen onBack={() => navigation.goBack()} testID="person-screen">
       <View style={styles.body}>
         <Seal pubky={pubky} size={112} ring={sealRingFor(linkState)} testID="person-seal" />
         <Text variant="title">{contact?.name ?? middleEllipsis(pubky)}</Text>
@@ -34,7 +30,7 @@ export function PersonScreen({ navigation, route }: RootScreenProps<'Person'>) {
         </Text>
         <KeyText value={pubky} full small />
       </View>
-    </Screen>
+    </PushedScreen>
   );
 }
 

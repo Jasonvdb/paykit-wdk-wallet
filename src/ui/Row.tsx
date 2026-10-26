@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from './Text';
-import { colors, space } from './theme';
+import { space, tints } from './theme';
 
 export type RowProps = {
   title: string;
@@ -40,7 +40,7 @@ export function Row({ title, subtitle, leading, trailing, onPress, testID }: Row
       accessibilityRole="button"
       onPress={onPress}
       testID={testID}
-      style={({ pressed }) => pressed && { backgroundColor: colors.rule + '40' }}
+      style={({ pressed }) => pressed && { backgroundColor: tints.pressed }}
     >
       {body}
     </Pressable>

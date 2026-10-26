@@ -11,7 +11,10 @@ import { ASSETS, type AssetId } from '../wallet/assets';
 import { Text } from './Text';
 import { assetColors, space, type TypeVariant } from './theme';
 
-export function AssetDot({ asset, size = 10 }: { asset: AssetId; size?: number }) {
+/** The asset dot's default diameter. Rows indent text under a dot by this plus their gap. */
+export const ASSET_DOT_SIZE = 10;
+
+export function AssetDot({ asset, size = ASSET_DOT_SIZE }: { asset: AssetId; size?: number }) {
   return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: assetColors[asset] }} />;
 }
 
