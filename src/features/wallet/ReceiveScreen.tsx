@@ -1,33 +1,49 @@
-// Receive (modal): asset picker, the address with its QR code, and "Your
-// pay-me code" (your pubky as a QR and a paykitwdk:// link).
+// Receive (modal): pick an asset, then show its receive card (address, QR,
+// copy, share, explorer). Next to USD₮ sits "Get test USD₮", because a new
+// wallet's first question is where test money comes from.
 //
-// Phase 1 lists the two account-0 addresses so funds can be sent in.
+// Only account 0 is shown here: it is the public address. Contacts get
+// their own BTC addresses through private payment lists (Phase 4).
 //
-// TODO(Phase 2 — Wallet): asset picker, centered receive card with QrCode,
-// copy/share, "Get test USD₮" (useUsdtFaucet) next to USD₮.
-// TODO(Phase 3 — Identity): the pay-me code tab (pubky QR + contactLinkFor).
+// TODO(Phase 3 — Identity): the pay-me code (pubky QR + contactLinkFor).
+// Add it as a third choice beside the assets, in its own component
+// (receive/PayMeCode.tsx), and render it in the slot below.
+import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import type { RootScreenProps } from '../../navigation/types';
-import { KeyText, SheetScreen, Text, space } from '../../ui';
+import { SheetScreen, Text, space } from '../../ui';
 import { useWalletAddresses } from '../../wallet';
+import { AssetPicker, isPayableAsset, type PayableAsset } from './AssetPicker';
+import { GetTestUsdtButton } from './GetTestUsdtButton';
+import { ReceiveCard } from './receive/ReceiveCard';
 
-export function ReceiveScreen({ navigation }: RootScreenProps<'Receive'>) {
+export function ReceiveScreen({ navigation, route }: RootScreenProps<'Receive'>) {
   const addresses = useWalletAddresses();
+  const initial = route.params?.asset;
+  const [asset, setAsset] = useState<PayableAsset>(isPayableAsset(initial) ? initial : 'btc');
+
   return (
     <SheetScreen title="Receive" onClose={() => navigation.goBack()} testID="receive-screen">
-      <View style={styles.block}>
-        <Text variant="bodyStrong">Bitcoin (Mutinynet)</Text>
-        {addresses.btc ? <KeyText value={addresses.btc} full small /> : <Text color="graphite">Loading…</Text>}
-      </View>
-      <View style={styles.block}>
-        <Text variant="bodyStrong">USD₮ and ETH (Sepolia)</Text>
-        {addresses.evm ? <KeyText value={addresses.evm} full small /> : <Text color="graphite">Loading…</Text>}
+      <View style={styles.body}>
+        <AssetPicker value={asset} onChange={setAsset} />
+        <ReceiveCard asset={asset} address={asset === 'btc' ? addresses.btc : addresses.evm} />
+        {asset === 'usdt' ? (
+          <View style={styles.faucet}>
+            <Text variant="bodyStrong">Need test USD₮?</Text>
+            <Text color="graphite" variant="secondary">
+              Mint it yourself from Aave’s Sepolia faucet. Anyone can mint test tokens.
+            </Text>
+            <GetTestUsdtButton compact />
+          </View>
+        ) : null}
+        {/* Phase 3: the pay-me code renders here. */}
       </View>
     </SheetScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  block: { gap: space.s, marginBottom: space.xl },
+  body: { gap: space.xl },
+  faucet: { gap: space.s },
 });
