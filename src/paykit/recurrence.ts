@@ -212,8 +212,16 @@ export function endsAtForCount(startsAt: string, unit: RecurrenceUnit, every: nu
   return toRfc3339(addUnits(startsMs, unit, every * count));
 }
 
-/** "every minute", "every 5 minutes", "every month". */
-export function intervalWords(recurrence: Pick<Recurrence, 'every' | 'unit'>): string {
+/** "every minute", "every 5 minutes", "every month"; "Every minute" with `sentence` (to start a sentence). */
+export function intervalWords(recurrence: Pick<Recurrence, 'every' | 'unit'>, options: { sentence?: boolean } = {}): string {
   const unit = recurrence.unit;
-  return recurrence.every === 1 ? `every ${unit}` : `every ${recurrence.every} ${unit}s`;
+  const every = options.sentence ? 'Every' : 'every';
+  return recurrence.every === 1 ? `${every} ${unit}` : `${every} ${recurrence.every} ${unit}s`;
+}
+
+/** "Every 5 minutes, 3 payments", or "Every month" for a schedule with no end. */
+export function scheduleWords(recurrence: Recurrence): string {
+  const count = paymentCount(recurrence);
+  const interval = intervalWords(recurrence, { sentence: true });
+  return count !== undefined ? `${interval}, ${count} ${count === 1 ? 'payment' : 'payments'}` : interval;
 }

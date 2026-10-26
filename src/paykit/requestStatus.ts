@@ -2,7 +2,7 @@
 //
 //   Requested -> Accepted -> Paid (proof) -> Verified -> Receipt
 //
-// Four sources feed it, and they stay separate on purpose ("a submitted
+// Five sources feed it, and they stay separate on purpose ("a submitted
 // proof is not a settlement"):
 //   the SDK lifecycle     proposed / accepted / rejected / canceled /
 //                         proof submitted / active recurring (observeState)
@@ -152,7 +152,13 @@ export type TimelineStep = {
   key: 'requested' | 'accepted' | 'paid' | 'verified' | 'receipt';
   label: string;
   detail?: string;
-  state: 'done' | 'current' | 'todo' | 'stopped';
+  /**
+   * ended   the request stopped the normal way (declined, canceled,
+   *         expired): an outcome, not an error
+   * failed  something went wrong: a proof that didn't check out, or a
+   *         request this wallet can't read
+   */
+  state: 'done' | 'current' | 'todo' | 'ended' | 'failed';
 };
 
 /**
@@ -173,7 +179,7 @@ export function requestTimeline(facts: RequestFacts, payment: PaymentFacts | und
 
   const stoppedBeforeAccept = !facts.accepted && isTerminal(state);
   if (stoppedBeforeAccept) {
-    steps.push({ key: 'accepted', label: requestStatusWords(facts), state: 'stopped' });
+    steps.push({ key: 'accepted', label: requestStatusWords(facts), state: state === 'invalid' ? 'failed' : 'ended' });
     return steps;
   }
   steps.push({
@@ -189,7 +195,7 @@ export function requestTimeline(facts: RequestFacts, payment: PaymentFacts | und
     key: 'paid',
     label: paid ? (payer ? 'You paid' : `${name} paid`) : canceledNow ? requestStatusWords(facts) : 'Paid',
     detail: payment?.outgoing === 'unknown' ? 'The send may have reached the network. Check Activity before paying again.' : payment?.txHash ? `Transaction ${payment.txHash.slice(0, 10)}…` : undefined,
-    state: paid ? 'done' : canceledNow ? 'stopped' : facts.accepted ? 'current' : 'todo',
+    state: paid ? 'done' : canceledNow ? 'ended' : facts.accepted ? 'current' : 'todo',
   });
   if (canceledNow) return steps;
 
@@ -199,7 +205,7 @@ export function requestTimeline(facts: RequestFacts, payment: PaymentFacts | und
     key: 'verified',
     label: verified ? (payer ? `${name} checked it on chain` : 'Checked on chain') : rejected ? "Didn't check out" : 'Checked on chain',
     detail: rejected ? payment?.checkReason : !verified && paid ? (payer ? `Waiting for ${name} to check it` : payment?.checkReason ?? 'Checking…') : undefined,
-    state: verified ? 'done' : rejected ? 'stopped' : paid ? 'current' : 'todo',
+    state: verified ? 'done' : rejected ? 'failed' : paid ? 'current' : 'todo',
   });
   if (rejected) return steps;
 

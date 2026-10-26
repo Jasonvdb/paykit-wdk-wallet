@@ -156,6 +156,11 @@ Wireframe of the wallet tab:
   "Couldn't reach Ana's homeserver. We'll keep trying."
 - Every screen with nothing to show offers the next action: "No requests yet.
   Ask a contact for money".
+- Write status lines as sentences, not as fragments joined by a middle dot
+  ("Waiting for you. Every minute, one payment due now.", not "Waiting for
+  you · every minute · payment due now"). A note goes on its own line.
+- Alert red means something went wrong. A request that was declined,
+  canceled or expired ended the normal way, so it is Graphite, not Alert.
 - Mark testnet clearly but quietly: one persistent "Testnet" chip in the
   header, never a scary banner.
 

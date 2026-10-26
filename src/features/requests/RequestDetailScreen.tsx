@@ -27,12 +27,11 @@ import {
   declineRequest,
   deferPayment,
   describeError,
-  intervalWords,
   isPaymentHandled,
   isTerminal,
-  paymentCount,
   requestStatusWords,
   requestTimeline,
+  scheduleWords,
   usePaykit,
   usePaymentRequest,
   useRequestFacts,
@@ -47,6 +46,8 @@ import { RecurringPayments } from './RecurringPayments';
 import { RequestTimeline } from './RequestTimeline';
 import { useNow } from './useNow';
 
+type Action = 'accept' | 'decline' | 'cancel' | 'defer';
+
 export function RequestDetailScreen({ navigation, route }: RootScreenProps<'RequestDetail'>) {
   const { counterparty, requestId } = route.params;
   const { service, log } = usePaykit();
@@ -54,7 +55,9 @@ export function RequestDetailScreen({ navigation, route }: RootScreenProps<'Requ
   const { name } = usePersonName(counterparty);
   const facts = useRequestFacts(view, name);
   const nowMs = useNow(5_000);
-  const [busy, setBusy] = useState(false);
+  // The action that is running: its button spins, the others wait.
+  const [running, setRunning] = useState<Action>();
+  const busy = running !== undefined;
   const [error, setError] = useState<string>();
   const back = () => navigation.goBack();
 
@@ -73,19 +76,21 @@ export function RequestDetailScreen({ navigation, route }: RootScreenProps<'Requ
   const onePayment = facts.payments[0];
   const paidOnce = !recurrence && !!onePayment && isPaymentHandled(onePayment);
 
-  const run = async (label: string, task: () => Promise<void>, failure: string) => {
+  const run = async (action: Action, task: () => Promise<void>, failure: string) => {
     if (!service || busy) return;
-    setBusy(true);
+    setRunning(action);
     setError(undefined);
     try {
       await task();
     } catch (e) {
-      log.warn(`${label}: ${describeError(e)}`);
+      log.warn(`${action} request: ${describeError(e)}`);
       setError(userMessageFor(e, failure));
     } finally {
-      setBusy(false);
+      setRunning(undefined);
     }
   };
+  /** Spinner on the running action's button; the others are disabled meanwhile. */
+  const stateOf = (action: Action) => ({ loading: running === action, disabled: busy && running !== action });
 
   const pay = (period?: BillingPeriod) => navigation.navigate('PayRequest', { counterparty, requestId, periodStart: period?.startsAt });
   const confirm = (title: string, message: string, action: string, onConfirm: () => void) =>
@@ -94,25 +99,25 @@ export function RequestDetailScreen({ navigation, route }: RootScreenProps<'Requ
       { text: action, style: 'destructive', onPress: onConfirm },
     ]);
   const accept = () =>
-    void run('accept request', () => acceptRequest(service!, counterparty, requestId, view.proposalStreamItemId), "Couldn't accept it. Try again.");
+    void run('accept', () => acceptRequest(service!, counterparty, requestId, view.proposalStreamItemId), "Couldn't accept it. Try again.");
   const decline = () =>
     confirm(`Decline ${name}'s request?`, `${name} is told you said no. You can't accept it later.`, 'Decline', () =>
-      void run('decline request', () => declineRequest(service!, counterparty, requestId), "Couldn't decline it. Try again."),
+      void run('decline', () => declineRequest(service!, counterparty, requestId), "Couldn't decline it. Try again."),
     );
   const cancel = () =>
     confirm(
       payer ? 'Stop these payments?' : 'Cancel this request?',
       payer ? `${name} is told you stopped. Payments already made stay made.` : `${name} is told it's canceled and can't pay it any more.`,
       payer ? 'Stop payments' : 'Cancel request',
-      () => void run('cancel request', () => cancelRequest(service!, counterparty, requestId), "Couldn't cancel it. Try again."),
+      () => void run('cancel', () => cancelRequest(service!, counterparty, requestId), "Couldn't cancel it. Try again."),
     );
-  const defer = (period: BillingPeriod) => void run('defer payment', () => deferPayment(service!, counterparty, requestId, period), "Couldn't put it off. Try again.");
+  const defer = (period: BillingPeriod) => void run('defer', () => deferPayment(service!, counterparty, requestId, period), "Couldn't put it off. Try again.");
 
   const amountRow = terms?.amount !== undefined && terms.asset ? <AssetAmount value={terms.amount} asset={terms.asset} size="hero" /> : <Text variant="title">{terms?.rawAmount}</Text>;
   // Recurring: the timeline covers the request (asked, accepted, or where it
   // stopped); each payment's own steps are in the Payments list below.
   const timeline = requestTimeline(facts, recurrence ? undefined : onePayment);
-  const steps = recurrence ? timeline.filter((s) => s.key === 'requested' || s.key === 'accepted' || s.state === 'stopped') : timeline;
+  const steps = recurrence ? timeline.filter((s) => s.key === 'requested' || s.key === 'accepted' || s.state === 'ended' || s.state === 'failed') : timeline;
 
   return (
     <PushedScreen title="Request" onBack={back} testID="request-detail">
@@ -160,7 +165,7 @@ export function RequestDetailScreen({ navigation, route }: RootScreenProps<'Requ
           <>
             <DetailRow
               label="Schedule"
-              value={`${intervalWords(recurrence).replace(/^e/, 'E')}${paymentCount(recurrence) ? `, ${paymentCount(recurrence)} payments` : ''}`}
+              value={scheduleWords(recurrence)}
               hint={`From ${formatDateTime(Date.parse(recurrence.startsAt))}${recurrence.endsAt ? ` to ${formatDateTime(Date.parse(recurrence.endsAt))}` : ''}`}
               testID="request-schedule"
             />
@@ -210,16 +215,16 @@ export function RequestDetailScreen({ navigation, route }: RootScreenProps<'Requ
         {payer && view.state === 'proposed' && !terms?.cannotPay ? (
           <>
             <Button label={recurrence ? 'Accept and pay the first one' : 'Accept and pay'} onPress={() => pay()} disabled={busy} testID="request-accept-pay" />
-            <Button label="Accept, pay later" variant="secondary" onPress={accept} loading={busy} testID="request-accept" />
+            <Button label="Accept, pay later" variant="secondary" onPress={accept} {...stateOf('accept')} testID="request-accept" />
           </>
         ) : null}
         {payer && view.state === 'accepted' && !recurrence && !paidOnce ? <Button label="Pay request" onPress={() => pay()} disabled={busy} testID="request-pay" /> : null}
         {payer && (view.state === 'proposed' || view.state === 'expired') ? (
-          <Button label="Decline" variant="secondary" onPress={decline} loading={busy} testID="request-decline" />
+          <Button label="Decline" variant="secondary" onPress={decline} {...stateOf('decline')} testID="request-decline" />
         ) : null}
-        {payer && view.state === 'active' ? <Button label="Stop these payments" variant="destructive" onPress={cancel} loading={busy} testID="request-stop" /> : null}
+        {payer && view.state === 'active' ? <Button label="Stop these payments" variant="destructive" onPress={cancel} {...stateOf('cancel')} testID="request-stop" /> : null}
         {!payer && !terminal && !paidOnce && view.state !== 'proof-submitted' ? (
-          <Button label="Cancel request" variant="destructive" onPress={cancel} loading={busy} testID="request-cancel" />
+          <Button label="Cancel request" variant="destructive" onPress={cancel} {...stateOf('cancel')} testID="request-cancel" />
         ) : null}
       </View>
     </PushedScreen>

@@ -76,13 +76,14 @@ describe('requestTimeline', () => {
   });
 
   it('stops where the request stopped', () => {
-    expect(states(facts({ state: 'rejected' }))).toEqual(['requested:done', 'accepted:stopped']);
-    expect(states(facts({ state: 'canceled', accepted: true }), payment())).toEqual(['requested:done', 'accepted:done', 'paid:stopped']);
+    expect(states(facts({ state: 'rejected' }))).toEqual(['requested:done', 'accepted:ended']);
+    expect(states(facts({ state: 'invalid' }))).toEqual(['requested:done', 'accepted:failed']);
+    expect(states(facts({ state: 'canceled', accepted: true }), payment())).toEqual(['requested:done', 'accepted:done', 'paid:ended']);
     expect(states(facts({ state: 'proof-submitted', accepted: true }), payment({ proofRecorded: true, check: 'rejected', checkReason: 'Too little' }))).toEqual([
       'requested:done',
       'accepted:done',
       'paid:done',
-      'verified:stopped',
+      'verified:failed',
     ]);
   });
 

@@ -8,6 +8,7 @@ import {
   paymentCount,
   periodKey,
   schedulePeriods,
+  scheduleWords,
   startedPeriods,
   toRfc3339,
   unpaidPeriods,
@@ -122,6 +123,12 @@ describe('long schedules (past the listing cap)', () => {
     expect(isScheduledPeriod(monthly, { startsAt: '2036-03-01T00:00:00Z', endsAt: '2036-03-31T00:00:00Z' })).toBe(false);
     expect(nextPeriodAfter(monthly, Date.parse('2036-02-15T00:00:00Z'))?.startsAt).toBe('2036-02-29T00:00:00Z');
   });
+});
+
+it('words a schedule as the start of a sentence', () => {
+  expect(scheduleWords(everyMinute(3))).toBe('Every minute, 3 payments');
+  expect(scheduleWords({ every: 5, unit: 'minute', startsAt: START, anchor: START })).toBe('Every 5 minutes');
+  expect(scheduleWords(everyMinute(1))).toBe('Every minute, 1 payment');
 });
 
 it('words the interval', () => {

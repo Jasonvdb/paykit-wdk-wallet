@@ -7,10 +7,12 @@
 //   ○ Receipt
 //
 // Done steps are filled Seal dots joined by a solid line; the current step
-// is a Seal ring; steps not reached are Rule rings; a step where the
-// request stopped (declined, canceled, a proof that didn't check out) is
-// an Alert dot. The steps and their words come from
-// src/paykit/requestStatus.ts (requestTimeline).
+// is a Seal ring; steps not reached are Rule rings. Where the request
+// ended the normal way (declined, canceled, expired) the dot is Graphite:
+// that is an outcome, not an error. Only a failure (a proof that didn't
+// check out) is an Alert dot (docs/DESIGN.md: Alert is for errors). The
+// steps and their words come from src/paykit/requestStatus.ts
+// (requestTimeline).
 import { StyleSheet, View } from 'react-native';
 
 import type { TimelineStep } from '../../paykit';
@@ -30,7 +32,7 @@ export function RequestTimeline({ steps, testID }: { steps: TimelineStep[]; test
               {last ? null : <View style={[styles.line, step.state === 'done' ? styles.lineDone : styles.lineTodo]} />}
             </View>
             <View style={[styles.text, last ? null : styles.textSpacing]}>
-              <Text variant={step.state === 'current' ? 'bodyStrong' : 'body'} color={step.state === 'todo' ? 'graphite' : step.state === 'stopped' ? 'alert' : 'ink'}>
+              <Text variant={step.state === 'current' ? 'bodyStrong' : 'body'} color={step.state === 'todo' || step.state === 'ended' ? 'graphite' : step.state === 'failed' ? 'alert' : 'ink'}>
                 {step.label}
               </Text>
               {step.detail ? (
@@ -52,8 +54,10 @@ function dotStyle(state: TimelineStep['state']) {
       return styles.done;
     case 'current':
       return styles.current;
-    case 'stopped':
-      return styles.stopped;
+    case 'ended':
+      return styles.ended;
+    case 'failed':
+      return styles.failed;
     default:
       return styles.todo;
   }
@@ -66,7 +70,8 @@ const styles = StyleSheet.create({
   done: { backgroundColor: colors.seal },
   current: { borderWidth: 3, borderColor: colors.seal, backgroundColor: colors.sheet },
   todo: { borderWidth: 2, borderColor: colors.rule, backgroundColor: colors.paper },
-  stopped: { backgroundColor: colors.alert },
+  ended: { backgroundColor: colors.graphite },
+  failed: { backgroundColor: colors.alert },
   line: { width: 2, flex: 1, marginVertical: 2 },
   lineDone: { backgroundColor: colors.seal },
   lineTodo: { backgroundColor: colors.rule },
