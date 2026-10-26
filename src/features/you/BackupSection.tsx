@@ -100,9 +100,12 @@ export function BackupSection() {
   const last = status?.lastBackup;
   return (
     <View style={styles.root} testID="backup-section">
-      <Text color="graphite">
+      <Text color="graphite" variant="secondary">
         Your recovery phrase brings back your money and your identity. Your contacts, private connections, requests and receipts live on this
-        phone: back them up here. The backup is encrypted with a key from your recovery phrase, so only your phrase opens it.
+        phone: back them up here.
+      </Text>
+      <Text color="graphite" variant="secondary">
+        The backup is encrypted with a key from your recovery phrase, so only your phrase opens it.
       </Text>
       <Text testID="backup-status">
         {!status
