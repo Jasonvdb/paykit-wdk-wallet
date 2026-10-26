@@ -47,7 +47,7 @@ export function AutomaticPaymentNote({ view, name, duePeriod }: { view: RequestV
     } else if (chosen) {
       line = `Your automatic payments for ${name} have ended. Pay what is due yourself.`;
     } else if (!manual && view.state === 'proposed' && allowances.some((a) => a.role === 'allower' && a.terms && allowanceCovers(a.terms, terms, now))) {
-      line = 'Within your limits for automatic payments: it is accepted and paid in a moment.';
+      line = requestNote ? 'Within your limits for automatic payments.' : 'Within your limits for automatic payments: it is accepted and paid in a moment.';
     }
   } else if (view.role === 'payee' && allowances.some((a) => a.role === 'allowee' && a.terms && allowanceCovers(a.terms, terms, now))) {
     line = `${name} pays requests like this automatically.`;
