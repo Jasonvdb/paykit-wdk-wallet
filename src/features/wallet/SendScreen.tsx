@@ -186,7 +186,8 @@ export function SendScreen({ navigation, route }: RootScreenProps<'Send'>) {
       }
     >
       <View style={styles.body}>
-        <AddressRecipientField asset={asset} initialText={route.params?.to} onChange={onRecipientChange} />
+        {/* Coming back from review remounts the field: start from the address already chosen. */}
+        <AddressRecipientField asset={asset} initialText={address ?? route.params?.to} onChange={onRecipientChange} />
         <AssetPicker value={asset} onChange={changeAsset} />
         <AmountField
           asset={asset}
