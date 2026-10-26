@@ -26,8 +26,10 @@ module.exports = {
         'sendTransaction', // ETH send, and the Aave faucet mint call (src/wallet/useUsdtFaucet.ts)
         'quoteTransfer', // USD₮ send fee
         'transfer', // USD₮ (ERC-20) send
-        'getTransactionReceipt', // Phase 5: verify a USD₮ payment before issuing a receipt
-        'signTypedData', // Phase 5: erc20-transfer-eip712 payment proofs
+        'getTransactionReceipt', // Phase 5: verify a USD₮ payment before issuing a receipt (read-only)
+        // Not 'signTypedData': EIP-712 signatures can authorize spending off
+        // chain (e.g. ERC-20 permits). Phase 5 adds it with the code that
+        // uses it, naming the exact typed-data domain it signs.
       ],
     },
     bitcoin: {
