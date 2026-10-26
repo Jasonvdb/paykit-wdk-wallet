@@ -3,10 +3,11 @@
 // 'pubky' recipient whose addresses are the ones they accept.
 //
 // Lookup order:
-//   1. privatePaymentAddressesFor: a linked contact's private addresses.
-//      Phase 4 fills it in; until then it returns nothing.
-//   2. their PUBLIC payment endpoints (resolvePublicPaymentOptions), which
-//      anyone can read.
+//   1. privatePaymentAddressesFor: the private addresses a linked contact
+//      shared only with you (their Private Payment List, resolved by the
+//      SDK; src/paykit/privatePayments.ts).
+//   2. otherwise their PUBLIC payment endpoints
+//      (resolvePublicPaymentOptions), which anyone can read.
 // Everything they publish is untrusted: the key is normalized by the SDK
 // first, and endpoints are re-checked before they become addresses
 // (src/paykit/publicPaymentOptions.ts).
@@ -29,7 +30,7 @@ import {
   type PayeeAsset,
   type PublicPaymentOptions,
 } from '../../../paykit';
-import { Button, Input, Text, space } from '../../../ui';
+import { Button, Input, KeyText, Text, space } from '../../../ui';
 import { ASSETS } from '../../../wallet';
 import { usePersonName } from '../../people/usePersonName';
 import { PersonHeader } from './PersonRecipient';
@@ -114,7 +115,11 @@ export function PubkyRecipientField({ asset, initialText, onChange }: RecipientF
   };
 
   const payeeAsset: PayeeAsset = asset === 'usdt' ? 'usdt' : 'btc';
-  const reason = ready?.options ? cannotPayReason(ready.options, payeeAsset, name) : undefined;
+  const reason = ready?.options
+    ? cannotPayReason(ready.options, payeeAsset, name)
+    : ready && ready.addresses[payeeAsset] === undefined
+      ? privateCannotPayReason(ready.addresses, payeeAsset, name)
+      : undefined;
   const typedButNotKey = touched && text.trim() !== '' && !key;
 
   return (
@@ -130,7 +135,7 @@ export function PubkyRecipientField({ asset, initialText, onChange }: RecipientF
         blurOnSubmit
         returnKeyType="done"
         error={typedButNotKey ? "That doesn't look like a pubky. Paste their whole pubky, or the message from their pay-me code." : undefined}
-        hint="Their pubky, or the message they shared from their pay-me code. You pay the address they publish for that asset."
+        hint="Their pubky, or the message they shared from their pay-me code. A contact you're connected to privately is paid at an address they shared only with you; anyone else at the address they publish."
         accessory={
           <Pressable accessibilityRole="button" accessibilityLabel="Paste" onPress={onPaste} hitSlop={8} testID="paste-pubky">
             <Text variant="bodyStrong" color="seal">
@@ -160,8 +165,16 @@ export function PubkyRecipientField({ asset, initialText, onChange }: RecipientF
         <View style={styles.payee} testID="pubky-payee">
           <PersonHeader publicKey={ready.publicKey} sealSize={44} />
           <Text variant="secondary" color="graphite" testID="pubky-accepts">
-            {acceptsWords(ready)}
+            {acceptsWords(ready, name)}
           </Text>
+          {ready.addresses[payeeAsset] ? (
+            <View testID="pubky-pays-to">
+              <Text variant="caption" color="graphite">
+                {ASSETS[payeeAsset].displayName} goes to
+              </Text>
+              <KeyText value={ready.addresses[payeeAsset]} full small copyable={false} testID="pubky-pays-to-address" />
+            </View>
+          ) : null}
         </View>
       ) : null}
       {reason ? (
@@ -175,11 +188,17 @@ export function PubkyRecipientField({ asset, initialText, onChange }: RecipientF
 
 class OwnKeyError extends Error {}
 
-function acceptsWords(ready: Extract<Lookup, { state: 'ready' }>): string {
+function acceptsWords(ready: Extract<Lookup, { state: 'ready' }>, name: string): string {
   const assets = (['btc', 'usdt'] as const).filter((a) => ready.addresses[a] !== undefined).map((a) => ASSETS[a].displayName);
   if (assets.length === 0) return 'Accepts nothing by pubky';
-  const how = ready.route === 'private' ? 'privately' : 'by pubky';
-  return `Accepts ${assets.join(' and ')} ${how}`;
+  if (ready.route === 'private') return `Paying privately: ${name} shared ${assets.join(' and ')} addresses only with you.`;
+  return `Accepts ${assets.join(' and ')} by pubky`;
+}
+
+/** A private list without the chosen asset: say what it does carry. */
+function privateCannotPayReason(addresses: Partial<Record<PayeeAsset, string>>, asset: PayeeAsset, name: string): string {
+  const other = (['btc', 'usdt'] as const).filter((a) => addresses[a] !== undefined).map((a) => ASSETS[a].displayName);
+  return `${name} hasn't shared a private ${ASSETS[asset].displayName} address with you. Choose ${other.join(' or ')} instead.`;
 }
 
 /** Whether `text` should open the pubky field rather than the address field. */

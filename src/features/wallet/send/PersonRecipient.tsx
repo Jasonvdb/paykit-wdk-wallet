@@ -1,5 +1,8 @@
 // Review's "To" for a person: their seal, name and shortened pubky, whether
 // they are one of your contacts, and the exact address the money goes to.
+// A private address says so plainly: the contact shared it only with you
+// (their Private Payment List), so the payment is not linked to the
+// addresses they publish for everyone.
 //
 // The name and photo of someone who is not a contact come from their own
 // profile, so anyone can publish "Ben" with Ben's photo. The review
@@ -16,11 +19,14 @@ import { usePersonName } from '../../people/usePersonName';
 import type { SendRecipient } from './recipient';
 
 export function PersonRecipient({ recipient, address }: { recipient: Extract<SendRecipient, { kind: 'pubky' }>; address: string }) {
+  const { name } = usePersonName(recipient.publicKey);
   return (
     <View style={styles.root} testID="review-person">
       <PersonHeader publicKey={recipient.publicKey} sealSize={36} />
-      <Text variant="caption" color="graphite">
-        {recipient.route === 'private' ? 'Their private address for you:' : 'Their public address:'}
+      <Text variant="caption" color={recipient.route === 'private' ? 'seal' : 'graphite'} testID="review-route">
+        {recipient.route === 'private'
+          ? `A private address ${name} shared only with you. Nobody else knows it is theirs.`
+          : 'The public address they publish for everyone:'}
       </Text>
       <KeyText value={address} full small copyable={false} testID="review-person-address" />
     </View>

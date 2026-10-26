@@ -22,14 +22,12 @@
 //
 // Recipients plug in through ./send/recipient.ts: each way of choosing who
 // to pay is a field component that reports a SendRecipient.
-//   Person   send/PubkyRecipientField: a pubky, resolved to the addresses
-//            they publish (public endpoints)
+//   Person   send/PubkyRecipientField: a pubky, resolved to the private
+//            addresses a linked contact shared only with you, else to the
+//            addresses they publish for everyone (public endpoints)
 //   Address  send/AddressRecipientField: a tb1… or 0x… address
 // A `to` param that is a pubky (paykitwdk://send?to=<pubky>) opens on
 // Person, and pasting a pubky into Address switches to Person.
-// TODO(Phase 4 — Private payments): for linked contacts, fill in
-// privatePaymentAddressesFor (src/paykit/privatePayments.ts); the Person
-// field already asks it before public endpoints.
 import * as Haptics from 'expo-haptics';
 import { useCallback, useRef, useState } from 'react';
 import { Keyboard, StyleSheet, View } from 'react-native';
