@@ -3,7 +3,8 @@
 // your Bitcoin account for them, what you paid to an address they shared
 // with you, and payment requests between you. Inside the Person page's
 // section, so an empty history is one line and a small action, not a
-// second heading.
+// second heading. Without `onPay` (a blocked person) there is no action:
+// they can't be paid until they are unblocked.
 import { StyleSheet, View } from 'react-native';
 
 import { Button, Divider, Text, space } from '../../../ui';
@@ -13,7 +14,7 @@ import { useActivityPeople } from '../../wallet/activity/useActivityPeople';
 
 const SHOWN = 10;
 
-export function PersonHistory({ publicKey, name, onOpen, onPay }: { publicKey: string; name: string; onOpen: (activityId: string) => void; onPay: () => void }) {
+export function PersonHistory({ publicKey, name, onOpen, onPay }: { publicKey: string; name: string; onOpen: (activityId: string) => void; onPay?: () => void }) {
   const activity = useActivity();
   const personFor = useActivityPeople();
   const items = activity.items
@@ -27,7 +28,7 @@ export function PersonHistory({ publicKey, name, onOpen, onPay }: { publicKey: s
     ) : (
       <View style={styles.empty} testID="person-history-empty">
         <Text color="graphite">No payments with {name} yet.</Text>
-        <Button label={`Pay ${name}`} variant="secondary" compact onPress={onPay} />
+        {onPay ? <Button label={`Pay ${name}`} variant="secondary" compact onPress={onPay} /> : null}
       </View>
     );
   }

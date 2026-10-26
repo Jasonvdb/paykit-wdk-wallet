@@ -41,9 +41,10 @@ export function PeopleScreen({ navigation }: MainTabScreenProps<'People'>) {
     >
       {notice ? (
         <Text color="graphite">{notice.message}</Text>
-      ) : sorted.length === 0 ? (
+      ) : contacts.length === 0 ? (
+        // Also when everyone left is blocked: the list above "Blocked" still offers the next step.
         <EmptyState
-          title="No one here yet"
+          title={blocked.length === 0 ? 'No one here yet' : 'No one to pay right now'}
           message="Add someone by their pubky or pay-me code. Once you have both added each other, you can pay each other privately."
           action={{ label: 'Add person', onPress: () => navigation.navigate('AddPerson') }}
         />

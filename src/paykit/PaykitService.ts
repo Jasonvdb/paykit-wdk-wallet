@@ -1,7 +1,6 @@
 // PaykitService: the one place that owns the Paykit SDK handle.
 //
-// It wires the pieces together and offers a small, typed facade for what
-// the app does today:
+// It wires the pieces together and offers a small, typed facade:
 //
 //   connect()            session (import -> sign in -> sign up), encrypted
 //                        state store, payment adapter, SDK handle, initialize
@@ -20,6 +19,11 @@
 //                        fills it from the sync loop)
 //   appStore             the encrypted app store the payment request book
 //                        lives in (./requests.ts, ./requestBook.ts)
+//   sealBackup() / openBackup() / inScratchState() / restoredFromBackup
+//                        backups: seal and open them with the phrase-derived
+//                        key, restore one into a throwaway handle to check
+//                        it, and what connect({ restoreBackup }) restored
+//                        (./backup.ts)
 //   refreshState()       observeState snapshot for the UI
 //
 // Rules this class enforces:
@@ -28,13 +32,14 @@
 // - Every SDK call goes through one SerialCallQueue (user calls first).
 // - Nothing here logs Paykit records, secrets or the mnemonic.
 //
-// Extension points for later phases (private payments, payment requests):
+// How the feature modules plug in:
 // - `call(label, task)` runs any SDK method through the queue;
-// - round hooks: registerPrivatePaymentHooks (./privatePayments.ts) and
-//   registerPaymentRequestHooks (./requests.ts) and registerAllowanceHooks
-//   (./automaticPayments.ts) are called once per service,
-//   here in connect(), before the loop starts. Each phase fills in its own
-//   function with `service.syncLoop.addRoundHook(name, hook)`;
+// - round hooks for private payment lists (registerPrivatePaymentHooks,
+//   ./privatePayments.ts), payment requests (registerPaymentRequestHooks,
+//   ./requests.ts) and automatic payments (registerAllowanceHooks,
+//   ./automaticPayments.ts) are registered once per service, here in
+//   connect(), before the loop starts, each with
+//   `service.syncLoop.addRoundHook(name, hook)`;
 // - `addressCache` and `reservationInputsFor` (./paymentAdapter.ts) give the
 //   per-contact receiving details.
 import {
@@ -662,30 +667,31 @@ export class PaykitService {
    *   3. `unblockPeer` returns them to NotLinked and clears our recovery
    *      attempt id, so adding them again starts a fresh link (their side
    *      sees the new attempt and links again too) instead of a blocked peer.
+   *      Skipped for someone the person had blocked: removing them must not
+   *      lift the block, so their messages stay refused.
    * Money already sent to the addresses they had still arrives; the
    * contact's Bitcoin account stays in You > Bitcoin from contacts.
    */
   async removeContact(publicKey: string): Promise<void> {
-    // Removing ends the link and drops its queued messages: a proof of
-    // payment still waiting to go out would be lost for good.
-    if (paymentsWithUndeliveredProof(this, publicKey) > 0) {
-      throw new UserFacingError("A proof of your payment to them hasn't gone out yet. Try again in a minute, once it has.");
-    }
+    this.refuseWhileProofPending(publicKey);
+    const wasBlocked = this.isBlocked(publicKey);
     await this.withdrawPrivateList(publicKey);
     const removed = await this.call('removeContactsAndBlockPeers', (sdk, signal) => sdk.removeContactsAndBlockPeers([publicKey], { signal }));
     if (removed.length === 0 && this.state?.contacts.some((c) => c.publicKey === publicKey)) {
       // The SDK skips a peer that is in the middle of another operation.
       throw new UserFacingError('Still finishing something with them. Try again in a moment.');
     }
-    try {
-      await this.call('unblockPeer', (sdk, signal) => sdk.unblockPeer(publicKey, { signal }));
-    } catch (error) {
-      // Adding them again unblocks them (saveContactAndLink).
-      this.log.warn(`unblock ${shortKey(publicKey)} after removing: ${describeError(error)}`);
+    if (!wasBlocked) {
+      try {
+        await this.call('unblockPeer', (sdk, signal) => sdk.unblockPeer(publicKey, { signal }));
+      } catch (error) {
+        // Adding them again unblocks them (saveContactAndLink).
+        this.log.warn(`unblock ${shortKey(publicKey)} after removing: ${describeError(error)}`);
+      }
     }
     this.privateLists.forget(publicKey);
     this.syncLoop.resetLinkBackoff(publicKey);
-    this.log.info(`removed contact ${shortKey(publicKey)} and ended the link`);
+    this.log.info(`removed contact ${shortKey(publicKey)} and ended the link${wasBlocked ? ' (still blocked)' : ''}`);
     await this.refreshState();
   }
 
@@ -705,9 +711,7 @@ export class PaykitService {
    *     wallet drops our private addresses.
    */
   async blockPeer(publicKey: string): Promise<void> {
-    if (paymentsWithUndeliveredProof(this, publicKey) > 0) {
-      throw new UserFacingError("A proof of your payment to them hasn't gone out yet. Try again in a minute, once it has.");
-    }
+    this.refuseWhileProofPending(publicKey);
     await this.withdrawPrivateList(publicKey);
     await this.call('blockPeer', (sdk, signal) => sdk.blockPeer(publicKey, { signal }));
     this.privateLists.forget(publicKey);
@@ -738,19 +742,38 @@ export class PaykitService {
    * confirmations, a payment you claimed, the payment ledger, a receipt
    * you retrieved): those records name only ids, which a forgotten peer
    * could otherwise reuse with other terms. Nothing is sent to them.
+   *
+   * Returns 'kept' when the SDK refused because of that history: a normal
+   * outcome, not an error, so the screen says so in Graphite.
    */
-  async forgetPeer(publicKey: string): Promise<void> {
+  async forgetPeer(publicKey: string): Promise<'forgotten' | 'kept'> {
     try {
       await this.call('forgetPeer', (sdk, signal) => sdk.forgetPeer(publicKey, { signal }));
     } catch (error) {
       if (paykitErrorTag(error) === PaykitFfiError_Tags.Policy) {
-        this.log.warn(`forget ${shortKey(publicKey)}: ${describeError(error)}`);
-        throw new UserFacingError('You have answered or paid their requests, so your history with them is kept. They stay blocked.');
+        this.log.info(`forget ${shortKey(publicKey)}: refused, history kept (${describeError(error)})`);
+        return 'kept';
       }
       throw error;
     }
     this.log.info(`forgot what ${shortKey(publicKey)} sent`);
     await this.refreshState();
+    return 'forgotten';
+  }
+
+  /**
+   * Removing and blocking end the link and drop the messages still queued
+   * for them: a proof of our payment waiting to go out would be lost for
+   * good, so both refuse until it has left.
+   */
+  private refuseWhileProofPending(publicKey: string): void {
+    if (paymentsWithUndeliveredProof(this, publicKey) > 0) {
+      throw new UserFacingError("A proof of your payment to them hasn't gone out yet. Try again in a minute, once it has.");
+    }
+  }
+
+  private isBlocked(publicKey: string): boolean {
+    return !!this.state?.linkedPeers.some((p) => p.counterparty === publicKey && p.state === FfiLinkedPeerState.Blocked);
   }
 
   /** Send an empty Private Payment List to a Linked peer (best effort), so they drop our private addresses. */

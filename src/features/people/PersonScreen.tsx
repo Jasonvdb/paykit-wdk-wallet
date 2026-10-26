@@ -108,7 +108,7 @@ export function PersonScreen({ navigation, route }: RootScreenProps<'Person'>) {
               publicKey={pubky}
               name={name}
               onOpen={(activityId) => navigation.navigate('ActivityDetail', { activityId })}
-              onPay={() => navigation.navigate('Send', { to: pubky })}
+              onPay={blocked ? undefined : () => navigation.navigate('Send', { to: pubky })}
             />
           </Section>
 
