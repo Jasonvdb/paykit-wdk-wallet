@@ -70,6 +70,8 @@ This app has two engines and one UI:
 | Shared across features | A few feature components are used by other features on purpose: `wallet/receive/PayMeCode.tsx` (Receive, You, onboarding Ready), `you/RecoveryPhraseSection.tsx` (You, and onboarding before replacing a wallet), `people/PersonSeal.tsx` and `people/usePersonName.ts` (every screen that shows a person), `wallet/GetTestUsdtButton.tsx` (Wallet, Receive, You), `wallet/activity/ActivityRow.tsx` and `useActivityPeople.ts` (Wallet, Person history), `you/ContactAccountsSection.tsx`'s `ContactAccountRow` (You, Person), `wallet/send/PersonRecipient.tsx`'s `PersonHeader` (Send, Request money). Import them from their home folder; everything else crosses features only through `src/ui`, `src/wallet` and `src/paykit`. |
 | `wdk.config.js` | Which WDK wallet modules go into the worklet, and which account methods the app may call. |
 | `plugins/withPaykitSimulatorArchs.js` | Expo config plugin: arm64-only iOS simulator builds (Paykit ships no x86_64 slice). |
+| `plugins/withMmkvBackupExclusion.js` | Expo config plugin: excludes `Documents/mmkv` from iCloud and Finder backups at every launch (see "Storage and secrets"). |
+| `src/ui/useScreenCaptureBlock.ts` | Blocks screenshots, recordings and the app-switcher snapshot while a secret is on screen (expo-screen-capture). `useForegroundSecret` uses it. |
 | `scripts/` | Paykit package build, Paykit Android patch (postinstall), demo prefill generator, and the demo funding scripts `fund-*.mjs` (see "Funding the demo"). |
 
 ## Wallet service (`src/wallet`)
@@ -124,6 +126,8 @@ formatFee(fee, asset) / sendErrorMessage(error, asset)                          
 sendFailureFor(error, asset): { outcome: 'not-sent' | 'unknown'; message }                // after a send: 'unknown' = may have been broadcast, do not retry
 parseTypedAmount(text, asset): ParseResult                                                // decimal comma vs thousands separator; '1,000' is 'ambiguous'
 fetchBtcFeeRate() / fetchBtcTransactionStatus(txid)                                        // Mutinynet esplora (src/wallet/mutinynet.ts)
+retryIfElectrumDropped(read) / isElectrumConnectionLost(error)                             // one quiet retry of a Bitcoin read (src/wallet/electrumRetry.ts)
+nextFailureStreak / shouldReportFailure                                                    // when a polled read has failed long enough to say so (src/wallet/failureStreak.ts)
 // payment requests (Phase 5)
 useAccountZeroPaymentChecks(): { btcSent(txid); evmTransaction(hash); signErc20Payment(typedData) }   // WDK getTransaction / signTypedData
 useBtcReceivedReader(accountIndex): ((txid, address) => Promise<BtcReceipt>) | undefined              // WDK getTransfers on one account
@@ -155,6 +159,21 @@ with a ref so a double tap cannot send twice.
 USD₮ is an ERC-20 token, so its fee is paid in ETH. `checkAffordable`
 reports that case as its own problem ("Not enough ETH for gas"), and the
 Send screen shows it as soon as USD₮ is chosen with a zero ETH balance.
+
+Dropped Electrum connections: WDK's Bitcoin client keeps one socket to
+Mutinynet's Electrum server and, by default, reopens it only twice per
+session; after a third close (an idle timeout, the app in the
+background) every Bitcoin call failed with "Connection to server lost"
+until a restart. `src/config/wdk.ts` passes `maxRetry` and
+`retryPeriod` so it keeps reconnecting a second after each close. Every
+`getTransfers` read goes through `retryIfElectrumDropped`, which waits
+1.5 s and tries once more on that error only (never for a send).
+Balances and history keep their last values when a poll fails, and the
+screen says "Couldn't load …" only after a run of failures
+(`failureStreak.ts`: two polls with nothing to show, four with older
+data). WDK logs each failure with `console.error` first; in dev builds
+App.tsx tells LogBox to ignore exactly that line, so no toast covers the
+UI.
 
 History sources: BTC uses WDK's `getTransfers` (Electrum), which returns the
 oldest transfers first and stops at `limit`, so the app fetches the whole
@@ -272,6 +291,7 @@ useAllowancesWith(pubky) / useAllowanceLedger() / useAutomaticPaymentNote(key)
 | `syncLoop.ts` | The foreground sync loop and its extension hooks. |
 | `eventLog.ts` | Secret-free developer log for You > Sync status. |
 | `errors.ts`, `keys.ts`, `bytes.ts` | Small helpers. |
+| `signUpErrors.ts` | Pure: which step of a sign-up failed, from the SDK's Identity error context (the invite code was refused, the identity already exists, or only signing in is left), and the sentence for each. Unit tested. |
 | `profiles.ts` | `ProfileDirectory`: names and avatars per pubky, cached 10 minutes, deduplicated loads, retry pause. No native imports, unit tested. |
 | `publicPaymentOptions.ts` | Pure: turns a public endpoint resolution into checked addresses per asset, and says why someone can't be paid. Unit tested. |
 | `publicPayments.ts` | `resolvePublicPaymentOptions`: SDK lookup (registry, public endpoints, profile) mapped through the pure module. |
@@ -1112,12 +1132,30 @@ when the app leaves the foreground), never copy it to the clipboard and
 never log it. Restore's Paste empties the clipboard after reading a
 phrase from it.
 
-Hiding the phrase from the app switcher is best effort: AppState changes
-reach JS asynchronously, so an Android recents thumbnail can be taken
-before React re-renders, and screenshots and screen recording are not
-blocked. A production wallet would set `FLAG_SECURE` (for example with
-`expo-screen-capture`) while the words are on screen; that needs a native
-rebuild and is not done here yet.
+While the phrase is on screen, while Restore's phrase field holds any
+words, and while a sealed backup waits to be copied, the app blocks
+screen capture natively (`useScreenCaptureBlock`, expo-screen-capture
+55.0.18): `FLAG_SECURE` on Android (screenshots and recordings come out
+black, the recents thumbnail is blank) and, on iOS, a secure layer that
+blanks screenshots and recordings plus a blur over the app-switcher
+snapshot. iOS can't refuse a screenshot; it just captures nothing
+readable. The protection is lifted only once the app is in front again,
+so it can't race the snapshot the OS takes on the way out. Checked on
+the Android release build: with a backup held, the app's window carries
+`FLAG_SECURE`, and it is gone once the backup is copied. Not checkable
+on the iOS simulator: `simctl io screenshot` reads the framebuffer, not
+the system screenshot path, so it still shows the screen.
+
+Device backups: Android's `allowBackup` is false (app.json). On iOS,
+`plugins/withMmkvBackupExclusion.js` sets `NSURLIsExcludedFromBackupKey`
+on `Documents/mmkv` at every launch, which covers every MMKV file there
+(Apple: excluding a directory excludes its contents). The files are
+encrypted with a Keychain key that is `THIS_DEVICE_ONLY`, so a backed-up
+copy could never be opened elsewhere anyway; excluding them keeps stale
+ciphertext of private records out of iCloud. Not done: Android 12+
+device-to-device transfer, which `allowBackup="false"` does not stop
+(it needs `dataExtractionRules`); the transferred files would be
+unreadable without the Keystore key.
 
 Logging rules: ESLint forbids `console.log`. Paykit records are not redacted
 in JS, so never log them; the event log takes short, secret-free strings.
@@ -1145,5 +1183,8 @@ use `ethers` and `@scure/base` (pinned devDependencies); the app does not.
   Fast Refresh counts too: saving a file while an app is open can leave its
   Paykit handle disposed ("Paykit is disconnected" in the log), so relaunch
   both apps cold after editing code.
+- Release builds (README, "Release builds") bundle the JavaScript, so a
+  code change needs a new native build to reach them; use the dev client
+  while developing.
 - One SDK handle per identity: always go through `usePaykit()`.
 - Amounts are `bigint` until they are formatted for display.

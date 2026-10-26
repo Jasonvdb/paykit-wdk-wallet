@@ -12,102 +12,122 @@ and [Pubky Paykit](https://github.com/pubky/paykit-rs) work together:
 
 ## Status
 
-Phases 1 (foundation), 2 (wallet), 3 (identity and public payments),
-4 (contacts and private payments) and 5 (payment requests and receipts)
-are done, and Phase 6 has added the remaining Paykit features (see
-"Phase 6" below): the app skeleton, design system, navigation, the wallet and
-Paykit service layers, and the WDK side of the app: receive cards with QR
-codes, sending to an address with a fee review, activity with a detail
-screen, the recovery phrase, "Get test USD₮", collecting BTC from contact
-accounts, and demo funding scripts. Phase 3 adds your profile (name and
-photo, shown in every seal), the pay-me code (your pubky as a QR), public
-payment endpoints you switch on or off per asset, paying anyone by pubky
-through those endpoints, a QR scanner, and a developer "Network details"
-section. Phase 4 adds contacts: a profile preview before adding someone,
-your own label for them, a People list sorted by link state, a Person page
-(what they accept publicly and privately, history, Bitcoin from them with
-Collect, Remove), Private Payment Lists shared and read over each Encrypted
-Link, paying a linked contact at the private Bitcoin address they shared
-only with you (USD₮ goes to their one address for everyone), activity rows
-that name the contact ("Ben paid you"), and the seal closing when a link
-forms. Phase 5 adds payment requests: Request money
-(once, or on a short demo schedule such as every minute for a number of
-payments), a Requests tab with Incoming and Sent, a request page with a
-Requested -> Accepted -> Paid -> Verified -> Receipt timeline, Accept and
-pay through the Send review with the amount and address locked, Decline,
-Cancel, Stop payments and Not now for a recurring payment, payment
-proofs (a signed EIP-712 proof for USD₮), the payee's on-chain check
-through WDK, encrypted receipts, and activity rows linked to their
-request and receipt.
+**Complete as a testnet reference.** All six phases in
+[`docs/PLAN.md`](docs/PLAN.md) are built: the wallet (WDK), identities and
+public payments, contacts and private payments, payment requests with
+proofs and receipts, and the stretch features (automatic payments, block
+and forget, backup and restore). Phase 6 added the polish: Welcome copy
+and illustration, a message per sign-up failure, screenshots blocked
+while a recovery phrase or backup is on screen, MMKV files kept out of
+iOS backups, quiet recovery from dropped Electrum connections, and
+release builds for both platforms. [`docs/DEMO.md`](docs/DEMO.md) is a
+step-by-step two-phone demo of every feature.
 
-Phase 4 was checked on both simulators without money: the demo wallets
-were empty, so private payments were resolved up to Review (iOS resolves
-Ben's private Bitcoin address, his contact account for Ana, not his public
-one, and the other way round) but not broadcast, and Collect was not run.
+Checked on both simulators in Phase 6: the release builds install over
+the dev clients and keep their data (same signing certificate on
+Android), start straight into the saved identities with the two phones
+still linked, and their bundles hold no demo phrase or invite code;
+Android's window carries `FLAG_SECURE` while a backup is held and the
+screenshot comes out black; on iOS, `Documents/mmkv` carries the
+backup-exclusion attribute.
 
-Phase 5 was checked on both simulators without money as well: requests
-went both ways (one-time USD₮, recurring Bitcoin and USD₮), and decline,
-accept, cancel by either side and putting a recurring payment off worked
-end to end; paying stopped at "Not enough …" before the broadcast. The
-payment, proof, on-chain check and receipt steps are covered by unit
-tests only so far.
+Honest gaps:
 
-A review of Phases 4 and 5 hardened the payment side: a USD₮ transaction
-WDK calls "dropped" is no longer taken as failed on one answer, a payment
-that lost its hash mid-send is found in the wallet's history (or released
-when it never left), Pay waits until the acceptance has left and refuses
-to accept a request about to expire, a retry after a failed start works,
-proofs for payments older than the request are rejected, recurring
-periods past the 120th are payable, Activity names a person only on a
-payment we sent or verified, and a USD₮ address is no longer called
-private. See "Payment requests" in
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the details and what
-risk remains.
+- **No money has moved on the demo phones yet.** The demo wallets were
+  never funded during development (the Sepolia ETH and Mutinynet faucets
+  need a person once; see "Funding the demo"). Every payment flow ran up
+  to its review screen, which said "Not enough …"; broadcasting, the
+  payee's on-chain check, receipts, automatic payments and Collect are
+  covered by unit tests and code review only.
+- **Restoring a backup in onboarding** has not run on a device: it needs
+  a phone with no state for the identity. The same SDK restore ran in
+  "Check a copied backup" on both phones.
+- **iOS screenshot blocking** could not be checked on the simulator,
+  whose screenshots read the framebuffer directly. Android's
+  `FLAG_SECURE` was checked.
+- Not used: Paykit key rotation (`rotatePaykitIdentityKey`), Allowance
+  reassociation, shared-state storage, a self-serve invite code. Trusted
+  time is the phone clock. Android 12+ device-to-device transfer is not
+  blocked (the files are unreadable without the Keystore key).
 
-### Phase 6: automatic payments, block and forget, backup
+Each phase's notes, and what was checked on the simulators, are in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-- **Automatic payments** (Paykit Allowances). Person > Automatic payments
-  offers a contact to pay their requests without a tap, within limits:
-  up to an amount per payment, at most 10 payments and 4 payments' worth
-  an hour, 10 payments' worth in all, ending after an hour, a day or a
-  week. They accept or decline; either side can end it, and the page
-  shows what has been used. Their covered requests are then accepted and
-  paid by a sync round hook through the same payment ledger, WDK send
-  and proof path as the Pay button; over a limit, a request waits for
-  you with the reason on its page. Rows say "Paid automatically".
-- **Block, unblock, forget.** Block ignores a contact's requests and
-  messages and ends the private connection (they stay listed, under
-  "Blocked", with the Graphite dashed ring); Unblock forms a fresh link;
-  Forget deletes what a blocked person sent that you never answered (the
-  SDK keeps any history you acted on, and the page says so).
-- **Backup and restore of contacts and requests.** You > Contacts and
-  requests backup seals Paykit's backup (which the SDK leaves
-  unencrypted) and the app's own records with a key from the recovery
-  phrase, then Copy or Share; "Check a copied backup" restores it into a
-  throwaway in-memory SDK handle and says what it holds. A restored
-  wallet can paste a backup on the sign-in step of onboarding. The
-  phrase alone opens a backup, but you must keep the backup text.
-- **Network details** shows each contact's Encrypted Link recovery
-  markers and the backup revisions.
+## How the two libraries meet
 
-Checked on both simulators, still without money (the demo wallets are
-empty): Ana offered Ben automatic payments and Ben accepted; Ben's
-recurring USD₮ request to Ana was matched by the SDK
-(`evaluateAllowanceCandidates`) and stopped at "Not enough USD₮", with
-nothing accepted; Ana blocked Ben (Forget was refused, as it must be
-with history), unblocked him, and the link was back in about 30 seconds
-with the Allowance still accepted; both phones made and checked a backup
-(1 contact, 4 and 5 requests). Not exercised: an automatic acceptance
-and payment (needs funds), and the onboarding restore (needs wiping a
-demo identity). Details in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md),
-"Automatic payments" and "Backup and restore".
+**WDK holds the keys and moves the money.** It runs in a separate Bare
+JavaScript runtime (a worklet), derives the Bitcoin and Ethereum accounts
+from the recovery phrase, quotes fees, signs and broadcasts, and reads
+balances and history. **Paykit decides who, where and why.** It turns a
+Pubky key into a person you can pay: their public and private payment
+endpoints, the Encrypted Link between two wallets, payment requests,
+proofs, receipts and Allowances. It never touches a private key for
+money and never broadcasts anything.
 
-Known gaps left for Phase 6 (polish): the recovery phrase screens do not
-block screenshots yet (Android `FLAG_SECURE` needs a native module and a
-rebuild), sign-up errors share one message instead of one per cause, and
-Welcome has its Phase 2 copy. The plan is in
-[`docs/PLAN.md`](docs/PLAN.md), the design in [`docs/DESIGN.md`](docs/DESIGN.md)
-and the code structure in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+The seam between them is small and explicit:
+
+- **The payment adapter** (`src/paykit/paymentAdapter.ts`). Paykit asks
+  the wallet, through synchronous callbacks, which addresses to publish
+  or share with a contact, and checks endpoints it resolved. The answers
+  come from
+- **the address cache** (`src/paykit/addressCache.ts`), which
+  `PaykitProvider` fills from WDK ahead of time: account 0's addresses,
+  and one Bitcoin account per contact. Paykit's callbacks can't wait for
+  WDK's asynchronous worklet, so the cache is what makes them possible.
+- **The payment chain** (`src/features/requests/PaymentChainBridge.tsx`)
+  goes the other way: Paykit's request flow hands WDK a locked amount and
+  address to send, then asks WDK to read the transaction back (and, for
+  USD₮, to sign the EIP-712 proof) so it can prove or verify a payment.
+
+Both identities come from one recovery phrase: WDK derives the chain
+keys, and Paykit's `pubkySecretKeyFromBip39Mnemonic` derives the Pubky
+key. That is the Bitkit and Pubky Ring convention, and it is testnet-only
+here because the keys are not domain-separated.
+
+## Features and where to see them
+
+| Library | Feature | Where in the app | Source |
+|---|---|---|---|
+| WDK | Create or restore a wallet from a recovery phrase | Onboarding > Your wallet | `src/features/onboarding/CreateOrRestoreScreen.tsx`, `src/wallet/useWalletLifecycle.ts` |
+| WDK | Balances: Bitcoin, USD₮ and ETH for gas | Wallet tab | `src/features/wallet/WalletScreen.tsx`, `src/wallet/useWalletBalances.ts` |
+| WDK | Receive: address and QR code | Wallet > Receive | `src/features/wallet/ReceiveScreen.tsx`, `src/features/wallet/receive/ReceiveCard.tsx` |
+| WDK | Send with a fee quote | Wallet > Send | `src/features/wallet/SendScreen.tsx`, `src/features/wallet/send/SendReview.tsx`, `src/wallet/useSend.ts` |
+| WDK | Transaction history | Wallet activity, Activity detail | `src/wallet/useActivity.ts`, `src/features/wallet/activity/ActivityRow.tsx` |
+| WDK | Mint test USD₮ (Aave faucet) | You > Test funds | `src/features/wallet/GetTestUsdtButton.tsx`, `src/wallet/useUsdtFaucet.ts` |
+| WDK | One Bitcoin account per contact, and Collect | Person > Bitcoin from …, You > Bitcoin from contacts | `src/features/you/ContactAccountsSection.tsx`, `src/wallet/useBtcContactAccount.ts` |
+| WDK | Recovery phrase | You > Recovery phrase | `src/features/you/RecoveryPhraseSection.tsx` |
+| WDK | Sign an EIP-712 proof, read a transaction to verify one | Request page | `src/wallet/usePaymentChecks.ts`, `src/wallet/erc20PaymentProof.ts` |
+| Paykit | Identity from the phrase, sign up or sign in, saved session | Onboarding > Your identity | `src/features/onboarding/InviteCodeScreen.tsx`, `src/paykit/session.ts` |
+| Paykit | App registry and Noise key authorization | Onboarding; You > Network details | `src/paykit/PaykitService.ts` (`setUpIdentity`), `src/paykit/networkDetails.ts` |
+| Paykit | Profile: name and photo | You > Edit profile, every seal | `src/features/you/EditProfileScreen.tsx`, `src/paykit/profiles.ts` |
+| Paykit | Public payment endpoints | You > What you publish | `src/features/you/PublicEndpointsSection.tsx`, `src/paykit/endpoints.ts` |
+| Paykit | Pay anyone by pubky | Send > A person (pubky) | `src/features/wallet/send/PubkyRecipientField.tsx`, `src/paykit/publicPayments.ts` |
+| Paykit | Contacts and the Encrypted Link handshake | People > Add, Person page | `src/features/people/AddPersonScreen.tsx`, `src/features/people/PersonScreen.tsx`, `src/paykit/syncLoop.ts` |
+| Paykit | Private Payment Lists | Person > What they accept | `src/features/people/person/WhatTheyAccept.tsx`, `src/paykit/privatePayments.ts` |
+| Paykit | Pay a contact privately | Person > Pay | `src/paykit/privatePayments.ts`, `src/paykit/paymentAdapter.ts`, `src/paykit/addressCache.ts` |
+| Paykit | Payment requests | Requests tab, Request money, request page | `src/features/requests/RequestMoneyScreen.tsx`, `src/features/requests/RequestDetailScreen.tsx`, `src/paykit/requests.ts` |
+| Paykit | Recurring requests | Request money > Every minute | `src/features/requests/RecurringPayments.tsx`, `src/paykit/recurrence.ts` |
+| Paykit | Payment ledger: never pay twice | Pay request | `src/paykit/requests.ts`, `src/paykit/requestBook.ts` |
+| Paykit | Proofs, verification and receipts | Request timeline, Activity detail | `src/paykit/paymentProofs.ts`, `src/paykit/requestRounds.ts`, `src/features/wallet/activity/ActivityPaykitLinks.tsx` |
+| Paykit | Allowances: automatic payments | Person > Automatic payments | `src/features/people/AutomaticPaymentsScreen.tsx`, `src/paykit/allowances.ts`, `src/paykit/automaticPayments.ts` |
+| Paykit | Block, unblock, forget | Person page | `src/features/people/person/PersonActions.tsx`, `src/paykit/PaykitService.ts` |
+| Paykit | Backup and restore | You > Contacts and requests backup; onboarding sign-in | `src/features/you/BackupSection.tsx`, `src/paykit/backup.ts`, `src/paykit/backupCrypto.ts` |
+| Paykit | Recovery markers, revisions, the sync loop | You > Network details, Sync status | `src/features/you/NetworkDetailsSection.tsx`, `src/paykit/eventLog.ts` |
+
+## Screenshots
+
+| | | |
+|---|---|---|
+| <img src="docs/screenshots/phase6/ios-release-wallet.png" width="220" alt="Wallet tab on iOS"> | <img src="docs/screenshots/phase6/ios-release-person-linked.png" width="220" alt="A linked contact's Person page"> | <img src="docs/screenshots/phase6/android-release-people.png" width="220" alt="People on Android"> |
+| Wallet (iOS release build) | A linked contact | People (Android release build) |
+| <img src="docs/screenshots/phase4/ios-add-person-preview.png" width="220" alt="Add person preview"> | <img src="docs/screenshots/phase4/ios-send-ben-private.png" width="220" alt="Paying a contact privately"> | <img src="docs/screenshots/phase3/ios-2-receive-pay-me-code.png" width="220" alt="Pay-me code"> |
+| Add a person by pubky | Pay a contact privately | Your pay-me code |
+| <img src="docs/screenshots/phase5/ios-request-money-recurring.png" width="220" alt="Request money every minute"> | <img src="docs/screenshots/phase5/android-request-detail-top.png" width="220" alt="Request timeline"> | <img src="docs/screenshots/phase6/ios-person-automatic-payments.png" width="220" alt="Automatic payments"> |
+| A recurring request | The request timeline | Automatic payments |
+| <img src="docs/screenshots/phase6/ios-people-blocked.png" width="220" alt="A blocked contact"> | <img src="docs/screenshots/phase6/ios-you-backup-checked.png" width="220" alt="Backup checked"> | <img src="docs/screenshots/phase6/ios-release-network-details.png" width="220" alt="Network details"> |
+| Blocked | Backup checked | Network details |
+
+More, per phase and platform, in [`docs/screenshots/`](docs/screenshots/).
 
 ## Run it
 
@@ -136,6 +156,30 @@ npx expo prebuild --platform android --clean
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 adb reverse tcp:8081 tcp:8081
 ```
+
+### Release builds
+
+For a demo, run release builds: the JavaScript is bundled into the app,
+there is no dev-tools button and no Metro. Both install over the dev
+client and keep its data (same bundle id, and on Android the same debug
+signing key that Expo's template uses for release too). `demo.local.ts`
+is left out of release bundles, so a release build starts from the saved
+identity; a fresh install needs onboarding with a typed phrase.
+
+```sh
+# iOS (Android emulator shut down first)
+npx expo prebuild --platform ios --clean
+npx expo run:ios --configuration Release --device "<simulator name or UDID>" --no-bundler
+
+# Android (iOS simulator shut down first)
+npx expo prebuild --platform android --clean
+(cd android && JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./gradlew assembleRelease && ./gradlew --stop)
+adb install -r android/app/build/outputs/apk/release/app-release.apk
+```
+
+Never install a release build signed with another key over the dev
+client: Android refuses the update, and uninstalling first deletes the
+wallet's data.
 
 Open the dev client on `http://localhost:8081`. **Never reload with Cmd-R or
 the dev menu once Paykit has loaded**: relaunch the app cold instead.
