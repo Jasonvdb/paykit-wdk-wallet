@@ -7,15 +7,21 @@
 // Order of attempts (connectSession):
 // 1. importSession with the secret saved by the last launch. No network
 //    sign-in, so it does not count against staging's 20 sign-ins per minute.
-// 2. signIn with the root key. Works for any identity that already has an
-//    account on the homeserver (a restored wallet, an expired grant).
-// 3. signUp with an invite code, but only during onboarding and only when
-//    sign-in failed for a reason other than the network. Codes are
-//    single-use and a failed sign-up may consume one.
+// 2. Then exactly one of:
+//    - signUp with an invite code, when the caller says this is a new
+//      identity (a wallet created on this device, or a person who said so);
+//    - signIn with the root key otherwise (a restored wallet, an expired
+//      grant).
 // The new session secret is saved for the next launch.
 //
+// Why not "sign in, and sign up if that fails"? The SDK reports every
+// sign-in failure (offline, rate limited, relay down, no account) as the same
+// Identity error, so a failed sign-in cannot tell us the account is missing.
+// Guessing would spend a single-use code on a network blip, and hide the
+// real sign-in error behind a sign-up error.
+//
 // Never call this inside a loop: the sync loop reports session errors and a
-// human reconnects (You > Sync status).
+// person reconnects (You > Sync status > Reconnect).
 import {
   FfiPubkySessionBootstrap,
   paykitAuthorizerSessionCapabilities,
@@ -27,7 +33,7 @@ import {
 } from '@synonymdev/react-native-paykit';
 
 import { PUBKY_CLIENT_ID, STAGING_HOMESERVER } from '../config/paykit';
-import { describeError, isTransportError } from './errors';
+import { describeError } from './errors';
 import { loadSessionSecret, saveSessionSecret } from './secureStorage';
 
 /**
@@ -45,7 +51,11 @@ export class AppSessionProvider implements FfiSdkPubkySessionProvider {
     return true;
   }
 
-  /** Called by the SDK on sign-out. The saved secret is cleared by the caller. */
+  /**
+   * Called by the SDK when it drops the session. This app has no sign-out:
+   * the saved secret is replaced by the next successful connect, and
+   * deleted when onboarding replaces the wallet (clearSessionSecret).
+   */
   clearSessionAccess(): void {
     this.access = undefined;
   }
@@ -64,7 +74,7 @@ export type ConnectSessionOptions = {
   /** The public key derived from `secretKey`, used to find the saved secret. */
   publicKey: string;
   pubkyClient: FfiPubkyClientConfig;
-  /** Only onboarding passes a code. */
+  /** Pass a code only for a new identity: it signs up instead of signing in. */
   signupCode?: string;
   log: (message: string) => void;
 };
@@ -91,18 +101,12 @@ export async function connectSession(options: ConnectSessionOptions): Promise<Co
     }
   }
 
-  try {
-    return await finish(await bootstrap.signIn(options.secretKey, capabilities), 'signIn');
-  } catch (error) {
-    options.log(`sign-in failed: ${describeError(error)}`);
-    // A transport error says nothing about whether the account exists.
-    // Never spend a single-use code on it.
-    if (isTransportError(error) || !options.signupCode) throw error;
+  if (options.signupCode) {
+    options.log('signing up on the staging homeserver with an invite code');
+    return finish(
+      await bootstrap.signUp(options.secretKey, STAGING_HOMESERVER, options.signupCode, capabilities),
+      'signUp',
+    );
   }
-
-  options.log('signing up on the staging homeserver with an invite code');
-  return finish(
-    await bootstrap.signUp(options.secretKey, STAGING_HOMESERVER, options.signupCode, capabilities),
-    'signUp',
-  );
+  return finish(await bootstrap.signIn(options.secretKey, capabilities), 'signIn');
 }

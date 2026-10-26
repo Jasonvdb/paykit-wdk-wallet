@@ -22,3 +22,23 @@ export function useOnboardingComplete(): [boolean, (complete: boolean) => void] 
 export function isOnboardingComplete(): boolean {
   return appStorage.getBoolean(ONBOARDING_COMPLETE) ?? false;
 }
+
+const WALLET_ORIGIN = 'wallet-origin-v1';
+
+/**
+ * How the wallet on this device came to be. Onboarding uses it to decide
+ * between signing in and signing up: only a wallet created here is known to
+ * have a brand-new identity that needs an invite code. Unknown (e.g. an iOS
+ * reinstall, where the Keychain kept the seed but this file is gone) is
+ * treated as restored.
+ */
+export type WalletOrigin = 'created' | 'restored';
+
+export function walletOrigin(): WalletOrigin | undefined {
+  const value = appStorage.getString(WALLET_ORIGIN);
+  return value === 'created' || value === 'restored' ? value : undefined;
+}
+
+export function setWalletOrigin(origin: WalletOrigin): void {
+  appStorage.set(WALLET_ORIGIN, origin);
+}

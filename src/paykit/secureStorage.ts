@@ -1,7 +1,7 @@
 // Secrets the Paykit layer keeps in the Keychain (iOS) / Keystore (Android).
 //
-// - An AES-256 key for the encrypted MMKV files (Paykit state and the
-//   contact account map). MMKV needs it synchronously later, so it is read
+// - The key for the encrypted (AES-256) MMKV files: Paykit state and the
+//   contact account map. MMKV needs it synchronously later, so it is read
 //   once at startup, before the SDK exists.
 // - The Pubky session secret (`exportSessionSecret()`), so a relaunch can
 //   `importSession` instead of signing in again. Staging limits sign-ins to
@@ -10,7 +10,9 @@
 // The mnemonic is NOT stored here: WDK already keeps the encrypted seed in
 // the Keychain and the Pubky key is derived from it on demand.
 // Items use WHEN_UNLOCKED_THIS_DEVICE_ONLY: never synced, never restored to
-// another device. Demo-grade: no biometric gate.
+// another device. They do survive an app uninstall on iOS (see
+// docs/ARCHITECTURE.md, "Storage and secrets"). Demo-grade: no biometric
+// gate.
 import * as Crypto from 'expo-crypto';
 import * as Keychain from 'react-native-keychain';
 
@@ -19,7 +21,12 @@ const SESSION_SERVICE = 'paykit-session';
 
 const ACCESSIBLE = Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY;
 
-/** 24 random bytes as base64 = 32 characters, the AES-256 key length MMKV takes. */
+/**
+ * MMKV takes the key as a string and uses its bytes, up to 32 for AES-256.
+ * 24 random bytes as base64 make exactly 32 printable characters: a full
+ * length AES-256 key that carries 192 bits of randomness (plenty, but not
+ * 256). Changing the format would orphan existing encrypted files.
+ */
 export async function loadOrCreateStorageKey(): Promise<string> {
   const existing = await Keychain.getGenericPassword({ service: ENCRYPTION_KEY_SERVICE });
   if (existing) return existing.password;
@@ -41,6 +48,7 @@ export async function saveSessionSecret(publicKey: string, sessionSecret: string
   await Keychain.setGenericPassword(publicKey, sessionSecret, { service: SESSION_SERVICE, accessible: ACCESSIBLE });
 }
 
+/** Delete the saved session secret. Onboarding calls this when it replaces the wallet. */
 export async function clearSessionSecret(): Promise<void> {
   await Keychain.resetGenericPassword({ service: SESSION_SERVICE });
 }

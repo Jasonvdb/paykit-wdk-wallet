@@ -60,11 +60,20 @@ After editing `wdk.config.js`, run `npm run wdk-bundle` and relaunch cold.
 
 ### First launch
 
-Onboarding: **Get started**, then **Restore** (dev builds prefill the
-phrase from `.env.demo`), **Connect** (a restored identity signs in; the
-invite code is only used for a new identity), optionally a name and photo,
-then **Go to wallet**. Later launches import the saved session and go
-straight to the tabs.
+Onboarding: **Get started**, then **Restore** (dev builds restore the demo
+phrase from `.env.demo` without showing it on screen), **Sign in**,
+optionally a name and photo, then **Go to wallet**. Later launches import
+the saved session and go straight to the tabs.
+
+A restored wallet always signs in. Only a wallet created on the device (or
+one you mark as "This phrase has no identity yet") signs up with an invite
+code. The app never falls back from a failed sign-in to sign-up, because
+the SDK reports every sign-in failure the same way and a code works only
+once.
+
+On iOS, Keychain items survive an uninstall: after a reinstall the WDK
+seed, the Pubky session secret and the storage key are still there, and
+onboarding offers to continue with that wallet.
 
 Add the other phone as a contact from People > Add, or with a deep link:
 

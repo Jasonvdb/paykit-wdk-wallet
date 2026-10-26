@@ -164,7 +164,7 @@ linkStateWords(state), sealRingFor(state), contactLinkFor(pubky), keyFromContact
 | `PaykitService.ts` | Owns the one SDK handle; wires session, storage, adapter, queue and loop; the facade above. |
 | `PaykitProvider.tsx` | Connects (auto after onboarding), hands WDK addresses to the service, derives contact BTC addresses, drops the service when its wallet goes away. |
 | `hooks.ts` | Screen-facing hooks; maps `FfiLinkedPeerState` to `LinkState`. |
-| `session.ts` | `importSession` -> `signIn` -> `signUp` (onboarding only), and the synchronous session provider. |
+| `session.ts` | `importSession`, then `signIn` (or `signUp` for an identity known to be new), and the synchronous session provider. |
 | `secureStorage.ts` | Keychain/Keystore: MMKV encryption key and the session secret. |
 | `stateStore.ts` | Synchronous encrypted state blob store with the revision contract. |
 | `addressCache.ts` | Synchronous address cache and the persisted contact -> BTC account map. |
@@ -266,10 +266,18 @@ status with a "Try again" button.
 |---|---|---|
 | Mnemonic (WDK seed) | WDK's encrypted seed in the Keychain/Keystore | Read only to derive the Pubky key or to reveal it. Never logged. |
 | Pubky session secret | Keychain/Keystore (`paykit-session`) | `WHEN_UNLOCKED_THIS_DEVICE_ONLY`. |
-| MMKV encryption key | Keychain/Keystore (`paykit-state-encryption-key`) | 32 characters, AES-256. |
+| MMKV encryption key | Keychain/Keystore (`paykit-state-encryption-key`) | A 32-byte AES-256 key carrying 192 random bits (24 random bytes as base64, because MMKV takes the key as a string). |
 | Paykit SDK state | Encrypted MMKV `paykit-state-<id>` | One snapshot value (blob + revision). |
 | Contact -> BTC account map | Encrypted MMKV `paykit-app-<id>` | Never reuses an index. |
-| Onboarding flag | Plain MMKV `app-settings` | Not secret. |
+| Onboarding flag, wallet origin | Plain MMKV `app-settings` | Not secret. The origin ('created' or 'restored') decides sign-up vs sign-in. |
+
+On iOS, Keychain items survive an app uninstall, while MMKV files do not.
+After a reinstall the seed, session secret and storage key are still there
+but the onboarding flag is gone, so onboarding offers to continue with the
+existing wallet (treated as restored: it signs in). Replacing that wallet
+asks first, and deletes the saved session secret. The old identity's
+encrypted Paykit files are kept, keyed by its pubky, so restoring the same
+phrase later keeps its links.
 
 Logging rules: ESLint forbids `console.log`. Paykit records are not redacted
 in JS, so never log them; the event log takes short, secret-free strings.

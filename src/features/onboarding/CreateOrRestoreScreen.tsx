@@ -1,30 +1,80 @@
 // Onboarding 2/5: create a new wallet, restore one from a phrase, or keep the
-// wallet already on this device (an onboarding that was not finished).
+// wallet already on this device.
 //
-// Functional for Phase 1 so the demo identities can be restored. Dev builds
-// prefill the phrase from the git-ignored src/config/demo.local.ts.
+// A wallet can already be here for two reasons: an onboarding that was not
+// finished, or an earlier install of this app (iOS keeps Keychain items, so
+// WDK's seed survives an uninstall). It may hold funds either way, so
+// replacing it asks first.
+//
+// Replacing also deletes the saved Pubky session secret: it is a live
+// credential for the old identity. The old identity's encrypted Paykit files
+// stay (keyed by its pubky), so restoring that phrase later keeps its links.
+//
+// Dev builds can restore the git-ignored demo phrase (src/config/demo.ts)
+// without it ever being put on screen.
 //
 // TODO(Phase 2 — Wallet): show the new phrase after "Create" (with a "write
-// it down" step), paste button, word-count feedback, nicer errors.
+// it down" step), reveal the current phrase before replacing it, paste
+// button, word-count feedback.
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 
 import { demoPrefill } from '../../config/demo';
 import type { OnboardingScreenProps } from '../../navigation/types';
+import { clearSessionSecret } from '../../paykit';
+import { setWalletOrigin } from '../../settings/appSettings';
 import { Button, Divider, Input, Screen, Text, space } from '../../ui';
 import { useWalletLifecycle } from '../../wallet';
 
+/** Ask before deleting the wallet on this device. Resolves true to go ahead. */
+function confirmReplace(): Promise<boolean> {
+  return new Promise((resolve) =>
+    Alert.alert(
+      'Replace the wallet on this device?',
+      'The wallet on this device will be deleted. If it holds funds, you can only get them back with its recovery phrase.',
+      [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Replace', style: 'destructive', onPress: () => resolve(true) },
+      ],
+      { cancelable: true, onDismiss: () => resolve(false) },
+    ),
+  );
+}
+
 export function CreateOrRestoreScreen({ navigation }: OnboardingScreenProps<'CreateOrRestore'>) {
   const wallet = useWalletLifecycle();
-  const [phrase, setPhrase] = useState(demoPrefill.mnemonic ?? '');
+  // The demo phrase is used directly and never shown, so it cannot end up in
+  // a screenshot or the app-switcher snapshot.
+  const [useDemoPhrase, setUseDemoPhrase] = useState(demoPrefill.mnemonic !== undefined);
+  const [typedPhrase, setTypedPhrase] = useState('');
   const [busy, setBusy] = useState<'create' | 'restore' | null>(null);
   const [error, setError] = useState<string>();
 
-  const run = async (kind: 'create' | 'restore', task: () => Promise<void>) => {
-    setBusy(kind);
+  const hasWallet = wallet.status === 'ready';
+  const phrase = useDemoPhrase ? (demoPrefill.mnemonic ?? '') : typedPhrase;
+
+  const onCreate = async () => {
+    setBusy('create');
     setError(undefined);
     try {
-      await task();
+      await wallet.createWallet();
+      setWalletOrigin('created');
+      navigation.navigate('InviteCode');
+    } catch {
+      setError("Couldn't create the wallet. Try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onRestore = async () => {
+    if (hasWallet && !(await confirmReplace())) return;
+    setBusy('restore');
+    setError(undefined);
+    try {
+      await wallet.restoreWallet(phrase);
+      setWalletOrigin('restored');
+      if (hasWallet) await clearSessionSecret();
       navigation.navigate('InviteCode');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong.');
@@ -33,14 +83,14 @@ export function CreateOrRestoreScreen({ navigation }: OnboardingScreenProps<'Cre
     }
   };
 
-  const hasWallet = wallet.status === 'ready';
-
   return (
     <Screen scroll title="Your wallet">
       <View style={styles.section}>
         {hasWallet ? (
           <>
-            <Text color="graphite">This device already has a wallet that hasn’t finished setting up.</Text>
+            <Text color="graphite">
+              This device already has a wallet, from an unfinished setup or an earlier install of this app.
+            </Text>
             <Button label="Continue with this wallet" onPress={() => navigation.navigate('InviteCode')} testID="continue-wallet" />
           </>
         ) : (
@@ -48,7 +98,7 @@ export function CreateOrRestoreScreen({ navigation }: OnboardingScreenProps<'Cre
             <Text color="graphite">One recovery phrase holds your Bitcoin and Ethereum keys and your Pubky identity.</Text>
             <Button
               label="Create a new wallet"
-              onPress={() => run('create', wallet.createWallet)}
+              onPress={onCreate}
               loading={busy === 'create'}
               disabled={busy !== null}
               testID="create-wallet"
@@ -59,20 +109,30 @@ export function CreateOrRestoreScreen({ navigation }: OnboardingScreenProps<'Cre
       <Divider style={styles.divider} />
       <View style={styles.section}>
         <Text variant="heading">Restore from a recovery phrase</Text>
-        <Input
-          label="Recovery phrase"
-          value={phrase}
-          onChangeText={setPhrase}
-          placeholder="12 or 24 words"
-          multiline
-          secret
-          error={error}
-          testID="restore-phrase"
-        />
+        {useDemoPhrase ? (
+          <>
+            <Text color="graphite" testID="demo-phrase-note">
+              Dev build: restores this device’s demo phrase from demo.local.ts. It is not shown on screen.
+            </Text>
+            <Button label="Type a different phrase" variant="secondary" compact onPress={() => setUseDemoPhrase(false)} />
+            {error ? <Text color="alert">{error}</Text> : null}
+          </>
+        ) : (
+          <Input
+            label="Recovery phrase"
+            value={typedPhrase}
+            onChangeText={setTypedPhrase}
+            placeholder="12 or 24 words"
+            multiline
+            secret
+            error={error}
+            testID="restore-phrase"
+          />
+        )}
         <Button
           label={hasWallet ? 'Replace with this phrase' : 'Restore'}
           variant="secondary"
-          onPress={() => run('restore', () => wallet.restoreWallet(phrase))}
+          onPress={onRestore}
           loading={busy === 'restore'}
           disabled={busy !== null || !wallet.isValidMnemonic(phrase)}
           testID="restore-wallet"

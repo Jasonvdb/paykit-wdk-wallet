@@ -18,7 +18,8 @@ export {
 } from './hooks';
 export { linkStateWords, sealRingFor, type LinkState } from './linkState';
 export { contactLinkFor, keyFromContactLink, shortKey } from './keys';
-export { describeError } from './errors';
+export { describeError, userMessageFor } from './errors';
+export { clearSessionSecret } from './secureStorage';
 export { arrayBufferToBase64, base64ToArrayBuffer } from './bytes';
 export type { SyncStatus, SyncRoundHook, SyncRoundContext } from './syncLoop';
 export type { SyncLogEntry } from './eventLog';
