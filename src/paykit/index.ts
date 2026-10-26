@@ -33,3 +33,4 @@ export { acceptedAssets, cannotPayReason, type PayeeAsset, type PublicPaymentOpt
 export { privatePaymentAddressesFor } from './privatePayments';
 export { pubkyFromText } from './keys';
 export { paykitErrorTag } from './errors';
+export { loadNetworkDetails, type NetworkDetails } from './networkDetails';

@@ -1,24 +1,27 @@
-// You tab: profile, your pubky and QR, what you publish publicly, recovery
-// phrase, test funds, network details, sync status and log.
+// You tab: profile, your pay-me code, what you publish publicly, test
+// funds, Bitcoin from contacts, recovery phrase, network details, sync
+// status and log.
 //
 // Phase 1 shows your identity and the Paykit sync status and event log, so
 // developers can watch the loop work. The loop never signs in by itself
 // (staging rate-limits sign-ins), so when a round fails, "Reconnect" builds
 // a fresh connection: saved session first, then sign-in.
 //
-// TODO(Phase 3 — Identity): profile (name, photo) editing, pay-me QR,
-// public endpoint toggles (BTC / USD₮), network details ("Paykit" and
-// "Noise" may appear here, nowhere else).
-// Phase 2 sections (own files next to this screen): recovery phrase,
-// test funds ("Get test USD₮"), and Bitcoin from contacts (collect).
+// Sections, each in its own file next to this screen:
+//   Phase 2  recovery phrase, test funds ("Get test USD₮"), Bitcoin from
+//            contacts (collect)
+//   Phase 3  profile (name, photo; edited in the EditProfile modal), your
+//            pay-me code, what you publish (public endpoint switches) and
+//            network details ("Paykit" and "Noise" may appear there,
+//            nowhere else in the main UI)
 import { StyleSheet, View } from 'react-native';
 
-import { STAGING_HOMESERVER } from '../../config/paykit';
 import type { MainTabScreenProps } from '../../navigation/types';
 import { usePaykit, useSyncLog, useSyncStatus, type SyncStatus } from '../../paykit';
-import { Button, Divider, KeyText, Screen, Text, relativeTime, space } from '../../ui';
+import { Button, Divider, Screen, Text, relativeTime, space } from '../../ui';
 import { PayMeCode } from '../wallet/receive/PayMeCode';
 import { ContactAccountsSection } from './ContactAccountsSection';
+import { NetworkDetailsSection } from './NetworkDetailsSection';
 import { ProfileSection } from './ProfileSection';
 import { PublicEndpointsSection } from './PublicEndpointsSection';
 import { RecoveryPhraseSection } from './RecoveryPhraseSection';
@@ -68,6 +71,11 @@ export function YouScreen({ navigation }: MainTabScreenProps<'You'>) {
       <RecoveryPhraseSection />
 
       <Text variant="heading" style={styles.section}>
+        Network details
+      </Text>
+      <NetworkDetailsSection />
+
+      <Text variant="heading" style={styles.section}>
         Sync status
       </Text>
       {connection.status === 'error' ? (
@@ -94,11 +102,6 @@ export function YouScreen({ navigation }: MainTabScreenProps<'You'>) {
           <Button label="Sync now" variant="secondary" compact onPress={() => service?.syncLoop.flush()} />
         </View>
       )}
-
-      <Text variant="caption" color="graphite" style={styles.section}>
-        Homeserver (staging)
-      </Text>
-      <KeyText value={STAGING_HOMESERVER} small />
 
       <Text variant="heading" style={styles.section}>
         Event log
