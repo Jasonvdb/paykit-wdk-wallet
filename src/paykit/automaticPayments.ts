@@ -41,7 +41,10 @@
 // Pay button. A manual answer (accept, decline, Pay) marks the request or
 // period manual-only in the ledger, and automatic handling never touches
 // it again; a manual payment in flight blocks the automatic reserve, and
-// the other way round. One payment per round at most, so a round stays
+// the other way round. After a backup restore, requests that came back
+// are never paid automatically, and nothing is until the person resumes
+// (./restoreReview.ts): the backup doesn't know what was paid after it.
+// One payment per round at most, so a round stays
 // short; a payment the hook can't make now is retried later with a
 // back-off, and its reason shows on the request page.
 //
@@ -65,6 +68,7 @@ import { shortKey } from './keys';
 import type { PaykitService } from './PaykitService';
 import { isScheduledPeriod, periodKey, toRfc3339, unpaidPeriods, type BillingPeriod } from './recurrence';
 import { paymentKey } from './requestBook';
+import { readRestoreReview } from './restoreReview';
 import {
   ACCEPT_AND_PAY_MARGIN_MS,
   ensureLedgerReady,
@@ -188,6 +192,11 @@ async function payAutomatically(service: PaykitService, requests: PaymentRequest
   const state = service.getState();
   if (!state) return;
   const timings = observeAcceptances(service, state.paymentRequests, Date.now());
+  // After a backup restore (./restoreReview.ts): nothing until the person
+  // resumes, and never a request that came back with the backup.
+  const review = readRestoreReview(service.appStore);
+  if (review?.paused) return;
+  const restored = new Set(review?.requestKeys ?? []);
   const chain = requests.getChain();
   const usable = allowances.usableAsPayer();
   if (!chain || usable.length === 0) return;
@@ -204,7 +213,8 @@ async function payAutomatically(service: PaykitService, requests: PaymentRequest
     if (mine.length === 0 || !terms?.asset || terms.amount === undefined || terms.cannotPay) continue;
     const rkey = requestKey(view.counterparty, view.requestId);
     // Answered by hand: the person's decision stands (sticky in the ledger).
-    if (ledger.manualRequests.has(rkey)) continue;
+    // Restored from a backup: it may have been paid after the backup was made.
+    if (ledger.manualRequests.has(rkey) || restored.has(rkey)) continue;
 
     if (view.state === 'proposed' && !view.accepted) {
       if (!mine.some((a) => a.terms && allowanceCovers(a.terms, terms, now))) continue;
@@ -320,7 +330,7 @@ async function acceptAutomatically(service: PaykitService, requests: PaymentRequ
   const asset = view.terms?.asset;
   if (!asset) return false;
   try {
-    await ensureLedgerReady(service);
+    await ensureLedgerReady(service, 'automatic');
     await claimForThisApp(service, view);
     // The SDK's view first (cheap, local): which of our Allowances may cover it now.
     const scope = { counterparty: view.counterparty, paymentRequestId: view.requestId };
@@ -372,7 +382,7 @@ async function payOccurrence(
   const key = paymentKey(view.counterparty, view.requestId, period);
   if (!chain) return false;
   try {
-    await ensureLedgerReady(service);
+    await ensureLedgerReady(service, 'automatic');
     const payable = await preparePayable(service, requests, view, key);
     if (!payable) return true;
     const prepared = preparedPayment(view, payable, period);

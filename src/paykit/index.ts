@@ -80,6 +80,7 @@ export { paymentKey } from './requestBook';
 // Backup and restore (Phase 6)
 export { backupSummaryWords, checkBackup, exportBackup, readBackupStatus, type BackupStatus, type BackupSummary } from './backup';
 export { backupOpenMessage, looksLikeBackup } from './backupCrypto';
+export { resumeAfterRestore, type RestoreReview } from './restoreReview';
 // Automatic payments under an Allowance (Phase 6)
 export {
   acceptAutomaticPayments,
@@ -104,6 +105,6 @@ export {
   readAllowanceTerms,
   type DurationChoice,
 } from './allowanceTerms';
-export { useAllowanceLedger, useAllowancesWith, useAutomaticPaymentNote } from './hooks';
+export { useAllowanceLedger, useAllowancesWith, useAutomaticPaymentNote, useRestoreReview } from './hooks';
 export { signUpFailureOf } from './errors';
 export { identityExistsAfter, signUpFailureMessage, type SignUpFailure } from './signUpErrors';

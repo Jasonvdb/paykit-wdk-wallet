@@ -13,15 +13,30 @@
 //             the foreground; it is never shown, stored or logged.
 //   Check     open a backup from the clipboard and restore it into a
 //             throwaway store, then say what it holds. Nothing here changes.
+//   Resume    after a restore that paused automatic payments
+//             (src/paykit/restoreReview.ts): the person confirms they
+//             checked Activity for payments made after the backup.
 //
 // Restoring for real happens in onboarding, after the recovery phrase
 // (src/features/onboarding/InviteCodeScreen.tsx): Paykit restores only
 // into an identity that has no contacts or requests on this phone yet.
 import * as Clipboard from 'expo-clipboard';
 import { useCallback, useEffect, useState } from 'react';
-import { Share, StyleSheet, View } from 'react-native';
+import { Alert, Share, StyleSheet, View } from 'react-native';
 
-import { backupOpenMessage, backupSummaryWords, checkBackup, describeError, exportBackup, readBackupStatus, usePaykit, userMessageFor, type BackupStatus } from '../../paykit';
+import {
+  backupOpenMessage,
+  backupSummaryWords,
+  checkBackup,
+  describeError,
+  exportBackup,
+  readBackupStatus,
+  resumeAfterRestore,
+  usePaykit,
+  userMessageFor,
+  useRestoreReview,
+  type BackupStatus,
+} from '../../paykit';
 import { Button, Text, formatDateTime, relativeTime, space, useForegroundSecret } from '../../ui';
 
 export function BackupSection() {
@@ -100,6 +115,7 @@ export function BackupSection() {
   const last = status?.lastBackup;
   return (
     <View style={styles.root} testID="backup-section">
+      <PausedAfterRestore />
       {/* In their own View: as direct siblings of the status line, whose height changes once it loads, iOS kept their old frames and cut off the last line. */}
       <View style={styles.intro}>
         <Text color="graphite" variant="secondary">
@@ -155,7 +171,41 @@ export function BackupSection() {
   );
 }
 
+/** Automatic payments paused by a restore: what to check, and Resume after a confirmation. */
+function PausedAfterRestore() {
+  const { service, log } = usePaykit();
+  const review = useRestoreReview();
+  if (!service || !review?.paused) return null;
+  const made = review.backupCreatedAtMs !== undefined ? `, made ${formatDateTime(review.backupCreatedAtMs)}` : '';
+  const resume = () =>
+    Alert.alert(
+      'Resume automatic payments?',
+      'Do this only once you have checked Activity for payments made after the backup: your limits count only the payments in the backup. Requests from the backup stay paid by hand.',
+      [
+        { text: 'Back', style: 'cancel' },
+        {
+          text: 'Resume',
+          onPress: () => {
+            resumeAfterRestore(service.appStore);
+            log.info('resumed automatic payments after a restore');
+            service.syncLoop.flush();
+          },
+        },
+      ],
+    );
+  return (
+    <View style={styles.paused} testID="backup-restore-paused">
+      <Text variant="bodyStrong">Automatic payments are paused</Text>
+      <Text color="graphite">
+        {`This phone was restored from a backup${made}. Payments made after it aren't in the backup, so the wallet can't tell what was already paid automatically.`}
+      </Text>
+      <Button label="Resume automatic payments" variant="secondary" compact onPress={resume} testID="backup-restore-resume" />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  paused: { gap: space.s, alignItems: 'flex-start', marginBottom: space.s },
   root: { gap: space.s, alignItems: 'stretch' },
   buttons: { gap: space.s },
   intro: { gap: space.s },

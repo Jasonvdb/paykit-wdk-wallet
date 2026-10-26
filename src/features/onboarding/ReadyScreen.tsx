@@ -18,6 +18,17 @@ import { PayMeCode } from '../wallet/receive/PayMeCode';
 export function ReadyScreen(_props: OnboardingScreenProps<'Ready'>) {
   const service = usePaykitService();
   const [, setOnboarded] = useOnboardingComplete();
+  const restored = service?.restoredFromBackup;
+  // A backup can be older than your last payment (src/paykit/restoreReview.ts).
+  const restoredWords = !restored
+    ? undefined
+    : [
+        restored.payerRequestKeys.length > 0 || restored.paysAutomatically ? 'Anything you paid after the backup was made isn’t in it.' : undefined,
+        restored.payerRequestKeys.length > 0 ? 'Requests from the backup are paid by hand: check Activity before you pay one.' : undefined,
+        restored.paysAutomatically ? 'Automatic payments are paused until you check Activity and resume them in You.' : undefined,
+      ]
+        .filter(Boolean)
+        .join(' ') || undefined;
 
   return (
     <Screen scroll footer={<Button label="Go to wallet" onPress={() => setOnboarded(true)} testID="go-to-wallet" />}>
@@ -28,6 +39,11 @@ export function ReadyScreen(_props: OnboardingScreenProps<'Ready'>) {
         {service?.restoredFromBackup ? (
           <Text color="seal" testID="ready-restored">
             {`Restored from your backup: ${backupSummaryWords(service.restoredFromBackup)}. Private connections form again once your contacts' phones are online.`}
+          </Text>
+        ) : null}
+        {restoredWords ? (
+          <Text color="graphite" testID="ready-restored-requests">
+            {restoredWords}
           </Text>
         ) : null}
         <Text color="graphite">Share your pay-me code so people can pay you or add you.</Text>

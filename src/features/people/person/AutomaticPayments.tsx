@@ -36,6 +36,7 @@ import {
   useAllowancesWith,
   usePaykit,
   userMessageFor,
+  useRestoreReview,
   type AllowanceView,
   type LinkState,
 } from '../../../paykit';
@@ -45,6 +46,7 @@ export function AutomaticPayments({ pubky, name, linkState, onSetUp }: { pubky: 
   const allowances = useAllowancesWith(pubky).filter((a) => a.state === 'proposed' || a.state === 'accepted');
   // A stopped one (you blocked or removed them) no longer pays, so a new offer is allowed.
   const youPay = allowances.some((a) => a.role === 'allower' && a.state === 'accepted' && !a.stoppedHere);
+  const pausedByRestore = useRestoreReview()?.paused === true;
 
   return (
     <View style={styles.root} testID="automatic-payments">
@@ -58,6 +60,11 @@ export function AutomaticPayments({ pubky, name, linkState, onSetUp }: { pubky: 
           </View>
         ))
       )}
+      {youPay && pausedByRestore ? (
+        <Text color="graphite" testID="automatic-payments-paused">
+          {"Paused since this phone was restored from a backup. Resume them in You > Contacts and requests backup once you've checked Activity."}
+        </Text>
+      ) : null}
       {!youPay && linkState === 'linked' && !allowances.some((a) => a.role === 'allower' && a.proposedByUs && !a.stoppedHere) ? (
         <Button label="Set up automatic payments" variant="secondary" compact onPress={onSetUp} testID="automatic-payments-set-up" />
       ) : null}

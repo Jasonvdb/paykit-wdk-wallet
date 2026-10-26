@@ -35,14 +35,22 @@
 // a fresh link (ensureLinkWithPeer). Messages the backup had not received
 // yet are not read from the old link.
 //
-// The payment ledger always needs reconciling after a restore; requests.ts
-// does that before the next payment (an empty history never erases what
-// the backup brought back).
+// A backup can be older than the last payment this identity made, so a
+// restore can't be trusted for automatic payments: ./restoreReview.ts has
+// the rules (requests that came back are paid by hand; automatic payments
+// pause until the person has checked Activity, if the backup held
+// Allowances we pay under). The summary below says which those are.
 import * as Crypto from 'expo-crypto';
-import { FfiRestoredLinkPolicy, type FfiPaykitSdkInterface } from '@synonymdev/react-native-paykit';
+import {
+  FfiAllowanceLifecycleState,
+  FfiAllowanceLocalRole,
+  FfiPaymentRequestLocalRole,
+  FfiRestoredLinkPolicy,
+  type FfiPaykitSdkInterface,
+} from '@synonymdev/react-native-paykit';
 
 import { CONTACT_ACCOUNTS_KEY, PUBLIC_ENDPOINT_CHOICE_KEY, type StringStore } from './addressCache';
-import { STOPPED_ALLOWANCES_KEY } from './allowances';
+import { requestKey, STOPPED_ALLOWANCES_KEY } from './allowances';
 import { asciiJson, buildEnvelope, readEnvelope, type BackupEnvelope } from './backupCrypto';
 import type { PaykitService } from './PaykitService';
 import { BOOK_KEY } from './requestBook';
@@ -75,6 +83,10 @@ export type BackupSummary = {
   receipts: number;
   /** Contacts whose private connection forms again after a restore. */
   reconnecting: number;
+  /** counterparty|requestId of the requests we are asked to pay. */
+  payerRequestKeys: string[];
+  /** It holds an Allowance we pay under (accepted, or offered by us and still open). */
+  paysAutomatically: boolean;
 };
 
 function readMeta(store: StringStore): BackupMeta | undefined {
@@ -145,12 +157,19 @@ export async function applyBackup(
 async function restoreAndCount(sdk: FfiPaykitSdkInterface, signal: AbortSignal, envelope: BackupEnvelope): Promise<BackupSummary> {
   const report = await sdk.restoreBackupString(envelope.paykit, FfiRestoredLinkPolicy.RequireRecovery, { signal });
   const state = await sdk.observeState({ signal });
+  const allowances = await sdk.listAllowances({ counterparty: undefined, localRole: FfiAllowanceLocalRole.Allower, states: [] }, { signal });
   return {
     createdAt: envelope.createdAt || undefined,
     contacts: Number(report.contactRecords),
     requests: state.paymentRequests.length,
     receipts: state.receipts.length,
     reconnecting: report.recoveryRequiredPeers.length,
+    payerRequestKeys: state.paymentRequests.filter((r) => r.localRole === FfiPaymentRequestLocalRole.Payer).map((r) => requestKey(r.counterparty, r.paymentRequestId)),
+    paysAutomatically: allowances.some(
+      (a) =>
+        a.localRole === FfiAllowanceLocalRole.Allower &&
+        (a.state === FfiAllowanceLifecycleState.Accepted || (a.state === FfiAllowanceLifecycleState.Proposed && a.proposalOutboundMessageId !== undefined)),
+    ),
   };
 }
 

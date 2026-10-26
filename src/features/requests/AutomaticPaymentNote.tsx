@@ -21,10 +21,11 @@ import {
   useAllowanceLedger,
   useAllowancesWith,
   useAutomaticPaymentNote,
+  useRestoreReview,
   type BillingPeriod,
   type RequestView,
 } from '../../paykit';
-import { Text, space } from '../../ui';
+import { Text, formatDateTime, space } from '../../ui';
 
 export function AutomaticPaymentNote({ view, name, duePeriod }: { view: RequestView; name: string; duePeriod?: BillingPeriod }) {
   const allowances = useAllowancesWith(view.counterparty).filter((a) => a.state === 'accepted' && a.healthy);
@@ -34,8 +35,21 @@ export function AutomaticPaymentNote({ view, name, duePeriod }: { view: RequestV
   // One-time: the request's payment. Recurring: the period due now, if any.
   const occurrenceKey = view.terms?.recurrence ? (duePeriod ? paymentKey(view.counterparty, view.requestId, duePeriod) : undefined) : paymentKey(view.counterparty, view.requestId);
   const periodNote = useAutomaticPaymentNote(occurrenceKey);
+  const review = useRestoreReview();
   const terms = view.terms;
   if (!terms) return null;
+
+  // Came back with a backup: it may have been paid after the backup was made (src/paykit/restoreReview.ts).
+  if (view.role === 'payer' && review?.requestKeys.includes(rkey)) {
+    const made = review.backupCreatedAtMs !== undefined ? ` made ${formatDateTime(review.backupCreatedAtMs)}` : '';
+    return (
+      <View style={styles.root} testID="automatic-payment-note">
+        <Text color="graphite" testID="automatic-payment-restored">
+          {`This request came back with a backup${made}. Payments made after that aren't in the backup, so check Activity before you pay. It is never paid automatically.`}
+        </Text>
+      </View>
+    );
+  }
   const now = Date.now();
 
   let line: string | undefined;

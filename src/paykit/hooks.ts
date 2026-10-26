@@ -17,6 +17,7 @@ import type { IncomingList, OutgoingListStatus } from './privatePaymentLists';
 import { cleanDisplayName, type PersonProfile } from './profiles';
 import type { RequestBook } from './requestBook';
 import { requestLinksOf, type RequestLink } from './requestLinks';
+import { readRestoreReview, RESTORE_REVIEW_KEY, subscribeRestoreReview, type RestoreReview } from './restoreReview';
 import { paymentRequestsOf, receivedReceiptKeys, requestFactsOf, requestViewOf, type RequestView } from './requests';
 import type { RequestFacts } from './requestStatus';
 import type { SyncStatus } from './syncLoop';
@@ -344,4 +345,11 @@ export function useAutomaticPaymentNote(key: string | undefined): string | undef
     () => notes?.getRevision(),
   );
   return key ? notes?.note(key) : undefined;
+}
+
+/** What a backup restore left for the person to check (./restoreReview.ts), or undefined if this phone never restored one. */
+export function useRestoreReview(): RestoreReview | undefined {
+  const service = usePaykitService();
+  const raw = useSyncExternalStore(subscribeRestoreReview, () => service?.appStore.getString(RESTORE_REVIEW_KEY));
+  return useMemo(() => (service && raw ? readRestoreReview(service.appStore) : undefined), [service, raw]);
 }

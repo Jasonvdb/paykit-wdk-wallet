@@ -75,6 +75,7 @@ import { WdkPaymentAdapter } from './paymentAdapter';
 import { AppSessionProvider, connectSession, type SessionOrigin } from './session';
 import { applyBackup, BACKUP_APP_KEYS, type BackupSummary } from './backup';
 import { backupKeyFrom, backupOpenMessage, openBackup, readEnvelope, sealBackup, type BackupEnvelope } from './backupCrypto';
+import { writeRestoreReview } from './restoreReview';
 import { loadOrCreateStorageKey } from './secureStorage';
 import { registerPrivatePaymentHooks } from './privatePayments';
 import { PrivateListStore } from './privatePaymentLists';
@@ -285,7 +286,17 @@ export class PaykitService {
         throw error;
       }
       addressCache.reloadFromStore();
-      log.info(`restored a backup: ${restored.contacts} contacts, ${restored.requests} requests, ${restored.reconnecting} links to form again`);
+      // Payments made after the backup are not in it: keep automatic payments out of what came back (./restoreReview.ts).
+      const createdAtMs = restored.createdAt ? Date.parse(restored.createdAt) : NaN;
+      writeRestoreReview(appStore, {
+        restoredAtMs: Date.now(),
+        backupCreatedAtMs: Number.isFinite(createdAtMs) ? createdAtMs : undefined,
+        requestKeys: restored.payerRequestKeys,
+        paused: restored.paysAutomatically,
+      });
+      log.info(
+        `restored a backup: ${restored.contacts} contacts, ${restored.requests} requests, ${restored.reconnecting} links to form again${restored.paysAutomatically ? '; automatic payments paused' : ''}`,
+      );
     }
 
     const service = new PaykitService(

@@ -77,6 +77,7 @@ import type { Erc20PaymentTypedData } from '../wallet/erc20PaymentProof';
 import { toPaykitDecimal } from '../wallet/amounts';
 import { UserFacingError, describeError } from './errors';
 import { parseEndpoint } from './endpoints';
+import { readRestoreReview } from './restoreReview';
 import { shortKey } from './keys';
 import type { PaykitService } from './PaykitService';
 import { btcProofJson, proofTransactionHash } from './paymentProofs';
@@ -465,14 +466,25 @@ export async function cancelRequest(service: PaykitService, counterparty: string
 
 /**
  * The SDK's payment ledger refuses every admission until the wallet has
- * reconciled its payment history once ("ReconciliationRequired"). This app
- * pays requests only through this module, so on a fresh install the ledger
- * is the whole history: we attest an empty history. Any attempt the SDK
- * already holds is kept (an empty history never erases evidence), and
- * uncertain ones stay reserved. A production wallet would reconcile its
- * own complete payment records here instead.
+ * reconciled its payment history ("ReconciliationRequired"): once per
+ * install, and again after every backup restore. This app pays requests
+ * only through this module, so on a fresh install the ledger is the whole
+ * history and we attest an empty one. Any attempt the SDK already holds is
+ * kept (an empty history never erases evidence), and uncertain ones stay
+ * reserved.
+ *
+ * After a restore that is not true: payments made after the backup are
+ * missing (./restoreReview.ts). There the attestation comes from the
+ * person, never from the background: a Pay tap (the request page warned
+ * them to check Activity first), or resuming automatic payments. So `by:
+ * 'automatic'` refuses while automatic payments are paused after a
+ * restore. A production wallet would reconcile its complete payment
+ * records here instead.
  */
-export async function ensureLedgerReady(service: PaykitService): Promise<void> {
+export async function ensureLedgerReady(service: PaykitService, by: 'person' | 'automatic'): Promise<void> {
+  if (by === 'automatic' && readRestoreReview(service.appStore)?.paused) {
+    throw new Error('automatic payments are paused after a backup restore');
+  }
   const state = await service.call('allowanceAccountingState', (sdk, signal) => sdk.allowanceAccountingState({ signal }));
   if (state && !state.requiresReconciliation) return;
   await service.call('reconcileAllowanceAccounting', (sdk, signal) =>
@@ -486,7 +498,7 @@ export async function ensureLedgerReady(service: PaykitService): Promise<void> {
       { signal },
     ),
   );
-  service.log.info('payment ledger reconciled (no earlier request payments)');
+  service.log.info(`payment ledger reconciled (no earlier request payments known to this phone; ${by})`);
 }
 
 /** A ledger refusal in words. */
@@ -682,7 +694,7 @@ export async function startPayment(service: PaykitService, prepared: PreparedPay
     service.syncLoop.flush();
   }
   await waitForOurAcceptance(service, prepared);
-  await ensureLedgerReady(service);
+  await ensureLedgerReady(service, 'person');
 
   const occurrence = { request: { counterparty: prepared.counterparty, paymentRequestId: prepared.requestId }, billingPeriod: prepared.period };
   const reserved = await service.call('reserveManualPayment', (sdk, signal) => sdk.reserveManualPayment(occurrence, executionChecks(prepared), { signal }));
@@ -899,7 +911,7 @@ export function paymentsWithUndeliveredProof(service: PaykitService, counterpart
  * ledger keeps the decision; paying it later runs every check again.
  */
 export async function deferPayment(service: PaykitService, counterparty: string, requestId: string, period: BillingPeriod): Promise<void> {
-  await ensureLedgerReady(service);
+  await ensureLedgerReady(service, 'person');
   await service.call('deferPaymentOccurrence', (sdk, signal) =>
     sdk.deferPaymentOccurrence({ request: { counterparty, paymentRequestId: requestId }, billingPeriod: period }, 'payer_postponed', { signal }),
   );
