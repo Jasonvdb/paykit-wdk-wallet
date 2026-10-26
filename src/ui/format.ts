@@ -21,3 +21,15 @@ export function relativeTime(timestampMs: number, nowMs: number = Date.now()): s
   if (days < 7) return `${days}d ago`;
   return new Date(timestampMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
+
+/** "Oct 26, 2026, 14:05": an absolute time for detail screens. */
+export function formatDateTime(timestampMs: number): string {
+  return new Date(timestampMs).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}

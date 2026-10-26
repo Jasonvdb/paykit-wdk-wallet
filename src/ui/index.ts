@@ -20,3 +20,6 @@ export { linkStateWords, sealRingFor } from './seal/linkStatePresentation';
 export type { SealRing } from './seal/types';
 export { useReduceMotion } from './motion';
 export { middleEllipsis, relativeTime } from './format';
+export { SegmentedControl, type SegmentOption, type SegmentedControlProps } from './SegmentedControl';
+export { DetailRow, type DetailRowProps } from './DetailRow';
+export { formatDateTime } from './format';
