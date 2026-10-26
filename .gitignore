@@ -1,0 +1,4 @@
+.paykit-build/
+vendor/*.tgz
+node_modules/
+.paykit-build.log
