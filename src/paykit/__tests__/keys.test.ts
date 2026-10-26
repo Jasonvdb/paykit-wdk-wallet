@@ -43,3 +43,16 @@ describe('keyFromContactLink on hostile text', () => {
     expect(pubkyFromText('paykitwdk://contact?pubky=%E0%A4%A')).toBeUndefined();
   });
 });
+
+describe('pubkyFromText on a shared pay-me message', () => {
+  it('finds the one key in a message of several lines', () => {
+    const message = `Ben in the test wallet. Paste this in Send to pay me, or open the link to add me:\n${contactLinkFor(BEN)}\n${BEN}`;
+    expect(pubkyFromText(message)).toBe(BEN);
+  });
+
+  it('refuses a message with two different keys', () => {
+    const other = `pubky${'y'.repeat(52)}`;
+    expect(pubkyFromText(`${BEN}\n${other}`)).toBeUndefined();
+    expect(pubkyFromText('hello\nworld')).toBeUndefined();
+  });
+});

@@ -85,7 +85,9 @@ export function parseScannedCode(raw: string): ScannedCode {
     return unsupported('That link is not a pay-me code or a payment link.');
   }
 
-  const pubky = pubkyFromText(text);
+  // A pasted Share message from a pay-me code has several lines (sentence,
+  // link, pubky); pubkyFromText reads those before the newlines are gone.
+  const pubky = pubkyFromText(text) ?? pubkyFromText(raw);
   if (pubky) return { kind: 'person', pubky };
 
   const ethereum = /^ethereum:(.*)$/i.exec(text);

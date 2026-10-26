@@ -48,11 +48,27 @@ const RAW_KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/;
  * pubky: a bare key (with the "pubky" or "pk:" prefix, or none) or a
  * paykitwdk://contact?pubky=<key> link. Undefined otherwise.
  *
+ * Text of several lines (the message the pay-me code's Share sends: a
+ * sentence, the contact link, the bare pubky) gives its key when every
+ * line that is a key or a contact link names the same one; other lines
+ * are ignored, and two different keys give none.
+ *
  * A shape check only, cheap enough to run on every keystroke. Before the
  * key is used, PaykitService.normalizeKey (the SDK's
  * normalizePubkyPublicKey) validates it for real.
  */
 export function pubkyFromText(text: string): string | undefined {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+  if (lines.length <= 1) return pubkyFromLine(text);
+  const keys = lines.map(pubkyFromLine).filter((key): key is string => key !== undefined);
+  const distinct = new Set(keys.map((key) => (key.startsWith('pubky') ? key.slice(5) : key)));
+  return distinct.size === 1 ? keys[0] : undefined;
+}
+
+function pubkyFromLine(text: string): string | undefined {
   const key = cleanKeyInput(keyFromContactLink(text) ?? '').toLowerCase();
   // Text starting with "pubky" must be the prefixed form. Otherwise a
   // half-typed "pubky…" key that happens to be 52 characters long would

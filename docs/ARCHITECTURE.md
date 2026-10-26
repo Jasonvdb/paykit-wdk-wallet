@@ -205,7 +205,7 @@ usePersonProfile(pubky?, hint?): { displayName?: string; image?: string /* data:
 useOwnProfile(): { displayName?; image? }
 usePublicEndpointStatus(): PublicEndpointStatus | undefined
 contactLinkFor(pubky), keyFromContactLink(text)
-pubkyFromText(text): string | undefined                    // shape check for typed / scanned text; normalizeKey validates
+pubkyFromText(text): string | undefined                    // shape check for typed / scanned text (or a shared pay-me message); normalizeKey validates
 // public payments (pay anyone by pubky)
 resolvePublicPaymentOptions(service, text): Promise<{ options: PublicPaymentOptions; profile? }>
 acceptedAssets(options): ('btc' | 'usdt')[]

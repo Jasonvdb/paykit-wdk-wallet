@@ -1,7 +1,8 @@
 // You > Network details: the developer view of what this wallet talks to.
-// It is the one place in the main UI where the words "Paykit", "Noise" and
-// "homeserver" appear (docs/DESIGN.md), because this app is a reference
-// for developers.
+// It is the one place in the main UI (besides Welcome) where the words
+// "Paykit" and "Noise" appear (docs/DESIGN.md), because this app is a
+// reference for developers. "Homeserver" is fine elsewhere: DESIGN's own
+// example error says "Couldn't reach Ana's homeserver".
 //
 //   Identity  your pubky, the homeserver, how the session started, the
 //             Pubky capability, the Paykit app id and registry (Noise key,

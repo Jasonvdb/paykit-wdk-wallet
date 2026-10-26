@@ -10,6 +10,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable } from 'react-native';
 
+import { pubkyFromText } from '../../../paykit';
 import { Input, Text } from '../../../ui';
 import { ASSETS, checkRecipientAddress } from '../../../wallet';
 import { addressRecipient, type RecipientFieldProps } from './recipient';
@@ -32,7 +33,8 @@ export function AddressRecipientField({
   useEffect(() => {
     // Only once the person is done with the field (paste or blur), not
     // halfway through typing.
-    if (touched && !check.ok && check.reason === 'pubky' && onPubky) onPubky(text);
+    // A bare pubky, a contact link or a shared pay-me message: pay the person.
+    if (touched && !check.ok && (check.reason === 'pubky' || pubkyFromText(text)) && onPubky) onPubky(text);
   }, [touched, check, text, onPubky]);
 
   const onPaste = async () => {

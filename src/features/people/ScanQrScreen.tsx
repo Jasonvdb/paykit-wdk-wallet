@@ -17,7 +17,7 @@ import * as Clipboard from 'expo-clipboard';
 import { CameraView, scanFromURLAsync, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { useRef, useState } from 'react';
-import { Linking, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, View } from 'react-native';
 
 import type { RootScreenProps } from '../../navigation/types';
 import { describeError, usePaykit } from '../../paykit';
@@ -55,7 +55,7 @@ export function ScanQrScreen({ navigation }: RootScreenProps<'ScanQr'>) {
       return false;
     }
     if (pubky === service.publicKey) {
-      setError("That's your own pay-me code.");
+      setError("That's your own pay-me code. Scan the other person's code.");
       return false;
     }
     navigation.replace('AddPerson', { pubky });
@@ -118,9 +118,11 @@ export function ScanQrScreen({ navigation }: RootScreenProps<'ScanQr'>) {
           blurOnSubmit
           returnKeyType="done"
           accessory={
-            <Text variant="bodyStrong" color="seal" onPress={onPaste} accessibilityRole="button" testID="scan-paste">
-              Paste
-            </Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Paste" onPress={onPaste} hitSlop={8} testID="scan-paste">
+              <Text variant="bodyStrong" color="seal">
+                Paste
+              </Text>
+            </Pressable>
           }
           testID="scan-text"
         />
@@ -169,7 +171,7 @@ function CameraArea({ permission, onRequest, onScanned }: CameraAreaProps) {
       <CameraView style={StyleSheet.absoluteFill} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={onScanned} />
       <View style={styles.frame} pointerEvents="none" />
       <Text variant="caption" color="sheet" style={styles.cameraHint}>
-        Point at a pay-me code or an address. Simulators have no camera: paste instead.
+        Point at a pay-me code or an address.
       </Text>
     </View>
   );

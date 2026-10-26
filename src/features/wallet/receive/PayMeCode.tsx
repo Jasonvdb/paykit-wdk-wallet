@@ -5,10 +5,13 @@
 // The QR holds the contact link `paykitwdk://contact?pubky=<key>`: a phone
 // camera opens this app straight on Add person, and this app's scanner
 // reads both the link and a bare pubky. Copy gives the bare pubky (what
-// other Pubky apps expect); Share sends both.
+// other Pubky apps expect); Share sends a sentence, the link and the pubky,
+// one per line, and that whole message can be pasted into Send's Person
+// field, Add person or Scan (pubkyFromText finds the one key in it).
 //
-// With the pubky, people can pay you through your public addresses
-// (You > What you publish) or add you as a contact for private ones.
+// Scanning opens Add person; paying you by pubky (your public addresses,
+// You > What you publish) starts from Send. The note under the code says
+// which is which. Share text avoids the SDK names (docs/DESIGN.md).
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
@@ -44,8 +47,8 @@ export function PayMeCode({ qrSize = 208 }: { qrSize?: number }) {
     setCopied(true);
   };
   const onShare = () => {
-    const who = profile.displayName ? `${profile.displayName} on ` : '';
-    void Share.share({ message: `Pay ${who}the Paykit WDK test wallet: ${link}\n\nMy pubky: ${pubky}` });
+    const who = profile.displayName ?? 'Me';
+    void Share.share({ message: `${who} in the test wallet. Paste this in Send to pay me, or open the link to add me:\n${link}\n${pubky}` });
   };
 
   return (
@@ -67,7 +70,7 @@ export function PayMeCode({ qrSize = 208 }: { qrSize?: number }) {
         <Button label="Share" variant="secondary" compact onPress={onShare} testID="pay-me-share" />
       </View>
       <Text variant="caption" color="graphite" style={styles.note}>
-        Scan or paste this code to pay you or add you as a contact.
+        Others scan this code to add you as a contact. To pay you, they paste your pubky in Send.
       </Text>
     </Card>
   );

@@ -81,3 +81,10 @@ describe('parseScannedCode and contracts', () => {
     expect(parseScannedCode(`paykitwdk://send?to=${SEPOLIA_USDT}`).kind).toBe('unsupported');
   });
 });
+
+describe('parseScannedCode and shared pay-me messages', () => {
+  it('reads the pubky out of a pasted Share message', () => {
+    const message = `Ben in the test wallet. Paste this in Send to pay me, or open the link to add me:\n${contactLinkFor(BEN)}\n${BEN}`;
+    expect(parseScannedCode(message)).toEqual({ kind: 'person', pubky: BEN });
+  });
+});

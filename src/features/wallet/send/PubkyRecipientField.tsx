@@ -47,6 +47,8 @@ type Lookup =
 export function PubkyRecipientField({ asset, initialText, onChange }: RecipientFieldProps) {
   const { service, log } = usePaykit();
   const [text, setText] = useState(initialText ?? '');
+  /** Show "not a pubky" once the person is done with the field (blur or paste), as the address field does. */
+  const [touched, setTouched] = useState(!!initialText);
   const [lookup, setLookup] = useState<Lookup>({ state: 'idle' });
   const [attempt, setAttempt] = useState(0);
   const key = pubkyFromText(text);
@@ -106,12 +108,14 @@ export function PubkyRecipientField({ asset, initialText, onChange }: RecipientF
 
   const onPaste = async () => {
     const pasted = await Clipboard.getStringAsync();
-    if (pasted) setText(pasted.trim());
+    if (!pasted) return;
+    setText(pasted.trim());
+    setTouched(true);
   };
 
   const payeeAsset: PayeeAsset = asset === 'usdt' ? 'usdt' : 'btc';
   const reason = ready?.options ? cannotPayReason(ready.options, payeeAsset, name) : undefined;
-  const typedButNotKey = text.trim() !== '' && !key;
+  const typedButNotKey = touched && text.trim() !== '' && !key;
 
   return (
     <View style={styles.root}>
@@ -119,13 +123,14 @@ export function PubkyRecipientField({ asset, initialText, onChange }: RecipientF
         label="To"
         value={text}
         onChangeText={setText}
+        onBlur={() => setTouched(true)}
         placeholder="pubky…"
         mono
         multiline
         blurOnSubmit
         returnKeyType="done"
-        error={typedButNotKey ? 'That is not a pubky. A pubky starts with "pubky" and has 52 more letters and digits.' : undefined}
-        hint="Their pubky or pay-me code. You pay the address they publish for that asset."
+        error={typedButNotKey ? "That doesn't look like a pubky. Paste their whole pubky, or the message from their pay-me code." : undefined}
+        hint="Their pubky, or the message they shared from their pay-me code. You pay the address they publish for that asset."
         accessory={
           <Pressable accessibilityRole="button" accessibilityLabel="Paste" onPress={onPaste} hitSlop={8} testID="paste-pubky">
             <Text variant="bodyStrong" color="seal">
