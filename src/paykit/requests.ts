@@ -9,11 +9,17 @@
 // - The inbox is already in the observeState snapshot
 //   (`usePaykitState().paymentRequests`, `.receipts`), refreshed every sync
 //   round. Add a round hook if requests need work each round (e.g. due
-//   recurring periods):
+//   recurring periods), inside registerPaymentRequestHooks below
+//   (PaykitService.connect calls it once per service):
 //     service.syncLoop.addRoundHook('payment-requests', async (ctx) => { ... })
 //
 // Amounts at this boundary are Paykit decimal strings; convert with
 // toPaykitDecimal / fromPaykitDecimal (src/wallet/amounts.ts). Run every SDK
 // call through `service.call(label, task)` and flush the loop after a user
 // action. Never log request records: they are not redacted in JS.
-export {};
+import type { PaykitService } from './PaykitService';
+
+/** Called once per connected service, before the sync loop starts. Phase 5 adds its round hooks here. */
+export function registerPaymentRequestHooks(_service: PaykitService): void {
+  // Phase 5.
+}

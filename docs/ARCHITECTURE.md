@@ -117,7 +117,7 @@ in-memory record of transactions this app just sent.
 
 ```ts
 class PaykitService {
-  static connect(opts: { mnemonic: string; signupCode?: string; log: SyncEventLog }): Promise<PaykitService>;
+  static connect(opts: { mnemonic: string; signupCode?: string; appPublished: boolean; log: SyncEventLog }): Promise<PaykitService>;
   static publicKeyForMnemonic(mnemonic: string): string;
   readonly publicKey: string;
   readonly sessionOrigin: 'import' | 'signIn' | 'signUp';
@@ -127,14 +127,15 @@ class PaykitService {
   readonly log: SyncEventLog;
 
   call<T>(label: string, task: (sdk, signal: AbortSignal) => Promise<T>, priority?: 'user' | 'background'): Promise<T>;
-  dispose(): void;
+  dispose(): void;                                         // stops the loop, cancels queued calls, frees the SDK handle
 
-  setUpIdentity(): Promise<FfiPaykitAppRegistry>;          // Noise key authorization + app registry
+  setUpIdentity(): Promise<FfiPaykitAppRegistry>;          // Noise key authorization + app registry, then public endpoints
   publishProfile(input: { displayName?: string; avatar?: { bytes: ArrayBuffer; contentType } }): Promise<void>;
   currentProfile(): Promise<FfiProfileResolution | undefined>;
   resolveProfile(publicKey: string): Promise<FfiProfileResolution | undefined>;
   fetchImageDataUri(pubkyUri: string): Promise<string | undefined>;
-  syncPublicEndpoints(): Promise<FfiEndpointSyncReport | undefined>;
+  setPublicAddresses(addresses: { btc: string; evm: string }): void;  // cache + publish once the app is registered
+  syncPublicEndpoints(priority?): Promise<FfiEndpointSyncReport>;      // the raw publish call
   normalizeKey(text: string): string;
   resolvePeer(text: string): Promise<{ publicKey; registry?; publicPayment; profile? }>;
   saveContactAndLink(text: string, label?: string): Promise<FfiContactRecord>;
@@ -161,7 +162,7 @@ linkStateWords(state), sealRingFor(state), contactLinkFor(pubky), keyFromContact
 | File | Responsibility |
 |---|---|
 | `PaykitService.ts` | Owns the one SDK handle; wires session, storage, adapter, queue and loop; the facade above. |
-| `PaykitProvider.tsx` | Connects (auto after onboarding), copies WDK addresses into the cache, derives contact BTC addresses. |
+| `PaykitProvider.tsx` | Connects (auto after onboarding), hands WDK addresses to the service, derives contact BTC addresses, drops the service when its wallet goes away. |
 | `hooks.ts` | Screen-facing hooks; maps `FfiLinkedPeerState` to `LinkState`. |
 | `session.ts` | `importSession` -> `signIn` -> `signUp` (onboarding only), and the synchronous session provider. |
 | `secureStorage.ts` | Keychain/Keystore: MMKV encryption key and the session secret. |
@@ -209,7 +210,17 @@ account 0 for everyone, because each EVM index would need its own gas.
 Every SDK call goes through `SerialCallQueue`: one call at a time, user
 calls before queued background calls, a timeout that aborts the call through
 its `AbortSignal`, and up to three retries with backoff for `SharedStateBusy`.
-Use `service.call(label, task)` for any SDK method not in the facade.
+Use `service.call(label, task)` for any SDK method not in the facade; the
+queue itself is private to the service. `dispose()` closes the queue:
+queued calls are rejected and nothing new starts on the released handle.
+
+### Publishing public endpoints
+
+The SDK refuses to publish endpoints until `publishPaykitApp` has run on
+this install ("Paykit app ... must be published before creating new
+state"). So the service publishes them only after `setUpIdentity()` (or,
+after onboarding, straight away), and only counts a publish with no failed
+endpoint as done. Anything else is retried from the next sync round.
 
 ### The sync loop
 
@@ -223,7 +234,9 @@ every 3 s (paused in the background):
 4. `receivePrivateMessagesFromLinkedPeers()`;
 5. `processPendingPrivateMessages()` again if anything arrived (delivery
    confirmations);
-6. extension hooks (`syncLoop.addRoundHook(name, hook)`);
+6. extension hooks (`syncLoop.addRoundHook(name, hook)`), including the
+   service's own retry of a public endpoint publish that has not worked
+   yet;
 7. `observeState()`, which feeds the React hooks.
 
 `syncLoop.flush()` runs a round immediately; call it after a user action
@@ -239,6 +252,10 @@ status with a "Try again" button.
   wallet's `useSend`.
 - **Payment requests and receipts (Phase 5)** go in `src/paykit/requests.ts`.
   The inbox is already in `usePaykitState().paymentRequests`.
+- Round hooks are registered in `registerPrivatePaymentHooks` and
+  `registerPaymentRequestHooks`. `PaykitService.connect` calls both once
+  per service, before the loop starts, so neither phase edits the service or
+  the provider to wire its hook.
 - Feature agents work in their own `src/features/<feature>` folder. Shared
   layers (`src/ui`, `src/wallet`, `src/paykit`, `src/navigation`) change only
   for additions the feature needs.

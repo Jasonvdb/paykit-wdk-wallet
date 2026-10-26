@@ -10,10 +10,14 @@
 //
 // Connection rules:
 // - After onboarding, the provider connects automatically once the wallet is
-//   unlocked (`autoConnect`). During onboarding, the invite-code screen calls
-//   `connect({ signupCode })` itself.
+//   unlocked (`autoConnect`). During onboarding, the identity screen calls
+//   `connect()` itself.
 // - One connect at a time; a failed connect stays failed until someone
 //   calls `connect()` again (no retry loop: staging rate-limits sign-ins).
+// - A service belongs to the wallet it was derived from. When the wallet
+//   stops being 'ready' (locked, deleted, or replaced by a restore during
+//   onboarding) the service is disposed. Otherwise the new wallet's
+//   addresses would be published under the old wallet's pubky.
 import { createContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { useBtcAddressLoader, useWalletAddresses, useWalletLifecycle } from '../wallet';
@@ -33,7 +37,7 @@ export type PaykitContextValue = {
   service: PaykitService | undefined;
   /** The developer event log (You > Sync status). Lives across reconnects. */
   log: SyncEventLog;
-  /** Connect (or reconnect). Pass a signup code only during onboarding. */
+  /** Connect (or reconnect). Pass a signup code only for a wallet created on this device, during onboarding. */
   connect: (options?: { signupCode?: string }) => Promise<PaykitService>;
 };
 
@@ -45,7 +49,10 @@ export function PaykitProvider({ autoConnect, children }: { autoConnect: boolean
   const loadBtcAddresses = useBtcAddressLoader();
   const [log] = useState(() => new SyncEventLog());
   const [connection, setConnection] = useState<PaykitConnection>({ status: 'disconnected' });
+  const autoConnected = useRef(false);
   const connecting = useRef<Promise<PaykitService> | null>(null);
+  /** Bumped whenever the wallet leaves 'ready'; a connect that spans a bump is thrown away. */
+  const walletGeneration = useRef(0);
   const service = connection.status === 'connected' ? connection.service : undefined;
 
   const { status: walletStatus, getMnemonic } = wallet;
@@ -55,13 +62,20 @@ export function PaykitProvider({ autoConnect, children }: { autoConnect: boolean
       if (connecting.current) return connecting.current;
       const attempt = (async () => {
         if (walletStatus !== 'ready') throw new Error('The wallet is not unlocked yet.');
+        const generation = walletGeneration.current;
         setConnection({ status: 'connecting' });
         try {
           const next = await PaykitService.connect({
             mnemonic: await getMnemonic(),
             signupCode: options.signupCode,
+            // Onboarding only finishes after setUpIdentity has registered the app.
+            appPublished: autoConnect,
             log,
           });
+          if (generation !== walletGeneration.current) {
+            next.dispose();
+            throw new Error('The wallet changed while connecting.');
+          }
           next.syncLoop.start();
           void next.refreshState('background');
           setConnection({ status: 'connected', service: next });
@@ -80,11 +94,18 @@ export function PaykitProvider({ autoConnect, children }: { autoConnect: boolean
       );
       return attempt;
     },
-    [walletStatus, getMnemonic, log],
+    [walletStatus, getMnemonic, autoConnect, log],
   );
 
-  // Auto-connect after onboarding, once per launch.
-  const autoConnected = useRef(false);
+  // Drop the service whenever the wallet it came from goes away.
+  useEffect(() => {
+    if (walletStatus === 'ready') return;
+    walletGeneration.current += 1;
+    autoConnected.current = false;
+    setConnection((current) => (current.status === 'disconnected' ? current : { status: 'disconnected' }));
+  }, [walletStatus]);
+
+  // Auto-connect after onboarding, once per unlocked wallet.
   useEffect(() => {
     if (!autoConnect || walletStatus !== 'ready' || autoConnected.current) return;
     autoConnected.current = true;
@@ -93,16 +114,12 @@ export function PaykitProvider({ autoConnect, children }: { autoConnect: boolean
     connect().catch(() => undefined);
   }, [autoConnect, walletStatus, connect, connection.status]);
 
-  // Copy account-0 addresses into the adapter cache, then publish them once.
-  const publishedFor = useRef<string | null>(null);
+  // Hand account-0 addresses to the service: it caches them for the adapter
+  // and publishes them as public endpoints once the app is registered.
   useEffect(() => {
     if (!service || !addresses.btc || !addresses.evm) return;
-    service.addressCache.setPublicAddresses({ btc: addresses.btc, evm: addresses.evm });
-    const key = `${service.publicKey}:${addresses.btc}:${addresses.evm}`;
-    if (publishedFor.current === key) return;
-    publishedFor.current = key;
-    service.syncPublicEndpoints().catch((error) => log.warn(`public endpoints: ${describeError(error)}`));
-  }, [service, addresses.btc, addresses.evm, log]);
+    service.setPublicAddresses({ btc: addresses.btc, evm: addresses.evm });
+  }, [service, addresses.btc, addresses.evm]);
 
   // Derive contacts' BTC addresses: all known ones now, new ones on demand.
   useEffect(() => {
@@ -133,7 +150,7 @@ export function PaykitProvider({ autoConnect, children }: { autoConnect: boolean
     };
   }, [service, loadBtcAddresses, log]);
 
-  // Stop the loop when the provider goes away (e.g. the wallet is reset).
+  // Dispose a service once it is replaced, dropped, or the provider unmounts.
   useEffect(() => () => service?.dispose(), [service]);
 
   const value = useMemo<PaykitContextValue>(

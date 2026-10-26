@@ -7,7 +7,10 @@
 //                        state store, payment adapter, SDK handle, initialize
 //   setUpIdentity()      publish the Noise key authorization + app registry
 //   publishProfile()     name + optional avatar
-//   syncPublicEndpoints() publish BTC/USD₮ account-0 addresses
+//   setPublicAddresses() hand over WDK's account-0 addresses; they are
+//                        published as public endpoints once the app is
+//                        registered (and retried each sync round until
+//                        that works)
 //   resolvePeer()        what another pubky publishes (registry, endpoints, profile)
 //   saveContactAndLink() / removeContact() / blockContact()
 //   refreshState()       observeState snapshot for the UI
@@ -20,11 +23,12 @@
 //
 // Extension points for later phases (private payments, payment requests):
 // - `call(label, task)` runs any SDK method through the queue;
-// - `syncLoop.addRoundHook(name, hook)` runs code at the end of every sync
-//   round;
+// - round hooks: registerPrivatePaymentHooks (./privatePayments.ts) and
+//   registerPaymentRequestHooks (./requests.ts) are called once per service,
+//   here in connect(), before the loop starts. Each phase fills in its own
+//   function with `service.syncLoop.addRoundHook(name, hook)`;
 // - `addressCache` and `reservationInputsFor` (./paymentAdapter.ts) give the
 //   per-contact receiving details.
-// See src/paykit/privatePayments.ts and src/paykit/requests.ts.
 import {
   FfiLinkedPeerState,
   FfiPaykitSdk,
@@ -55,14 +59,24 @@ import { cleanKeyInput, shortKey } from './keys';
 import { WdkPaymentAdapter } from './paymentAdapter';
 import { connectSession, type SessionOrigin } from './session';
 import { loadOrCreateStorageKey } from './secureStorage';
+import { registerPrivatePaymentHooks } from './privatePayments';
+import { registerPaymentRequestHooks } from './requests';
 import { openPaykitAppStore, openStateStore } from './stateStore';
 import { PaykitSyncLoop } from './syncLoop';
 
 export type ConnectOptions = {
   /** The wallet's BIP-39 phrase. Used once to derive the Pubky key, then dropped. */
   mnemonic: string;
-  /** Only during onboarding: a staging invite code, used only if sign-in fails. */
+  /**
+   * Only for a wallet created on this device, during onboarding: a staging
+   * invite code for the brand-new identity. See ./session.ts.
+   */
   signupCode?: string;
+  /**
+   * True once this install has run setUpIdentity (onboarding finished), so
+   * the SDK's local state already has the Paykit app registered.
+   */
+  appPublished: boolean;
   log: SyncEventLog;
 };
 
@@ -85,10 +99,18 @@ const MAX_AVATAR_BYTES = 512 * 1024;
 
 let liveService: PaykitService | undefined;
 
+/** Free the Rust side of an SDK handle now. The factory is typed as the interface but returns the class. */
+function releaseSdk(sdk: FfiPaykitSdkInterface): void {
+  if (FfiPaykitSdk.instanceOf(sdk)) sdk.uniffiDestroy();
+}
+
 export class PaykitService {
   private state: FfiPaykitStateObservation | undefined;
   private readonly stateListeners = new Set<() => void>();
   private disposed = false;
+  /** The address pair last published without failures (see publishPublicEndpointsIfNeeded). */
+  private endpointsPublishedFor: string | undefined;
+  private publishingEndpoints = false;
 
   private constructor(
     private readonly sdk: FfiPaykitSdkInterface,
@@ -96,8 +118,9 @@ export class PaykitService {
     readonly sessionOrigin: SessionOrigin,
     readonly identity: FfiIdentityStatus,
     readonly addressCache: ReceivingAddressCache,
-    readonly queue: SerialCallQueue,
+    private readonly queue: SerialCallQueue,
     readonly log: SyncEventLog,
+    private appPublished: boolean,
   ) {
     this.syncLoop = new PaykitSyncLoop({
       call: (label, task) => this.call(label, task, 'background'),
@@ -105,6 +128,9 @@ export class PaykitService {
       log,
       onRoundComplete: () => this.refreshState('background'),
     });
+    // Retries a failed or not-yet-possible endpoint publish. Costs nothing
+    // (no SDK call) once the current addresses are published.
+    this.syncLoop.addRoundHook('public-endpoints', () => this.publishPublicEndpointsIfNeeded('background'));
   }
 
   readonly syncLoop: PaykitSyncLoop;
@@ -158,10 +184,19 @@ export class PaykitService {
           ? log.warn(`${event.label}: busy, retry ${event.attempt}`)
           : log.error(`${event.label}: timed out after ${Math.round(event.timeoutMs / 1000)} s`),
     });
-    const identity = await queue.run('initialize', (signal) => sdk.initialize({ signal }));
+    let identity: FfiIdentityStatus;
+    try {
+      identity = await queue.run('initialize', (signal) => sdk.initialize({ signal }));
+    } catch (error) {
+      queue.close();
+      releaseSdk(sdk);
+      throw error;
+    }
     log.info('Paykit initialized');
 
-    const service = new PaykitService(sdk, publicKey, session.origin, identity, addressCache, queue, log);
+    const service = new PaykitService(sdk, publicKey, session.origin, identity, addressCache, queue, log, options.appPublished);
+    registerPrivatePaymentHooks(service);
+    registerPaymentRequestHooks(service);
     liveService = service;
     return service;
   }
@@ -172,10 +207,19 @@ export class PaykitService {
     return this.queue.run(label, (signal) => task(this.sdk, signal), priority);
   }
 
-  /** Stop background work. The SDK handle is released with the object. */
+  /**
+   * Stop the sync loop, cancel queued SDK calls and release the SDK handle.
+   * Releasing it explicitly (instead of waiting for garbage collection)
+   * matters because the handle holds a live Pubky session: a forgotten old
+   * handle could keep acting for an identity the app has moved away from.
+   * A call already running keeps its own reference and finishes harmlessly.
+   */
   dispose(): void {
+    if (this.disposed) return;
     this.disposed = true;
     this.syncLoop.stop();
+    this.queue.close();
+    releaseSdk(this.sdk);
     if (liveService === this) liveService = undefined;
   }
 
@@ -185,6 +229,11 @@ export class PaykitService {
    * Publish what peers need before they can link to us or pay us: the
    * Paykit Noise key authorization (signed by the root key) and our entry in
    * the app registry. Safe to repeat.
+   *
+   * Registering the app also unlocks the SDK's other writes: until
+   * publishPaykitApp has run on this install, it refuses to publish
+   * endpoints ("Paykit app ... must be published before creating new
+   * state"). So public endpoints are published here, right after.
    */
   async setUpIdentity(): Promise<FfiPaykitAppRegistry> {
     await this.call('publishPaykitNoiseKeyAuthorization', (sdk, signal) => sdk.publishPaykitNoiseKeyAuthorization({ signal }));
@@ -195,7 +244,9 @@ export class PaykitService {
         { signal },
       ),
     );
+    this.appPublished = true;
     this.log.info('published Noise key authorization and app registry');
+    await this.publishPublicEndpointsIfNeeded('user');
     return registry;
   }
 
@@ -247,18 +298,57 @@ export class PaykitService {
   // Public endpoints -----------------------------------------------------------
 
   /**
-   * Publish account-0 addresses as public payment endpoints. Uses the
-   * explicit-input SDK call, so publication does not depend on the adapter
-   * callbacks. Unchanged endpoints are not rewritten.
+   * Hand over WDK's account-0 addresses. They go into the synchronous
+   * address cache (the payment adapter reads it) and are published as
+   * public endpoints as soon as that is allowed.
    */
-  async syncPublicEndpoints(): Promise<FfiEndpointSyncReport | undefined> {
+  setPublicAddresses(addresses: { btc: string; evm: string }): void {
+    if (this.disposed) return;
+    this.addressCache.setPublicAddresses(addresses);
+    void this.publishPublicEndpointsIfNeeded('user');
+  }
+
+  /**
+   * Publish account-0 addresses as public payment endpoints, once per
+   * address pair. Skips (and a later sync round retries) while the app is
+   * not registered yet or the addresses are not known yet. Only a publish
+   * with no failed endpoint counts as done, so a partial failure is retried.
+   */
+  private async publishPublicEndpointsIfNeeded(priority: CallPriority): Promise<void> {
+    if (this.disposed || !this.appPublished || this.publishingEndpoints) return;
+    const { btc, evm } = this.addressCache.getPublicAddresses();
+    if (!btc || !evm) return;
+    const addressPair = `${btc}|${evm}`;
+    if (addressPair === this.endpointsPublishedFor) return;
+    this.publishingEndpoints = true;
+    try {
+      const report = await this.syncPublicEndpoints(priority);
+      if (report.failed.length === 0) this.endpointsPublishedFor = addressPair;
+    } catch (error) {
+      this.log.warn(`public endpoints: ${describeError(error)} (retrying next round)`);
+    } finally {
+      this.publishingEndpoints = false;
+    }
+  }
+
+  /**
+   * Publish the cached account-0 addresses as public payment endpoints. Uses
+   * the explicit-input SDK call, so publication does not depend on the
+   * adapter callbacks. Unchanged endpoints are not rewritten. Requires the
+   * app to be registered (setUpIdentity).
+   */
+  async syncPublicEndpoints(priority: CallPriority = 'user'): Promise<FfiEndpointSyncReport> {
     const details = this.addressCache.publicReceivingDetails();
-    if (details.length === 0) return undefined;
-    const report = await this.call('syncPublicEndpointsWithReceivingDetails', (sdk, signal) =>
-      sdk.syncPublicEndpointsWithReceivingDetails(
-        details.map(({ identifier, payload }) => ({ identifier, payload: new FfiPaymentPayload(payload) })),
-        { signal },
-      ),
+    // An empty list would unpublish every endpoint; never send one by accident.
+    if (details.length === 0) throw new Error('No receiving addresses yet');
+    const report = await this.call(
+      'syncPublicEndpointsWithReceivingDetails',
+      (sdk, signal) =>
+        sdk.syncPublicEndpointsWithReceivingDetails(
+          details.map(({ identifier, payload }) => ({ identifier, payload: new FfiPaymentPayload(payload) })),
+          { signal },
+        ),
+      priority,
     );
     const names = (list: { identifier: string }[]) => list.map((c) => c.identifier).join(', ') || 'none';
     this.log.info(`public endpoints: published ${names(report.published)}; failed ${names(report.failed)}`);

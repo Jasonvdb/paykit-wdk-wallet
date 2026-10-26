@@ -6,7 +6,9 @@
 //   `reservationInputsFor(service.addressCache, peer)` (./paymentAdapter.ts)
 //   with `syncPrivatePaymentListsWithReservationsAndProcessOutbound`, and
 //   re-share when a contact's BTC address is first derived or a link
-//   becomes Linked. Register that as a sync loop hook:
+//   becomes Linked. Register that as a sync loop hook inside
+//   registerPrivatePaymentHooks below (PaykitService.connect calls it once
+//   per service, before the loop starts):
 //     service.syncLoop.addRoundHook('private-payment-lists', async (ctx) => { ... })
 // - Pay a contact privately: `prepareAndResolvePrivateContactPayment`, then
 //   send with the wallet service (src/wallet/useSend.ts). The adapter's
@@ -17,4 +19,9 @@
 // the serialized queue, and flush the loop (`service.syncLoop.flush()`)
 // after a user action. Keep private messages under 1000 bytes
 // (PRIVATE_MESSAGE_LIMIT_BYTES in ./endpoints.ts).
-export {};
+import type { PaykitService } from './PaykitService';
+
+/** Called once per connected service, before the sync loop starts. Phase 4 adds its round hooks here. */
+export function registerPrivatePaymentHooks(_service: PaykitService): void {
+  // Phase 4.
+}
