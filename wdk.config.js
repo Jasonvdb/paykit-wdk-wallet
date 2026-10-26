@@ -31,10 +31,18 @@ module.exports = {
         'sendTransaction',
         'quoteTransfer', // USD₮ send fee
         'transfer', // USD₮ (ERC-20) send
-        'getTransactionReceipt', // Phase 5: verify a USD₮ payment before issuing a receipt (read-only)
-        // Not 'signTypedData': EIP-712 signatures can authorize spending off
-        // chain (e.g. ERC-20 permits). Phase 5 adds it with the code that
-        // uses it, naming the exact typed-data domain it signs.
+        // Read-only: a transaction's finality, success and receipt logs.
+        // The payee checks a USD₮ payment proof with it before issuing a
+        // receipt; the payer finds its Transfer log to name in the proof.
+        'getTransaction',
+        // EIP-712 signatures can authorize spending off chain (an ERC-20
+        // permit, for one), so the app signs exactly one domain with it:
+        // {"name":"Paykit ERC20 Payment","version":"1","chainId":11155111}
+        // with the Erc20Payment / RequestBinding types, the payment proof
+        // of specs/erc20-payment-proofs.md. Every call goes through
+        // isErc20PaymentTypedData (src/wallet/erc20PaymentProof.ts) in
+        // src/features/requests/PaymentChainBridge.tsx.
+        'signTypedData',
       ],
     },
     bitcoin: {
@@ -45,7 +53,8 @@ module.exports = {
         'sendTransaction', // BTC send and the contact-account "collect" transfer
         'getTransfers', // BTC history
         'getMaxSpendable', // collect: how much of a contact account can move to account 0
-        'getTransaction', // Phase 5: verify a BTC payment before issuing a receipt
+        // Read-only: the payer's own payment, to know when it confirmed.
+        'getTransaction',
       ],
     },
   },
