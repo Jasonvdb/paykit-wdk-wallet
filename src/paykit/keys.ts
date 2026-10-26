@@ -44,6 +44,14 @@ export function contactLinkFor(pubky: string): string {
 const RAW_KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/;
 
 /**
+ * The bare 52-character key, without the "pubky" prefix the SDK prints.
+ * Specs that sign over a key (the ERC-20 payment proof) use this form.
+ */
+export function bareKey(pubky: string): string {
+  return pubky.startsWith('pubky') && RAW_KEY.test(pubky.slice(5)) ? pubky.slice(5) : pubky;
+}
+
+/**
  * The key in pasted, scanned or linked text, if it has the shape of a
  * pubky: a bare key (with the "pubky" or "pk:" prefix, or none) or a
  * paykitwdk://contact?pubky=<key> link. Undefined otherwise.

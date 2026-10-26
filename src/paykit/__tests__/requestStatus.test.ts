@@ -1,0 +1,104 @@
+// A request's status words and its five-step timeline, from the separate
+// sources: lifecycle, delivery, our payment, our check and receipts.
+import { paymentWords, requestStatusWords, requestTimeline, type PaymentFacts, type RequestFacts } from '../requestStatus';
+
+const facts = (overrides: Partial<RequestFacts> = {}): RequestFacts => ({
+  role: 'payee',
+  state: 'proposed',
+  name: 'Ben',
+  accepted: false,
+  ourDelivery: 'sent',
+  canceledByUs: false,
+  recurring: false,
+  payments: [],
+  ...overrides,
+});
+const payment = (overrides: Partial<PaymentFacts> = {}): PaymentFacts => ({ key: 'k', proofRecorded: false, ...overrides });
+const states = (f: RequestFacts, p?: PaymentFacts) => requestTimeline(f, p).map((s) => `${s.key}:${s.state}`);
+
+describe('requestStatusWords', () => {
+  it('words the payee side', () => {
+    expect(requestStatusWords(facts({ ourDelivery: 'queued' }))).toBe('Waiting to reach them…');
+    expect(requestStatusWords(facts())).toBe('Waiting for Ben');
+    expect(requestStatusWords(facts({ state: 'accepted', accepted: true }))).toBe('Ben accepted, not paid yet');
+    expect(requestStatusWords(facts({ state: 'proof-submitted', accepted: true, payments: [payment({ proofRecorded: true })] }))).toBe('Paid, checking on chain');
+    expect(requestStatusWords(facts({ state: 'proof-submitted', accepted: true, payments: [payment({ proofRecorded: true, check: 'verified', receipt: 'sent' })] }))).toBe(
+      'Paid, receipt sent',
+    );
+    expect(requestStatusWords(facts({ state: 'rejected' }))).toBe('Ben declined');
+    expect(requestStatusWords(facts({ state: 'canceled', canceledByUs: true }))).toBe('You canceled it');
+  });
+
+  it('words the payer side', () => {
+    const payer = (o: Partial<RequestFacts>) => facts({ role: 'payer', ...o });
+    expect(requestStatusWords(payer({}))).toBe('Waiting for you');
+    expect(requestStatusWords(payer({ state: 'expired' }))).toBe('Expired');
+    expect(requestStatusWords(payer({ state: 'accepted', accepted: true, payments: [payment({ outgoing: 'unknown' })] }))).toBe('May have been paid. Check Activity');
+    expect(requestStatusWords(payer({ state: 'proof-submitted', accepted: true, payments: [payment({ proofRecorded: true })] }))).toBe("Paid, waiting for Ben's receipt");
+    expect(requestStatusWords(payer({ state: 'proof-submitted', accepted: true, payments: [payment({ proofRecorded: true, receipt: 'received' })] }))).toBe(
+      'Paid, receipt received',
+    );
+    expect(requestStatusWords(payer({ state: 'canceled' }))).toBe('Ben canceled it');
+  });
+
+  it('counts recurring payments', () => {
+    const recurring = facts({ recurring: true, state: 'active', accepted: true, totalPayments: 3, payments: [payment({ proofRecorded: true }), payment({ key: 'k2' })] });
+    expect(requestStatusWords(recurring)).toBe('Active: 1 of 3 paid');
+  });
+});
+
+describe('requestTimeline', () => {
+  it('walks a one-time request through every step (payee)', () => {
+    expect(states(facts())).toEqual(['requested:done', 'accepted:current', 'paid:todo', 'verified:todo', 'receipt:todo']);
+    expect(states(facts({ accepted: true, state: 'accepted' }), payment())).toEqual(['requested:done', 'accepted:done', 'paid:current', 'verified:todo', 'receipt:todo']);
+    const paid = facts({ accepted: true, state: 'proof-submitted' });
+    expect(states(paid, payment({ proofRecorded: true }))).toEqual(['requested:done', 'accepted:done', 'paid:done', 'verified:current', 'receipt:todo']);
+    expect(states(paid, payment({ proofRecorded: true, check: 'verified' }))).toEqual(['requested:done', 'accepted:done', 'paid:done', 'verified:done', 'receipt:current']);
+    expect(states(paid, payment({ proofRecorded: true, check: 'verified', receipt: 'sent' }))).toEqual([
+      'requested:done',
+      'accepted:done',
+      'paid:done',
+      'verified:done',
+      'receipt:done',
+    ]);
+  });
+
+  it('marks the payer verified only when the receipt arrives', () => {
+    const paid = facts({ role: 'payer', accepted: true, state: 'proof-submitted' });
+    expect(states(paid, payment({ proofRecorded: true }))).toEqual(['requested:done', 'accepted:done', 'paid:done', 'verified:current', 'receipt:todo']);
+    expect(states(paid, payment({ proofRecorded: true, receipt: 'received' }))).toEqual([
+      'requested:done',
+      'accepted:done',
+      'paid:done',
+      'verified:done',
+      'receipt:done',
+    ]);
+  });
+
+  it('stops where the request stopped', () => {
+    expect(states(facts({ state: 'rejected' }))).toEqual(['requested:done', 'accepted:stopped']);
+    expect(states(facts({ state: 'canceled', accepted: true }), payment())).toEqual(['requested:done', 'accepted:done', 'paid:stopped']);
+    expect(states(facts({ state: 'proof-submitted', accepted: true }), payment({ proofRecorded: true, check: 'rejected', checkReason: 'Too little' }))).toEqual([
+      'requested:done',
+      'accepted:done',
+      'paid:done',
+      'verified:stopped',
+    ]);
+  });
+
+  it('keeps a payment made before a cancellation', () => {
+    expect(states(facts({ state: 'canceled', accepted: true }), payment({ proofRecorded: true }))).toEqual([
+      'requested:done',
+      'accepted:done',
+      'paid:done',
+      'verified:current',
+      'receipt:todo',
+    ]);
+  });
+});
+
+it('words a payment in flight', () => {
+  expect(paymentWords(payment({ outgoing: 'broadcast' }), { role: 'payer', name: 'Ana' })).toBe('Paid, sending the proof');
+  expect(paymentWords(payment({ proofRecorded: true, check: 'rejected' }), { role: 'payee', name: 'Ana' })).toBe("The payment didn't check out");
+  expect(paymentWords(undefined, { role: 'payer', name: 'Ana' })).toBeUndefined();
+});
