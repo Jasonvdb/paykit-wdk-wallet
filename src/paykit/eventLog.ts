@@ -28,7 +28,10 @@ export class SyncEventLog {
   add(level: SyncLogLevel, message: string): void {
     this.entries = [{ id: this.nextId++, at: Date.now(), level, message }, ...this.entries].slice(0, this.capacity);
     // Mirror problems to the Metro console in dev builds. The message is the
-    // same secret-free text shown on screen.
+    // same secret-free text shown on screen. console.log on purpose: in dev
+    // builds console.warn/error also raise a LogBox toast on the device,
+    // and a sync round that keeps failing would cover the UI with them.
+    // This is the one place allowed to bypass the no-console rule.
     // eslint-disable-next-line no-console
     if (__DEV__ && level !== 'info') console.log(`[paykit] ${level}: ${message}`);
     for (const listener of this.listeners) listener();

@@ -4,7 +4,7 @@
 // WDK keeps one encrypted seed per wallet id in the Keychain/Keystore and
 // runs the wallet in a Bare worklet. This app manages exactly one wallet
 // (WALLET_ID). The same BIP-39 mnemonic also derives the Pubky identity for
-// Paykit (src/paykit/PaykitProvider.tsx), so "one recovery phrase restores
+// Paykit (PaykitService.connect in src/paykit/PaykitService.ts), so "one recovery phrase restores
 // both" — testnet only, because the two key uses are not domain-separated.
 //
 // Never log or render the mnemonic outside the explicit "reveal" screen.

@@ -46,6 +46,6 @@ export const SEPOLIA_EXPLORER = 'https://sepolia.etherscan.io';
 
 /**
  * Keyless Blockscout API for Sepolia. WDK's EVM module has no history call,
- * so the wallet reads EVM activity from here (see src/wallet/evmActivity.ts).
+ * so the wallet reads EVM activity from here (fetchEvmActivity in src/wallet/useActivity.ts).
  */
 export const SEPOLIA_BLOCKSCOUT_API = 'https://eth-sepolia.blockscout.com/api/v2';

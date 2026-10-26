@@ -2,7 +2,7 @@
 // modals only; everything else is flat rows.
 //
 // - <Card>: a Sheet-colored block with the sheet radius and the one soft
-//   shadow (e.g. the receive card with the QR code).
+//   shadow. Used in Phase 2 for the receive card with the QR code.
 // - <SheetScreen>: the frame for modal routes (Send, Receive, Request, Add
 //   person): a title, a close button and scrollable content. Native-stack
 //   presents it as a sheet on iOS and a full screen on Android.

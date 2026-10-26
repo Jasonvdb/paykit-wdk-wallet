@@ -88,7 +88,7 @@ export function payableCandidateIds(
   );
 }
 
-/** UTF-8 byte length, to check payloads against PRIVATE_MESSAGE_LIMIT_BYTES. */
+/** UTF-8 byte length, to check payloads against PRIVATE_MESSAGE_LIMIT_BYTES. Used in Phase 4 (private lists). */
 export function utf8ByteLength(text: string): number {
   let bytes = 0;
   for (const char of text) {

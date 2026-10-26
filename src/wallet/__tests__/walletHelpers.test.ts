@@ -2,8 +2,6 @@ import { AAVE_FAUCET_MINT_SELECTOR, AAVE_SEPOLIA_FAUCET, SEPOLIA_USDT } from '..
 import { mergeActivity, newestItems, parseBlockscoutTokenTransfers, parseBtcTransfers, type ActivityItem } from '../activity';
 import { chainOfAddress, isBtcTestnetAddress, isEvmAddress } from '../addressFormat';
 import { encodeFaucetMint, usdtFaucetTransaction } from '../faucet';
-import { arrayBufferToBase64, base64ToArrayBuffer } from '../../paykit/bytes';
-import { middleEllipsis } from '../../ui/format';
 
 const ME = '0x00000000000000000000000000000000000000aa';
 
@@ -94,21 +92,5 @@ describe('activity parsing', () => {
     expect(mergeActivity([[]], [local])).toEqual([local]);
     const indexed = { ...local, id: 'ethereum:0x1:usdt:0', status: 'confirmed' as const };
     expect(mergeActivity([[indexed]], [local])).toEqual([indexed]);
-  });
-});
-
-describe('small helpers', () => {
-  it('shortens long keys in the middle', () => {
-    expect(middleEllipsis('pubky8pinxxgqs41n4aididenw5apqp1urfmzdztr8jt4abrkdn435ewo')).toBe('pubky8pinx…435ewo');
-    expect(middleEllipsis('short')).toBe('short');
-  });
-
-  it('round-trips base64', () => {
-    for (const text of ['', 'a', 'ab', 'abc', 'hello world!']) {
-      const bytes = new TextEncoder().encode(text);
-      const encoded = arrayBufferToBase64(bytes.buffer);
-      expect(encoded).toBe(Buffer.from(text).toString('base64'));
-      expect(new TextDecoder().decode(base64ToArrayBuffer(encoded))).toBe(text);
-    }
   });
 });

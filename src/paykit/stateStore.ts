@@ -20,7 +20,6 @@
 import { createMMKV, type MMKV } from 'react-native-mmkv';
 import * as Crypto from 'expo-crypto';
 import {
-  FfiSdkStateBlob,
   PaykitFfiError,
   decodeSdkStateBlobSnapshot,
   encodeSdkStateBlobSnapshot,
@@ -32,9 +31,6 @@ import {
 import { asCallbackError } from './errors';
 
 const SNAPSHOT_KEY = 'snapshot-v1';
-// The Phase 0 spike stored blob and revision under two keys; migrated on open.
-const LEGACY_BLOB_KEY = 'blob';
-const LEGACY_REVISION_KEY = 'revision';
 
 /** Short, filesystem-safe id for per-identity files. A pubky is public, so it may appear in a file name. */
 export function identityFileId(publicKey: string): string {
@@ -50,19 +46,7 @@ export function openStateStore(publicKey: string, encryptionKey: string): MmkvSt
     encryptionKey,
     encryptionType: 'AES-256',
   });
-  migrateLegacyLayout(storage);
   return new MmkvStateBlobStore(storage);
-}
-
-function migrateLegacyLayout(storage: MMKV): void {
-  if (storage.contains(SNAPSHOT_KEY)) return;
-  const revision = storage.getString(LEGACY_REVISION_KEY);
-  const bytes = storage.getBuffer(LEGACY_BLOB_KEY);
-  if (revision === undefined || bytes === undefined) return;
-  const snapshot = { blob: new FfiSdkStateBlob(bytes.slice(0)), revision };
-  storage.set(SNAPSHOT_KEY, encodeSdkStateBlobSnapshot(snapshot).slice(0));
-  storage.remove(LEGACY_BLOB_KEY);
-  storage.remove(LEGACY_REVISION_KEY);
 }
 
 export class MmkvStateBlobStore implements FfiSdkStateBlobStore {
@@ -104,11 +88,6 @@ export class MmkvStateBlobStore implements FfiSdkStateBlobStore {
       // unexpected callback error on the Rust side.
       throw asCallbackError(error, 'state_store_write_failed', 'mmkv');
     }
-  }
-
-  /** Forget this identity's Paykit state (developer reset). */
-  clear(): void {
-    this.storage.clearAll();
   }
 }
 

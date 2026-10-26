@@ -72,7 +72,7 @@ export function useWalletBalances(options: { pollMs?: number } = {}): WalletBala
 
 export type ContactBtcBalance = { accountIndex: number; sats?: bigint };
 
-/** BTC sitting in contacts' accounts (money received privately, not yet collected). */
+/** BTC sitting in contacts' accounts (money received privately, not yet collected). Used in Phase 4 (collect). */
 export function useContactBtcBalances(accountIndices: number[], options: { pollMs?: number } = {}) {
   const active = useAppActive();
   const query = useBalancesForWallets(accountIndices, BTC_ONLY, {
