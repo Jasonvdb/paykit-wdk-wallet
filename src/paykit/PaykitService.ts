@@ -17,6 +17,8 @@
 //   privateLists         what we shared privately with each contact and
 //                        what they shared with us (./privatePayments.ts
 //                        fills it from the sync loop)
+//   appStore             the encrypted app store the payment request book
+//                        lives in (./requests.ts, ./requestBook.ts)
 //   refreshState()       observeState snapshot for the UI
 //
 // Rules this class enforces:
@@ -54,7 +56,7 @@ import {
 
 import { PAYKIT_APP_ID, PAYKIT_APP_NAME } from '../config/paykit';
 import { PAYKIT_CALL_TIMEOUT_MS, PAYKIT_LINK_ADVANCE_STEPS } from '../config/sync';
-import { ReceivingAddressCache, type PublicEndpointChoice } from './addressCache';
+import { ReceivingAddressCache, type PublicEndpointChoice, type StringStore } from './addressCache';
 import { SerialCallQueue, type CallPriority } from './callQueue';
 import { UserFacingError, describeError, isRetryablePaykitError } from './errors';
 import { SyncEventLog } from './eventLog';
@@ -142,6 +144,8 @@ export class PaykitService {
     readonly sessionOrigin: SessionOrigin,
     readonly identity: FfiIdentityStatus,
     readonly addressCache: ReceivingAddressCache,
+    /** Encrypted app-side store (paykit-app-<id>): the address map, the request book. */
+    readonly appStore: StringStore,
     private readonly queue: SerialCallQueue,
     readonly log: SyncEventLog,
     private appPublished: boolean,
@@ -201,7 +205,8 @@ export class PaykitService {
 
     const encryptionKey = await loadOrCreateStorageKey();
     const store = openStateStore(publicKey, encryptionKey);
-    const addressCache = new ReceivingAddressCache(openPaykitAppStore(publicKey, encryptionKey));
+    const appStore = openPaykitAppStore(publicKey, encryptionKey);
+    const addressCache = new ReceivingAddressCache(appStore);
     const adapter = new WdkPaymentAdapter(addressCache);
     const sdk = FfiPaykitSdk.withPaymentAdapterAndPubkyClientConfig(
       store,
@@ -229,7 +234,7 @@ export class PaykitService {
     }
     log.info('Paykit initialized');
 
-    const service = new PaykitService(sdk, publicKey, session.origin, identity, addressCache, queue, log, options.appPublished);
+    const service = new PaykitService(sdk, publicKey, session.origin, identity, addressCache, appStore, queue, log, options.appPublished);
     registerPrivatePaymentHooks(service);
     registerPaymentRequestHooks(service);
     liveService = service;

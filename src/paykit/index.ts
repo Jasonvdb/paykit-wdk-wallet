@@ -44,3 +44,34 @@ export {
 } from './hooks';
 export { loadReceivedPrivateList } from './privatePayments';
 export { addressKey, assetsOf, type IncomingList, type OutgoingListStatus, type PayeeAddresses } from './privatePaymentLists';
+// Payment requests and receipts (Phase 5)
+export {
+  acceptRequest,
+  cancelRequest,
+  declineRequest,
+  deferPayment,
+  finishPayment,
+  paymentRequestsOf,
+  preparePayment,
+  requestMoney,
+  startPayment,
+  type PaymentChain,
+  type PreparedPayment,
+  type ProofView,
+  type RequestMoneyInput,
+  type RequestView,
+} from './requests';
+export { usePaymentRequest, usePaymentRequests, useRequestBook, useRequestFacts, useRequestLinks, type RequestLink } from './hooks';
+export {
+  EXPIRY_CHOICES,
+  NOTE_MAX_CHARS,
+  PAYMENT_COUNT_CHOICES,
+  REPEAT_CHOICES,
+  type ExpiryChoice,
+  type RepeatChoice,
+  type RequestAsset,
+  type RequestTermsView,
+} from './requestTerms';
+export { isPaymentSettled, isTerminal, paymentWords, requestStatusWords, requestTimeline, type PaymentFacts, type RequestFacts, type TimelineStep } from './requestStatus';
+export { intervalWords, nextPeriodAfter, paymentCount, periodKey, unpaidPeriods, parseTime, type BillingPeriod, type Recurrence } from './recurrence';
+export { paymentKey } from './requestBook';

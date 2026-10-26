@@ -13,6 +13,10 @@ import { PaykitContext, type PaykitContextValue } from './PaykitProvider';
 import type { PaykitService, PublicEndpointStatus } from './PaykitService';
 import type { IncomingList, OutgoingListStatus } from './privatePaymentLists';
 import { cleanDisplayName, type PersonProfile } from './profiles';
+import type { BillingPeriod } from './recurrence';
+import { paymentKey, type RequestBook } from './requestBook';
+import { paymentRequestsOf, receivedReceiptKeys, requestFactsOf, requestViewOf, type RequestView } from './requests';
+import type { RequestFacts } from './requestStatus';
 import type { SyncStatus } from './syncLoop';
 
 const noopSubscribe = () => () => undefined;
@@ -235,4 +239,96 @@ export function useContactAccounts(): ContactAccount[] {
         : [],
     [key],
   );
+}
+
+// Payment requests (Phase 5) -------------------------------------------------------
+
+/** Re-render when the request book changes; returns it (or undefined while disconnected). */
+export function useRequestBook(): RequestBook | undefined {
+  const service = usePaykitService();
+  const book = service ? paymentRequestsOf(service).book : undefined;
+  useSyncExternalStore(
+    book ? (listener) => book.subscribe(listener) : noopSubscribe,
+    () => book?.getRevision(),
+  );
+  return book;
+}
+
+/** Every payment request, newest activity first. Display data from observeState. */
+export function usePaymentRequests(): RequestView[] {
+  const state = usePaykitState();
+  return useMemo(
+    () => (state?.paymentRequests ?? []).map(requestViewOf).sort((a, b) => (b.lastEventAtMs ?? 0) - (a.lastEventAtMs ?? 0)),
+    [state],
+  );
+}
+
+/** One request by its counterparty and id. */
+export function usePaymentRequest(counterparty: string, requestId: string): RequestView | undefined {
+  return usePaymentRequests().find((r) => r.counterparty === counterparty && r.requestId === requestId);
+}
+
+/**
+ * A request's facts for the status words and timeline (./requestStatus.ts):
+ * the record, our payment or check from the book, and the receipts.
+ */
+export function useRequestFacts(view: RequestView | undefined, name: string): RequestFacts | undefined {
+  const state = usePaykitState();
+  const book = useRequestBook();
+  const revision = book?.getRevision();
+  return useMemo(
+    () => (view && book ? requestFactsOf(view, book, receivedReceiptKeys(state), name) : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the book is mutable; its revision says when it changed
+    [view, book, revision, state, name],
+  );
+}
+
+/** What links an on-chain transaction to a payment request (Activity rows and detail). */
+export type RequestLink = {
+  counterparty: string;
+  requestId: string;
+  role: 'payer' | 'payee';
+  period?: BillingPeriod;
+  /** Payer: receipt retrieved. Payee: receipt sent. */
+  receipt?: 'received' | 'sent';
+  /** Payee: our on-chain check. */
+  check?: 'pending' | 'verified' | 'rejected';
+};
+
+/** Transaction hash (lowercase) -> the request it paid, from proofs and our own payments in flight. */
+export function useRequestLinks(): ReadonlyMap<string, RequestLink> {
+  const requests = usePaymentRequests();
+  const state = usePaykitState();
+  const book = useRequestBook();
+  const revision = book?.getRevision();
+  return useMemo(() => {
+    const links = new Map<string, RequestLink>();
+    if (!book) return links;
+    const receipts = receivedReceiptKeys(state);
+    for (const view of requests) {
+      if (view.role === 'unknown') continue;
+      const recurring = !!view.terms?.recurrence;
+      const add = (txHash: string | undefined, period: BillingPeriod | undefined) => {
+        if (!txHash) return;
+        const key = paymentKey(view.counterparty, view.requestId, recurring ? period : undefined);
+        const check = book.check(key);
+        links.set(txHash.toLowerCase(), {
+          counterparty: view.counterparty,
+          requestId: view.requestId,
+          role: view.role === 'payer' ? 'payer' : 'payee',
+          period: recurring ? period : undefined,
+          receipt: receipts.has(key) ? 'received' : check?.receipt === 'sent' ? 'sent' : undefined,
+          check: check?.status,
+        });
+      };
+      for (const proof of view.proofs) add(proof.txHash, proof.period);
+    }
+    for (const payment of book.allOutgoing()) {
+      if (payment.txHash && !links.has(payment.txHash.toLowerCase())) {
+        links.set(payment.txHash.toLowerCase(), { counterparty: payment.counterparty, requestId: payment.requestId, role: 'payer', period: payment.period });
+      }
+    }
+    return links;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the book is mutable; its revision says when it changed
+  }, [requests, state, book, revision]);
 }
