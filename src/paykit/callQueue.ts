@@ -15,6 +15,8 @@
 //   before it starts the next one, so calls do not pile up on the handle.
 // - Retry: errors the caller marks retryable (SharedStateBusy) are retried
 //   with backoff inside the same job.
+// - Close: when the service is disposed, queued jobs are rejected and new
+//   ones are refused, so nothing runs on a released SDK handle.
 //
 // This file does not import the Paykit package, so it is unit tested in Node.
 // The retry rule is injected by src/paykit/errors.ts.
@@ -42,6 +44,13 @@ export type CallQueueEvent =
   | { type: 'retry'; label: string; attempt: number }
   | { type: 'timeout'; label: string; timeoutMs: number };
 
+export class QueueClosedError extends Error {
+  constructor(readonly label: string) {
+    super(`${label} cancelled: Paykit is disconnected`);
+    this.name = 'QueueClosedError';
+  }
+}
+
 export class CallTimeoutError extends Error {
   constructor(
     readonly label: string,
@@ -65,11 +74,13 @@ export class SerialCallQueue {
   private readonly userJobs: Job[] = [];
   private readonly backgroundJobs: Job[] = [];
   private running = false;
+  private closed = false;
 
   constructor(private readonly options: CallQueueOptions) {}
 
   /** Queue `task`; resolves or rejects with its result once it has run. */
   run<T>(label: string, task: CallTask<T>, priority: CallPriority = 'user'): Promise<T> {
+    if (this.closed) return Promise.reject(new QueueClosedError(label));
     return new Promise<T>((resolve, reject) => {
       const job: Job = { label, task, resolve: resolve as (value: unknown) => void, reject };
       (priority === 'user' ? this.userJobs : this.backgroundJobs).push(job);
@@ -77,13 +88,16 @@ export class SerialCallQueue {
     });
   }
 
-  /** Jobs waiting to run (not counting the one running now). */
-  get pendingCount(): number {
-    return this.userJobs.length + this.backgroundJobs.length;
-  }
-
-  get isBusy(): boolean {
-    return this.running;
+  /**
+   * Reject every queued job and refuse new ones. A job that is already
+   * running finishes on its own (the SDK call holds its own reference to the
+   * handle); nothing starts after it.
+   */
+  close(): void {
+    this.closed = true;
+    for (const job of [...this.userJobs.splice(0), ...this.backgroundJobs.splice(0)]) {
+      job.reject(new QueueClosedError(job.label));
+    }
   }
 
   private async drain(): Promise<void> {
@@ -92,7 +106,7 @@ export class SerialCallQueue {
     try {
       for (;;) {
         const job = this.userJobs.shift() ?? this.backgroundJobs.shift();
-        if (!job) return;
+        if (!job || this.closed) return;
         await this.runWithRetries(job);
       }
     } finally {

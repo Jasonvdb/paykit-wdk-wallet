@@ -92,23 +92,29 @@ export class PaykitSyncLoop {
 
   start(): void {
     if (this.status.phase !== 'stopped') return;
+    this.active = AppState.currentState === 'active';
     this.appStateSubscription = AppState.addEventListener('change', this.onAppStateChange);
     this.setStatus({ phase: this.active ? 'idle' : 'paused' });
     this.deps.log.info('sync loop started');
     if (this.active) this.flush();
   }
 
+  /**
+   * Stop for good (the service is being disposed). A round that is running
+   * now finishes its current SDK call, sees 'stopped' and schedules nothing.
+   */
   stop(): void {
     this.appStateSubscription?.remove();
     this.appStateSubscription = undefined;
     clearTimeout(this.timer);
     this.timer = undefined;
+    this.rerunRequested = false;
     this.setStatus({ phase: 'stopped' });
   }
 
   /** Run a round as soon as possible (after the current one, if one is running). */
   flush(): void {
-    if (this.status.phase === 'stopped' || !this.active) return;
+    if (this.stopped || !this.active) return;
     if (this.roundInFlight) {
       this.rerunRequested = true;
       return;
@@ -140,6 +146,15 @@ export class PaykitSyncLoop {
     this.linkRetries.delete(counterparty);
   }
 
+  private get stopped(): boolean {
+    return this.status.phase === 'stopped';
+  }
+
+  /** The resting phase between rounds: idle in the foreground, paused in the background. */
+  private get restingPhase(): SyncPhase {
+    return this.active ? 'idle' : 'paused';
+  }
+
   private setStatus(patch: Partial<SyncStatus>): void {
     this.status = { ...this.status, ...patch };
     for (const listener of this.listeners) listener();
@@ -148,7 +163,7 @@ export class PaykitSyncLoop {
   private onAppStateChange = (next: AppStateStatus): void => {
     const wasActive = this.active;
     this.active = next === 'active';
-    if (this.status.phase === 'stopped' || wasActive === this.active) return;
+    if (this.stopped || wasActive === this.active) return;
     if (this.active) {
       this.deps.log.info('app active: sync resumed');
       this.setStatus({ phase: 'idle' });
@@ -161,7 +176,7 @@ export class PaykitSyncLoop {
   };
 
   private scheduleNext(): void {
-    if (this.status.phase === 'stopped' || !this.active) return;
+    if (this.stopped || !this.active) return;
     if (this.rerunRequested) {
       this.rerunRequested = false;
       this.flush();
@@ -202,6 +217,7 @@ export class PaykitSyncLoop {
       }
 
       for (const [name, hook] of this.hooks) {
+        if (this.stopped) return;
         try {
           await hook({ linkedPeers, receivedFrom });
         } catch (error) {
@@ -210,8 +226,10 @@ export class PaykitSyncLoop {
       }
 
       await this.deps.onRoundComplete();
+      // stop() may have run while this round awaited the SDK: never undo it.
+      if (this.stopped) return;
       this.setStatus({
-        phase: 'idle',
+        phase: this.restingPhase,
         rounds: this.status.rounds + 1,
         lastRoundAt: Date.now(),
         lastRoundMs: Date.now() - started,
@@ -221,10 +239,11 @@ export class PaykitSyncLoop {
         pendingOutboundCount: snapshot.pendingOutboundCounterparties.length,
       });
     } catch (error) {
+      if (this.stopped) return;
       const message = describeError(error);
       if (message !== this.status.lastError) this.deps.log.error(`sync round failed: ${message}`);
       this.setStatus({
-        phase: 'idle',
+        phase: this.restingPhase,
         rounds: this.status.rounds + 1,
         lastRoundAt: Date.now(),
         lastRoundMs: Date.now() - started,

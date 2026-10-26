@@ -1,4 +1,4 @@
-import { CallTimeoutError, SerialCallQueue } from '../callQueue';
+import { CallTimeoutError, QueueClosedError, SerialCallQueue } from '../callQueue';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -102,5 +102,23 @@ describe('SerialCallQueue', () => {
     await expect(hung).rejects.toBeInstanceOf(CallTimeoutError);
     expect(aborted).toBe(true);
     await expect(next).resolves.toBe('next ran');
+  });
+
+  it('close() lets the running job finish, rejects queued jobs and refuses new ones', async () => {
+    const queue = makeQueue();
+    const ran: string[] = [];
+    const running = queue.run('running', async () => {
+      await sleep(5);
+      ran.push('running');
+      return 'done';
+    });
+    const queued = queue.run('queued', async () => {
+      ran.push('queued');
+    });
+    queue.close();
+    await expect(queued).rejects.toBeInstanceOf(QueueClosedError);
+    await expect(running).resolves.toBe('done');
+    await expect(queue.run('late', async () => ran.push('late'))).rejects.toBeInstanceOf(QueueClosedError);
+    expect(ran).toEqual(['running']);
   });
 });
