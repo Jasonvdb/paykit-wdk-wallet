@@ -13,7 +13,10 @@
 //                        registered (and retried each sync round until
 //                        that works)
 //   resolvePeer()        what another pubky publishes (registry, endpoints, profile)
-//   saveContactAndLink() / removeContact() / blockContact()
+//   saveContactAndLink() / setContactLabel() / removeContact() / blockContact()
+//   privateLists         what we shared privately with each contact and
+//                        what they shared with us (./privatePayments.ts
+//                        fills it from the sync loop)
 //   refreshState()       observeState snapshot for the UI
 //
 // Rules this class enforces:
@@ -61,6 +64,7 @@ import { WdkPaymentAdapter } from './paymentAdapter';
 import { connectSession, type SessionOrigin } from './session';
 import { loadOrCreateStorageKey } from './secureStorage';
 import { registerPrivatePaymentHooks } from './privatePayments';
+import { PrivateListStore } from './privatePaymentLists';
 import { registerPaymentRequestHooks } from './requests';
 import { ProfileDirectory, cleanDisplayName } from './profiles';
 import { openPaykitAppStore, openStateStore } from './stateStore';
@@ -163,6 +167,8 @@ export class PaykitService {
   readonly syncLoop: PaykitSyncLoop;
   /** Names and avatars for display, cached (10 minutes). Use the hooks in ./hooks.ts. */
   readonly profiles: ProfileDirectory;
+  /** Private Payment Lists, shared and received (./privatePaymentLists.ts). Display data. */
+  readonly privateLists = new PrivateListStore();
 
   /** The public key for a phrase, without connecting. Pure derivation, no network. */
   static publicKeyForMnemonic(mnemonic: string): string {
@@ -484,11 +490,26 @@ export class PaykitService {
    * Save a contact and start the Encrypted Link handshake. Both people must
    * add each other; the sync loop keeps advancing the handshake until it is
    * Linked. Allocates the contact's private BTC account right away.
+   *
+   * `ensureLinkWithPeer` is the right call for both sides: the SDK picks
+   * initiator or responder from the two keys, so neither app has to decide
+   * (initiateLinkWithPeer, acceptLinkWithPeer and advanceLinkHandshake are
+   * the lower-level steps it runs).
    */
   async saveContactAndLink(text: string, label?: string): Promise<FfiContactRecord> {
     const publicKey = this.normalizeKey(text);
     if (publicKey === this.publicKey) throw new UserFacingError("That's your own key.");
-    const record = await this.call('saveContact', (sdk, signal) => sdk.saveContact({ publicKey, label }, { signal }));
+    const peer = this.state?.linkedPeers.find((p) => p.counterparty === publicKey);
+    const existing = this.state?.contacts.find((c) => c.publicKey === publicKey);
+    // Saving again must not drop a label the person set earlier.
+    const update = { publicKey, label: label?.trim() ? cleanDisplayName(label) : existing?.label };
+    // A peer left blocked (a removal that could not unblock) is unblocked by
+    // the same atomic call that saves the contact.
+    const record =
+      peer?.state === FfiLinkedPeerState.Blocked
+        ? (await this.call('saveContactsAndUnblockPeers', (sdk, signal) => sdk.saveContactsAndUnblockPeers([update], { signal })))[0]
+        : await this.call('saveContact', (sdk, signal) => sdk.saveContact(update, { signal }));
+    if (!record) throw new Error('The contact was not saved');
     this.addressCache.ensureContactAccount(publicKey);
     this.log.info(`saved contact ${shortKey(publicKey)}`);
     try {
@@ -511,9 +532,61 @@ export class PaykitService {
     return record;
   }
 
+  /**
+   * Your own name for a contact, shown instead of the name they publish.
+   * Local only: it never leaves this phone. An empty label goes back to
+   * their published name.
+   */
+  async setContactLabel(publicKey: string, label: string): Promise<void> {
+    const cleaned = cleanDisplayName(label);
+    await this.call('saveContact', (sdk, signal) => sdk.saveContact({ publicKey, label: cleaned || undefined }, { signal }));
+    this.log.info(`renamed contact ${shortKey(publicKey)}`);
+    await this.refreshState();
+  }
+
+  /**
+   * Remove a contact and end the private connection with them.
+   *
+   * The SDK keeps a Contact Record and an Encrypted Link apart:
+   * `removeContact` deletes only the record and leaves the link (and their
+   * messages) running. Removing someone here means "stop paying each other
+   * privately", so:
+   *   1. queue an empty Private Payment List for them and send it (best
+   *      effort): their wallet drops our private addresses;
+   *   2. `removeContactsAndBlockPeers` removes the record and discards the
+   *      link in one transaction;
+   *   3. `unblockPeer` returns them to NotLinked and clears our recovery
+   *      attempt id, so adding them again starts a fresh link (their side
+   *      sees the new attempt and links again too) instead of a blocked peer.
+   * Money already sent to the addresses they had still arrives; the
+   * contact's Bitcoin account stays in You > Bitcoin from contacts.
+   */
   async removeContact(publicKey: string): Promise<void> {
-    await this.call('removeContact', (sdk, signal) => sdk.removeContact(publicKey, { signal }));
-    this.log.info(`removed contact ${shortKey(publicKey)}`);
+    const linked = this.state?.linkedPeers.some((p) => p.counterparty === publicKey && p.state === FfiLinkedPeerState.Linked);
+    if (linked) {
+      try {
+        await this.call('clearPrivatePaymentListAndProcessOutbound', (sdk, signal) =>
+          sdk.clearPrivatePaymentListAndProcessOutbound(publicKey, { signal }),
+        );
+        this.log.info(`withdrew private list from ${shortKey(publicKey)}`);
+      } catch (error) {
+        this.log.warn(`withdraw private list from ${shortKey(publicKey)}: ${describeError(error)}`);
+      }
+    }
+    const removed = await this.call('removeContactsAndBlockPeers', (sdk, signal) => sdk.removeContactsAndBlockPeers([publicKey], { signal }));
+    if (removed.length === 0 && this.state?.contacts.some((c) => c.publicKey === publicKey)) {
+      // The SDK skips a peer that is in the middle of another operation.
+      throw new UserFacingError('Still finishing something with them. Try again in a moment.');
+    }
+    try {
+      await this.call('unblockPeer', (sdk, signal) => sdk.unblockPeer(publicKey, { signal }));
+    } catch (error) {
+      // Adding them again unblocks them (saveContactAndLink).
+      this.log.warn(`unblock ${shortKey(publicKey)} after removing: ${describeError(error)}`);
+    }
+    this.privateLists.forget(publicKey);
+    this.syncLoop.resetLinkBackoff(publicKey);
+    this.log.info(`removed contact ${shortKey(publicKey)} and ended the link`);
     await this.refreshState();
   }
 

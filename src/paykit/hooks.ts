@@ -11,6 +11,7 @@ import type { SyncLogEntry } from './eventLog';
 import { linkStateOf, type LinkState } from './linkState';
 import { PaykitContext, type PaykitContextValue } from './PaykitProvider';
 import type { PaykitService, PublicEndpointStatus } from './PaykitService';
+import type { IncomingList, OutgoingListStatus } from './privatePaymentLists';
 import { cleanDisplayName, type PersonProfile } from './profiles';
 import type { SyncStatus } from './syncLoop';
 
@@ -170,5 +171,68 @@ export function usePublicEndpointStatus(): PublicEndpointStatus | undefined {
   return useSyncExternalStore(
     service ? (listener) => service.subscribePublicEndpointStatus(listener) : noopSubscribe,
     () => service?.publicEndpointStatus(),
+  );
+}
+
+// Private payments (Phase 4) ------------------------------------------------------
+
+/** Re-render when the service's private lists change; returns the store (or undefined). */
+function usePrivateListStore() {
+  const service = usePaykitService();
+  const store = service?.privateLists;
+  useSyncExternalStore(
+    store ? (listener) => store.subscribe(listener) : noopSubscribe,
+    () => store?.getRevision(),
+  );
+  return store;
+}
+
+export type PrivateListsWithPerson = {
+  /** What they shared with you (checked addresses), once read. */
+  incoming?: IncomingList;
+  /** Whether your list reached them. */
+  outgoing?: OutgoingListStatus;
+};
+
+/** One contact's Private Payment Lists, both ways. Display data. */
+export function usePrivateLists(publicKey: string | undefined): PrivateListsWithPerson {
+  const store = usePrivateListStore();
+  if (!store || !publicKey) return {};
+  return { incoming: store.incomingList(publicKey), outgoing: store.outgoingStatus(publicKey) };
+}
+
+/** How many contacts have your list and how many shared theirs (You > Network details). */
+export function usePrivateListSummary(): { sharedWith: number; receivedFrom: number } | undefined {
+  return usePrivateListStore()?.summary();
+}
+
+/** Addresses contacts shared with you privately -> their pubky (lowercased address keys). */
+export function usePrivateAddressOwners(): ReadonlyMap<string, string> {
+  const store = usePrivateListStore();
+  return store?.addressOwners() ?? EMPTY_OWNERS;
+}
+
+const EMPTY_OWNERS: ReadonlyMap<string, string> = new Map();
+
+export type ContactAccount = { pubky: string; accountIndex: number };
+
+/** Each contact's own Bitcoin account (where their private payments land), kept current. */
+export function useContactAccounts(): ContactAccount[] {
+  const service = usePaykitService();
+  const cache = service?.addressCache;
+  const subscribe = useCallback((listener: () => void) => (cache ? cache.subscribe(listener) : () => undefined), [cache]);
+  // The cache returns a new array each time: compare by content.
+  const key = useSyncExternalStore(subscribe, () =>
+    cache ? cache.allContactAccounts().map((a) => `${a.accountIndex}:${a.pubky}`).join(',') : '',
+  );
+  return useMemo(
+    () =>
+      key
+        ? key.split(',').map((entry) => {
+            const [index, pubky] = entry.split(':');
+            return { accountIndex: Number(index), pubky: pubky ?? '' };
+          })
+        : [],
+    [key],
   );
 }

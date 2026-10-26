@@ -7,7 +7,8 @@
 //   Identity  your pubky, the homeserver, how the session started, the
 //             Pubky capability, the Paykit app id and registry (Noise key,
 //             key generation, registered apps)
-//   Payments  the public endpoint ids you publish now
+//   Payments  the public endpoint ids you publish now, and how many
+//             contacts have your Private Payment List (and you theirs)
 //   Chains    Electrum (Mutinynet), Sepolia RPC, chain id, USD₮ contract,
 //             explorer APIs
 //   SDKs      WDK and Paykit package versions
@@ -31,6 +32,7 @@ import {
   describeError,
   loadNetworkDetails,
   usePaykit,
+  usePrivateListSummary,
   usePublicEndpointStatus,
   userMessageFor,
   type NetworkDetails,
@@ -43,9 +45,14 @@ const SESSION_ORIGIN_WORDS = {
   signUp: 'Signed up on this device',
 } as const;
 
+function countWords(count: number): string {
+  return `${count} ${count === 1 ? 'contact' : 'contacts'}`;
+}
+
 export function NetworkDetailsSection() {
   const { service, log } = usePaykit();
   const endpointStatus = usePublicEndpointStatus();
+  const privateLists = usePrivateListSummary();
   const [details, setDetails] = useState<NetworkDetails>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
@@ -90,6 +97,11 @@ export function NetworkDetailsSection() {
       label: 'Published public endpoints',
       value: endpointStatus && endpointStatus.published.length > 0 ? endpointStatus.published.join('\n') : 'None',
       hint: endpointStatus?.failed.length ? `Failed: ${endpointStatus.failed.join(', ')}` : undefined,
+    },
+    {
+      label: 'Private Payment Lists',
+      value: privateLists ? `Yours shared with ${countWords(privateLists.sharedWith)}; received from ${countWords(privateLists.receivedFrom)}` : '—',
+      hint: 'Sent over each Encrypted Link: that contact’s own Bitcoin address plus your USD₮ address.',
     },
     {
       label: 'Bitcoin (Mutinynet signet)',

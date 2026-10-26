@@ -34,3 +34,13 @@ export { privatePaymentAddressesFor } from './privatePayments';
 export { pubkyFromText } from './keys';
 export { paykitErrorTag } from './errors';
 export { loadNetworkDetails, type NetworkDetails } from './networkDetails';
+export {
+  useContactAccounts,
+  usePrivateAddressOwners,
+  usePrivateListSummary,
+  usePrivateLists,
+  type ContactAccount,
+  type PrivateListsWithPerson,
+} from './hooks';
+export { loadReceivedPrivateList } from './privatePayments';
+export { addressKey, assetsOf, type IncomingList, type OutgoingListStatus, type PayeeAddresses } from './privatePaymentLists';
