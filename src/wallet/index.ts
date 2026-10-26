@@ -33,3 +33,4 @@ export { fetchBtcFeeRate, fetchBtcTransactionStatus, type BtcTransactionStatus }
 export { MAY_HAVE_BEEN_SENT, sendFailureFor, type SendFailure } from './sendChecks';
 export { parseTypedAmount } from './amounts';
 export { CONFIRMATION_TIME } from './assets';
+export { clearContactAccountActivity, useContactAccountWatcher } from './useContactAccountActivity';

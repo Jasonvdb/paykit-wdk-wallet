@@ -38,6 +38,11 @@ export type ActivityItem = {
   status: ActivityStatus;
   /** WDK account index that sent or received it. */
   accountIndex: number;
+  /**
+   * Set on an account-0 receive that is really a move from one of our own
+   * contact accounts ("Collect"); see collapseInternalMoves.
+   */
+  movedFromAccount?: number;
 };
 
 /** The shape WDK's BTC `getTransfers` returns, after HRPC turned bigints into strings. */
@@ -176,6 +181,28 @@ export function mergeActivity(sources: ActivityItem[][], localSends: ActivityIte
     if (!indexed.has(`${item.hash}:${item.asset}`)) byId.set(item.id, item);
   }
   return [...byId.values()].sort(compareNewestFirst);
+}
+
+/**
+ * A Collect is one transaction seen twice: an 'out' from a contact account
+ * and an 'in' to account 0. Show it once, as the account-0 receive marked
+ * with the account it came from. A contact-account 'out' whose receive is
+ * not listed yet stays as it is ("Moved to main account").
+ */
+export function collapseInternalMoves(items: ActivityItem[]): ActivityItem[] {
+  const movesOut = new Map<string, number>();
+  for (const item of items) {
+    if (item.chain === 'bitcoin' && item.direction === 'out' && item.accountIndex > 0) movesOut.set(item.hash, item.accountIndex);
+  }
+  const received = new Set(
+    items.filter((item) => item.chain === 'bitcoin' && item.direction === 'in' && item.accountIndex === 0 && movesOut.has(item.hash)).map((i) => i.hash),
+  );
+  if (received.size === 0) return items;
+  return items
+    .filter((item) => !(item.direction === 'out' && item.accountIndex > 0 && received.has(item.hash)))
+    .map((item) =>
+      item.direction === 'in' && item.accountIndex === 0 && received.has(item.hash) ? { ...item, movedFromAccount: movesOut.get(item.hash) } : item,
+    );
 }
 
 /**

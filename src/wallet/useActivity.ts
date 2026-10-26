@@ -11,9 +11,10 @@
 // has no history call. Transactions this app just sent are merged in from
 // ./sentTransactions.ts until an indexer reports them. See ./activity.ts.
 //
-// Per-contact BTC accounts have their own history; see
-// ./useBtcContactAccount.ts.
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+// Per-contact BTC accounts have their own history: contacts' private
+// payments land there. ./useContactAccountActivity.ts collects it and it is
+// merged in here, with each Collect shown once (collapseInternalMoves).
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useAccount } from '@tetherto/wdk-react-native-core';
 
 import { SEPOLIA_BLOCKSCOUT_API, SEPOLIA_USDT } from '../config/chains';
@@ -21,6 +22,7 @@ import { BALANCE_POLL_MS } from '../config/sync';
 import { BTC_NETWORK, EVM_NETWORK } from '../config/wdk';
 import {
   BTC_HISTORY_FETCH_LIMIT,
+  collapseInternalMoves,
   mergeActivity,
   newestItems,
   parseBlockscoutTokenTransfers,
@@ -30,6 +32,7 @@ import {
 } from './activity';
 import { sentTransactions, subscribeSentTransactions } from './sentTransactions';
 import { useAppActive } from './useAppActive';
+import { useContactAccountActivity } from './useContactAccountActivity';
 
 /** The subset of WDK's BTC account methods this file calls through `extension()`. */
 type BtcAccountExtension = {
@@ -79,6 +82,7 @@ export function useActivity(options: { pollMs?: number } = {}): WalletActivity {
   const btcAccount = useAccount<BtcAccountExtension>({ network: BTC_NETWORK, accountIndex: 0 });
   const evmAccount = useAccount({ network: EVM_NETWORK, accountIndex: 0 });
   const localSends = useSyncExternalStore(subscribeSentTransactions, sentTransactions);
+  const contactItems = useContactAccountActivity();
 
   const [btcItems, setBtcItems] = useState<ActivityItem[]>(() => cachedFor(evmAccount.address).btc);
   const [evmItems, setEvmItems] = useState<ActivityItem[]>(() => cachedFor(evmAccount.address).evm);
@@ -130,8 +134,12 @@ export function useActivity(options: { pollMs?: number } = {}): WalletActivity {
     return () => clearInterval(timer);
   }, [refresh, pollMs, active]);
 
+  const items = useMemo(
+    () => collapseInternalMoves(mergeActivity([btcItems, evmItems, contactItems], localSends)),
+    [btcItems, evmItems, contactItems, localSends],
+  );
   return {
-    items: mergeActivity([btcItems, evmItems], localSends),
+    items,
     isLoading,
     error,
     refresh,
