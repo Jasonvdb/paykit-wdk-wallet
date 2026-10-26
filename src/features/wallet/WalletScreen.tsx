@@ -1,18 +1,21 @@
 // Wallet tab: your seal, balances (BTC, USD₮, ETH as gas), the three
 // actions, and recent activity.
 //
-// Phase 1 shows live balances (polled every ~15 s, pull to refresh) and the
-// raw on-chain activity list, so later phases start from working data.
+// Balances are polled every ~15 s while the app is active (pull to
+// refresh). An empty USD₮ balance offers "Get test USD₮" right here, since
+// that is the first thing a new demo wallet needs. Activity rows open
+// Activity detail.
 //
-// TODO(Phase 2 — Wallet): final layout per docs/DESIGN.md wireframe,
-// activity rows with people (seal + name) once Paykit attribution exists,
-// "Get test USD₮" entry point when the balance is empty, error states.
+// TODO(Phase 4 — Contacts): activity rows with people (seal + name) once
+// Paykit attribution exists.
 import { StyleSheet, View } from 'react-native';
 
 import type { MainTabScreenProps } from '../../navigation/types';
 import { useConnectionNotice, usePaykitService } from '../../paykit';
 import { ASSET_DOT_SIZE, AssetAmount, AssetDot, Button, Divider, EmptyState, Row, Screen, Seal, Text, relativeTime, space } from '../../ui';
 import { formatAssetAmount, useActivity, useWalletBalances, type ActivityItem } from '../../wallet';
+import { activityStatusWords, activityTitle } from './activity/activityText';
+import { GetTestUsdtButton } from './GetTestUsdtButton';
 
 export function WalletScreen({ navigation }: MainTabScreenProps<'Wallet'>) {
   const service = usePaykitService();
@@ -48,6 +51,11 @@ export function WalletScreen({ navigation }: MainTabScreenProps<'Wallet'>) {
         <Text variant="caption" color="graphite" style={styles.gas} testID="balance-eth">
           gas {balances.eth === undefined ? '—' : formatAssetAmount(balances.eth, 'eth', { withSymbol: true })}
         </Text>
+        {balances.usdt === 0n ? (
+          <View style={styles.faucet}>
+            <GetTestUsdtButton compact />
+          </View>
+        ) : null}
         {error ? (
           <Text variant="caption" color="alert">
             {error}
@@ -83,12 +91,13 @@ export function WalletScreen({ navigation }: MainTabScreenProps<'Wallet'>) {
 }
 
 function ActivityRow({ item, onPress }: { item: ActivityItem; onPress: () => void }) {
-  const title = item.direction === 'in' ? 'Received' : 'Sent';
-  const when = item.status === 'pending' ? 'Pending' : item.timestamp ? relativeTime(item.timestamp) : 'Confirmed';
+  const when = item.status !== 'pending' && item.timestamp ? relativeTime(item.timestamp) : activityStatusWords(item);
+  const asset = item.asset === 'btc' ? 'Bitcoin' : item.asset === 'usdt' ? 'USD₮' : 'ETH';
   return (
     <Row
-      title={title}
-      subtitle={when}
+      title={activityTitle(item)}
+      subtitle={`${asset}, ${when.charAt(0).toLowerCase()}${when.slice(1)}`}
+      testID={`activity-${item.hash.slice(0, 10)}`}
       onPress={onPress}
       trailing={<AssetAmount value={item.direction === 'in' ? item.amount : -item.amount} asset={item.asset} size="small" signed />}
     />
@@ -100,6 +109,7 @@ const styles = StyleSheet.create({
   balances: { gap: 0 },
   // Line up with the asset names: dot width plus the Row's gap.
   gas: { marginLeft: ASSET_DOT_SIZE + space.m, marginTop: -space.s },
+  faucet: { marginLeft: ASSET_DOT_SIZE + space.m, marginTop: space.m },
   actions: { flexDirection: 'row', gap: space.s, marginTop: space.xl },
   action: { flex: 1, paddingHorizontal: space.s },
   sectionTitle: { marginTop: space.xxl, marginBottom: space.s },
