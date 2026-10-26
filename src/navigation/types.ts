@@ -3,7 +3,7 @@
 // Root stack
 //   Onboarding (stack)  Welcome -> CreateOrRestore (-> BackupPhrase) -> InviteCode -> YourName -> Ready
 //   Main (tabs)         Wallet | People | Requests | You
-//   Modals              Send, Receive, RequestMoney, AddPerson, ScanQr
+//   Modals              Send, Receive, RequestMoney, AddPerson, ScanQr, EditProfile
 //   Pushed cards        Person, RequestDetail, ActivityDetail
 //
 // Params carry ids and public keys only, never records: screens read
@@ -46,6 +46,8 @@ export type RootStackParamList = {
   Person: { pubky: string };
   RequestDetail: { counterparty: string; requestId: string };
   ActivityDetail: { activityId: string };
+  /** Your display name and photo (from You). */
+  EditProfile: undefined;
 };
 
 export type RootScreenProps<T extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, T>;

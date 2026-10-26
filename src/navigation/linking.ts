@@ -11,6 +11,7 @@
 // Wallet links (handy for demo scripts and simulators, which cannot scan):
 //   paykitwdk://receive?asset=usdt          Receive, with an asset chosen
 //   paykitwdk://send?to=<address>&asset=btc  Send, with the recipient filled in
+//   paykitwdk://profile                      Edit your name and photo
 // A send link only fills in the form: nothing moves until the person
 // reviews the fee and taps Send.
 import type { LinkingOptions } from '@react-navigation/native';
@@ -24,6 +25,7 @@ export const linking: LinkingOptions<RootStackParamList> = {
       AddPerson: 'contact',
       Send: 'send',
       Receive: 'receive',
+      EditProfile: 'profile',
       Main: {
         screens: {
           Wallet: 'wallet',

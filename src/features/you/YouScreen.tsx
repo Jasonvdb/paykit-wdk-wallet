@@ -16,8 +16,9 @@ import { StyleSheet, View } from 'react-native';
 import { STAGING_HOMESERVER } from '../../config/paykit';
 import type { MainTabScreenProps } from '../../navigation/types';
 import { usePaykit, useSyncLog, useSyncStatus, type SyncStatus } from '../../paykit';
-import { Button, Divider, KeyText, Screen, Seal, Text, relativeTime, space } from '../../ui';
+import { Button, Divider, KeyText, Screen, Text, relativeTime, space } from '../../ui';
 import { ContactAccountsSection } from './ContactAccountsSection';
+import { ProfileSection } from './ProfileSection';
 import { RecoveryPhraseSection } from './RecoveryPhraseSection';
 import { TestFundsSection } from './TestFundsSection';
 
@@ -29,7 +30,7 @@ function describeLoop(status: SyncStatus): string {
   return `${phase}. ${rounds}${last}.`;
 }
 
-export function YouScreen(_props: MainTabScreenProps<'You'>) {
+export function YouScreen({ navigation }: MainTabScreenProps<'You'>) {
   const { service, connection, connect } = usePaykit();
   const reconnect = () => connect().catch(() => undefined);
   const status = useSyncStatus();
@@ -37,12 +38,7 @@ export function YouScreen(_props: MainTabScreenProps<'You'>) {
 
   return (
     <Screen scroll title="You" edges={['top']} testID="you-screen">
-      {service ? (
-        <View style={styles.identity}>
-          <Seal pubky={service.publicKey} size={72} />
-          <KeyText value={service.publicKey} full small testID="own-pubky" />
-        </View>
-      ) : null}
+      <ProfileSection onEdit={() => navigation.navigate('EditProfile')} />
 
       <Text variant="heading" style={styles.section}>
         Test funds
@@ -113,7 +109,6 @@ export function YouScreen(_props: MainTabScreenProps<'You'>) {
 }
 
 const styles = StyleSheet.create({
-  identity: { gap: space.m, alignItems: 'flex-start' },
   section: { marginTop: space.xl, marginBottom: space.s },
   block: { gap: space.s, alignItems: 'flex-start' },
   logRow: { paddingVertical: space.s },

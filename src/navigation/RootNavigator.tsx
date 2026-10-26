@@ -22,6 +22,7 @@ import { RequestMoneyScreen } from '../features/requests/RequestMoneyScreen';
 import { ActivityDetailScreen } from '../features/wallet/ActivityDetailScreen';
 import { ReceiveScreen } from '../features/wallet/ReceiveScreen';
 import { SendScreen } from '../features/wallet/SendScreen';
+import { EditProfileScreen } from '../features/you/EditProfileScreen';
 import { colors, Screen, Text } from '../ui';
 import { useWalletLifecycle } from '../wallet';
 import { MainTabs } from './MainTabs';
@@ -94,6 +95,7 @@ export function RootNavigator() {
             <Stack.Screen name="RequestMoney" component={RequestMoneyScreen} />
             <Stack.Screen name="AddPerson" component={AddPersonScreen} />
             <Stack.Screen name="ScanQr" component={ScanQrScreen} />
+            <Stack.Screen name="EditProfile" component={EditProfileScreen} />
           </Stack.Group>
         </>
       ) : (
