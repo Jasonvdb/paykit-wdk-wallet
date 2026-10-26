@@ -1,0 +1,108 @@
+// On-chain activity for the spending account, newest first.
+//
+// BTC history comes from WDK (`getTransfers` through the account's
+// `extension()` proxy, which forwards any allowed method to the worklet).
+// EVM history comes from Blockscout's keyless API, because WDK's EVM module
+// has no history call. Transactions this app just sent are merged in from
+// ./sentTransactions.ts until an indexer reports them. See ./activity.ts.
+//
+// Per-contact BTC accounts have their own history; see
+// ./useBtcContactAccount.ts.
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useAccount } from '@tetherto/wdk-react-native-core';
+
+import { SEPOLIA_BLOCKSCOUT_API, SEPOLIA_USDT } from '../config/chains';
+import { BALANCE_POLL_MS } from '../config/sync';
+import { BTC_NETWORK, EVM_NETWORK } from '../config/wdk';
+import {
+  mergeActivity,
+  parseBlockscoutTokenTransfers,
+  parseBlockscoutTransactions,
+  parseBtcTransfers,
+  type ActivityItem,
+} from './activity';
+import { sentTransactions, subscribeSentTransactions } from './sentTransactions';
+import { useAppActive } from './useAppActive';
+
+/** The subset of WDK's BTC account methods this file calls through `extension()`. */
+type BtcAccountExtension = {
+  getTransfers: (options: { limit?: number; skip?: number; direction?: 'incoming' | 'outgoing' | 'all' }) => Promise<unknown>;
+};
+
+const HISTORY_LIMIT = 25;
+
+async function fetchJson(url: string): Promise<unknown> {
+  const response = await fetch(url, { headers: { accept: 'application/json' } });
+  if (!response.ok) throw new Error(`Blockscout answered ${response.status}`);
+  return response.json();
+}
+
+/** ETH and USD₮ activity for an EVM address, from Blockscout. */
+export async function fetchEvmActivity(address: string): Promise<ActivityItem[]> {
+  const [transactions, tokenTransfers] = await Promise.all([
+    fetchJson(`${SEPOLIA_BLOCKSCOUT_API}/addresses/${address}/transactions`),
+    fetchJson(`${SEPOLIA_BLOCKSCOUT_API}/addresses/${address}/token-transfers?type=ERC-20&token=${SEPOLIA_USDT}`),
+  ]);
+  return [...parseBlockscoutTransactions(transactions, address), ...parseBlockscoutTokenTransfers(tokenTransfers, address)];
+}
+
+export type WalletActivity = {
+  items: ActivityItem[];
+  isLoading: boolean;
+  /** Safe-to-show text if a source failed; items from other sources still show. */
+  error?: string;
+  refresh: () => Promise<void>;
+};
+
+export function useActivity(options: { pollMs?: number } = {}): WalletActivity {
+  const btcAccount = useAccount<BtcAccountExtension>({ network: BTC_NETWORK, accountIndex: 0 });
+  const evmAccount = useAccount({ network: EVM_NETWORK, accountIndex: 0 });
+  const localSends = useSyncExternalStore(subscribeSentTransactions, sentTransactions);
+
+  const [btcItems, setBtcItems] = useState<ActivityItem[]>([]);
+  const [evmItems, setEvmItems] = useState<ActivityItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string>();
+  const inFlight = useRef(false);
+
+  const btcReady = btcAccount.address !== null;
+  const evmAddress = evmAccount.address;
+  const extension = btcAccount.extension;
+
+  const refresh = useCallback(async () => {
+    if (inFlight.current || !btcReady || !evmAddress) return;
+    inFlight.current = true;
+    const failures: string[] = [];
+    try {
+      await Promise.all([
+        extension()
+          .getTransfers({ limit: HISTORY_LIMIT })
+          .then((transfers) => setBtcItems(parseBtcTransfers(transfers, 0)))
+          .catch(() => failures.push('Bitcoin history')),
+        fetchEvmActivity(evmAddress)
+          .then(setEvmItems)
+          .catch(() => failures.push('Ethereum history')),
+      ]);
+      setError(failures.length ? `Couldn't load ${failures.join(' and ')}. We'll keep trying.` : undefined);
+    } finally {
+      inFlight.current = false;
+      setIsLoading(false);
+    }
+  }, [btcReady, evmAddress, extension]);
+
+  const pollMs = options.pollMs ?? BALANCE_POLL_MS;
+  const active = useAppActive();
+  useEffect(() => {
+    if (!active) return;
+    void refresh();
+    const timer = setInterval(() => void refresh(), pollMs);
+    return () => clearInterval(timer);
+  }, [refresh, pollMs, active]);
+
+  return {
+    items: mergeActivity([btcItems, evmItems], localSends),
+    isLoading,
+    error,
+    refresh,
+  };
+}
