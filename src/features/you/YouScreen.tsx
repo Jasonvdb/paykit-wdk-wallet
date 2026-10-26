@@ -9,14 +9,17 @@
 // TODO(Phase 3 — Identity): profile (name, photo) editing, pay-me QR,
 // public endpoint toggles (BTC / USD₮), network details ("Paykit" and
 // "Noise" may appear here, nowhere else).
-// TODO(Phase 2 — Wallet): recovery phrase reveal, "Get test USD₮"
-// (useUsdtFaucet), collect BTC from contact accounts.
+// Phase 2 sections (own files next to this screen): recovery phrase,
+// test funds ("Get test USD₮"), and Bitcoin from contacts (collect).
 import { StyleSheet, View } from 'react-native';
 
 import { STAGING_HOMESERVER } from '../../config/paykit';
 import type { MainTabScreenProps } from '../../navigation/types';
 import { usePaykit, useSyncLog, useSyncStatus, type SyncStatus } from '../../paykit';
 import { Button, Divider, KeyText, Screen, Seal, Text, relativeTime, space } from '../../ui';
+import { ContactAccountsSection } from './ContactAccountsSection';
+import { RecoveryPhraseSection } from './RecoveryPhraseSection';
+import { TestFundsSection } from './TestFundsSection';
 
 /** "Idle. 12 rounds, the last took 340 ms." */
 function describeLoop(status: SyncStatus): string {
@@ -40,6 +43,21 @@ export function YouScreen(_props: MainTabScreenProps<'You'>) {
           <KeyText value={service.publicKey} full small testID="own-pubky" />
         </View>
       ) : null}
+
+      <Text variant="heading" style={styles.section}>
+        Test funds
+      </Text>
+      <TestFundsSection />
+
+      <Text variant="heading" style={styles.section}>
+        Bitcoin from contacts
+      </Text>
+      <ContactAccountsSection />
+
+      <Text variant="heading" style={styles.section}>
+        Recovery phrase
+      </Text>
+      <RecoveryPhraseSection />
 
       <Text variant="heading" style={styles.section}>
         Sync status

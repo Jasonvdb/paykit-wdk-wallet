@@ -50,7 +50,9 @@ export function useBtcContactAccount(accountIndex: number) {
   }, [ready, getBalance, extension, accountIndex]);
 
   useEffect(() => {
-    void refresh();
+    // A failed read (Electrum unreachable) leaves the last values; the
+    // screen offers a manual refresh.
+    refresh().catch(() => undefined);
   }, [refresh]);
 
   /**
