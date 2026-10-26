@@ -45,6 +45,13 @@ export const MUTINYNET_EXPLORER = 'https://mutinynet.com';
 export const SEPOLIA_EXPLORER = 'https://sepolia.etherscan.io';
 
 /**
+ * Mutinynet's keyless esplora API (the mempool.space software). WDK has no
+ * call for the current fee rate or a transaction's block time, so the
+ * wallet reads both here: `/v1/fees/recommended` and `/tx/<txid>/status`.
+ */
+export const MUTINYNET_API = 'https://mutinynet.com/api';
+
+/**
  * Keyless Blockscout API for Sepolia. WDK's EVM module has no history call,
  * so the wallet reads EVM activity from here (fetchEvmActivity in src/wallet/useActivity.ts).
  */

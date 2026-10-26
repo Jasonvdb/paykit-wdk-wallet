@@ -39,6 +39,19 @@ type BtcAccountExtension = {
 /** How many BTC transfers to show. */
 const HISTORY_LIMIT = 25;
 
+/**
+ * The last fetched lists, shared by every useActivity() caller. The Wallet
+ * tab and Activity detail both use the hook; with this, a pushed detail
+ * screen starts from the list the person just tapped instead of an empty
+ * one while it refetches.
+ */
+const lastFetched: { owner?: string; btc: ActivityItem[]; evm: ActivityItem[] } = { btc: [], evm: [] };
+
+/** The cached lists, if they belong to the wallet with this EVM address. */
+function cachedFor(owner: string | null) {
+  return owner && lastFetched.owner === owner ? lastFetched : { btc: [], evm: [] };
+}
+
 async function fetchJson(url: string): Promise<unknown> {
   const response = await fetch(url, { headers: { accept: 'application/json' } });
   if (!response.ok) throw new Error(`Blockscout answered ${response.status}`);
@@ -67,9 +80,12 @@ export function useActivity(options: { pollMs?: number } = {}): WalletActivity {
   const evmAccount = useAccount({ network: EVM_NETWORK, accountIndex: 0 });
   const localSends = useSyncExternalStore(subscribeSentTransactions, sentTransactions);
 
-  const [btcItems, setBtcItems] = useState<ActivityItem[]>([]);
-  const [evmItems, setEvmItems] = useState<ActivityItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [btcItems, setBtcItems] = useState<ActivityItem[]>(() => cachedFor(evmAccount.address).btc);
+  const [evmItems, setEvmItems] = useState<ActivityItem[]>(() => cachedFor(evmAccount.address).evm);
+  const [isLoading, setIsLoading] = useState(() => {
+    const cached = cachedFor(evmAccount.address);
+    return cached.btc.length === 0 && cached.evm.length === 0;
+  });
   const [error, setError] = useState<string>();
   const inFlight = useRef(false);
 
@@ -80,15 +96,22 @@ export function useActivity(options: { pollMs?: number } = {}): WalletActivity {
   const refresh = useCallback(async () => {
     if (inFlight.current || !btcReady || !evmAddress) return;
     inFlight.current = true;
+    if (lastFetched.owner !== evmAddress) Object.assign(lastFetched, { owner: evmAddress, btc: [], evm: [] });
     const failures: string[] = [];
     try {
       await Promise.all([
         extension()
           .getTransfers({ limit: BTC_HISTORY_FETCH_LIMIT })
-          .then((transfers) => setBtcItems(newestItems(parseBtcTransfers(transfers, 0), HISTORY_LIMIT)))
+          .then((transfers) => {
+            lastFetched.btc = newestItems(parseBtcTransfers(transfers, 0), HISTORY_LIMIT);
+            setBtcItems(lastFetched.btc);
+          })
           .catch(() => failures.push('Bitcoin history')),
         fetchEvmActivity(evmAddress)
-          .then(setEvmItems)
+          .then((items) => {
+            lastFetched.evm = items;
+            setEvmItems(items);
+          })
           .catch(() => failures.push('Ethereum history')),
       ]);
       setError(failures.length ? `Couldn't load ${failures.join(' and ')}. We'll keep trying.` : undefined);
