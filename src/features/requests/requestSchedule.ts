@@ -7,7 +7,7 @@
 // as "waiting for their payment". Pure and unit tested, so it imports the
 // pure modules directly, not the ../../paykit barrel (the native SDK).
 import { nextPeriodAfter, periodKey, unpaidPeriods, type BillingPeriod, type Recurrence } from '../../paykit/recurrence';
-import type { RequestFacts } from '../../paykit/requestStatus';
+import { isPaymentHandled, type RequestFacts } from '../../paykit/requestStatus';
 
 export type ScheduleStatus = {
   /** Started periods with no payment yet, oldest first. */
@@ -18,7 +18,7 @@ export type ScheduleStatus = {
 
 export function scheduleStatus(recurrence: Recurrence | undefined, facts: Pick<RequestFacts, 'payments'>, nowMs: number): ScheduleStatus | undefined {
   if (!recurrence) return undefined;
-  const handled = new Set(facts.payments.filter((p) => p.proofRecorded || p.outgoing !== undefined).map((p) => periodKey(p.period)));
+  const handled = new Set(facts.payments.filter(isPaymentHandled).map((p) => periodKey(p.period)));
   return { due: unpaidPeriods(recurrence, handled, nowMs), next: nextPeriodAfter(recurrence, nowMs) };
 }
 

@@ -75,8 +75,26 @@ export function isPaymentSettled(payment: PaymentFacts, role: RequestFacts['role
   return role === 'payee' ? payment.check === 'verified' : payment.receipt === 'received';
 }
 
+/**
+ * The money left: a proof is recorded (ours or theirs), or our transaction
+ * is broadcast. What "paid" counts on every screen ("2 of 3 paid", the
+ * timeline's Paid step).
+ */
+export function isPaymentMade(payment: PaymentFacts): boolean {
+  return payment.proofRecorded || payment.outgoing === 'broadcast' || payment.outgoing === 'proof-sent';
+}
+
+/**
+ * Don't offer to pay it again: made, or our payment may be under way
+ * ('sending', or 'unknown' when the send may have reached the network).
+ * A 'not-sent' payment never left, so it can be paid again.
+ */
+export function isPaymentHandled(payment: PaymentFacts): boolean {
+  return isPaymentMade(payment) || payment.outgoing === 'sending' || payment.outgoing === 'unknown';
+}
+
 function paidCount(facts: RequestFacts): number {
-  return facts.payments.filter((p) => p.proofRecorded || p.outgoing === 'proof-sent' || p.outgoing === 'broadcast').length;
+  return facts.payments.filter(isPaymentMade).length;
 }
 
 /** One payment's status in words (one-time requests and each recurring period). */
@@ -86,6 +104,7 @@ export function paymentWords(payment: PaymentFacts | undefined, facts: Pick<Requ
     if (payment.receipt === 'received') return 'Paid, receipt received';
     if (payment.outgoing === 'unknown') return 'May have been paid. Check Activity';
     if (payment.outgoing === 'sending') return 'Paying…';
+    if (payment.outgoing === 'not-sent') return "The last try didn't go through. You can pay it again";
     if (payment.outgoing === 'broadcast') return 'Paid, sending the proof';
     if (payment.proofRecorded || payment.outgoing === 'proof-sent') return `Paid, waiting for ${facts.name}'s receipt`;
     if (payment.deferred) return 'Put off for now';
@@ -164,7 +183,7 @@ export function requestTimeline(facts: RequestFacts, payment: PaymentFacts | und
     state: facts.accepted ? 'done' : 'current',
   });
 
-  const paid = !!payment && (payment.proofRecorded || payment.outgoing === 'proof-sent' || payment.outgoing === 'broadcast');
+  const paid = !!payment && isPaymentMade(payment);
   const canceledNow = state === 'canceled' && !paid;
   steps.push({
     key: 'paid',

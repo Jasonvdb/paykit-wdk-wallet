@@ -4,7 +4,7 @@
 // records deferPaymentOccurrence in the payment ledger).
 import { StyleSheet, View } from 'react-native';
 
-import { paymentCount, paymentKey, paymentWords, periodKey, useRequestBook, type BillingPeriod, type RequestFacts, type RequestView } from '../../paykit';
+import { isPaymentMade, paymentCount, paymentKey, paymentWords, periodKey, useRequestBook, type BillingPeriod, type RequestFacts, type RequestView } from '../../paykit';
 import { Button, Divider, Text, formatDateTime, space } from '../../ui';
 import { scheduleStatus, whenWords } from './requestSchedule';
 
@@ -40,7 +40,7 @@ export function RecurringPayments({ view, facts, nowMs, onPay, onDefer, busy }: 
   return (
     <View testID="recurring-payments">
       <Text variant="secondary" color="graphite">
-        {total ? `${rows.filter((r) => byPeriod.get(periodKey(r.period))?.proofRecorded).length} of ${total} paid` : 'Payments so far'}
+        {total ? `${facts.payments.filter(isPaymentMade).length} of ${total} paid` : 'Payments so far'}
         {schedule?.next ? `. Next one ${whenWords(Date.parse(schedule.next.startsAt), nowMs)}.` : schedule ? '. No more after these.' : ''}
       </Text>
       {rows.map((row, index) => (

@@ -17,6 +17,11 @@ it('counts a period as handled once a proof or our payment exists', () => {
   expect(status?.due).toEqual([]);
 });
 
+it('offers a period again when our payment of it never left', () => {
+  const status = scheduleStatus(recurrence, { payments: [{ key: 'k', period: first, proofRecorded: false, outgoing: 'not-sent' }] }, startMs + 10_000);
+  expect(status?.due.map((p) => p.startsAt)).toEqual([START]);
+});
+
 it('has no schedule for a one-time request', () => {
   expect(scheduleStatus(undefined, { payments: [] }, startMs)).toBeUndefined();
 });

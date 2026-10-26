@@ -1,6 +1,6 @@
 // A request's status words and its five-step timeline, from the separate
 // sources: lifecycle, delivery, our payment, our check and receipts.
-import { paymentWords, requestStatusWords, requestTimeline, type PaymentFacts, type RequestFacts } from '../requestStatus';
+import { isPaymentHandled, isPaymentMade, paymentWords, requestStatusWords, requestTimeline, type PaymentFacts, type RequestFacts } from '../requestStatus';
 
 const facts = (overrides: Partial<RequestFacts> = {}): RequestFacts => ({
   role: 'payee',
@@ -101,4 +101,21 @@ it('words a payment in flight', () => {
   expect(paymentWords(payment({ outgoing: 'broadcast' }), { role: 'payer', name: 'Ana' })).toBe('Paid, sending the proof');
   expect(paymentWords(payment({ proofRecorded: true, check: 'rejected' }), { role: 'payee', name: 'Ana' })).toBe("The payment didn't check out");
   expect(paymentWords(undefined, { role: 'payer', name: 'Ana' })).toBeUndefined();
+});
+
+describe('what counts as paid', () => {
+  it('counts money that left (a proof, or our broadcast) as made', () => {
+    expect(isPaymentMade(payment({ proofRecorded: true }))).toBe(true);
+    expect(isPaymentMade(payment({ outgoing: 'broadcast' }))).toBe(true);
+    expect(isPaymentMade(payment({ outgoing: 'proof-sent' }))).toBe(true);
+    expect(isPaymentMade(payment({ outgoing: 'sending' }))).toBe(false);
+    expect(isPaymentMade(payment({ outgoing: 'unknown' }))).toBe(false);
+  });
+
+  it('never offers to pay again while a payment may be under way, but does after one that never left', () => {
+    expect(isPaymentHandled(payment({ outgoing: 'sending' }))).toBe(true);
+    expect(isPaymentHandled(payment({ outgoing: 'unknown' }))).toBe(true);
+    expect(isPaymentHandled(payment({ outgoing: 'not-sent' }))).toBe(false);
+    expect(isPaymentHandled(payment())).toBe(false);
+  });
 });

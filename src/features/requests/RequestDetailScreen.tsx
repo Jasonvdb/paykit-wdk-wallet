@@ -28,6 +28,7 @@ import {
   deferPayment,
   describeError,
   intervalWords,
+  isPaymentHandled,
   isTerminal,
   paymentCount,
   requestStatusWords,
@@ -70,7 +71,7 @@ export function RequestDetailScreen({ navigation, route }: RootScreenProps<'Requ
   const recurrence = terms?.recurrence;
   const terminal = isTerminal(view.state);
   const onePayment = facts.payments[0];
-  const paidOnce = !recurrence && !!onePayment && (onePayment.proofRecorded || onePayment.outgoing !== undefined);
+  const paidOnce = !recurrence && !!onePayment && isPaymentHandled(onePayment);
 
   const run = async (label: string, task: () => Promise<void>, failure: string) => {
     if (!service || busy) return;
