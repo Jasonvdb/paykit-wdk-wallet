@@ -72,7 +72,7 @@ import {
 } from '@synonymdev/react-native-paykit';
 
 import { PAYKIT_LINK_ADVANCE_STEPS } from '../config/sync';
-import type { BtcReceipt, BtcSendStatus, EvmTransaction } from '../wallet/paymentEvidence';
+import type { BtcReceipt, BtcSendStatus, EvmTransaction, SentTransferMatch, SentTransferQuery } from '../wallet/paymentEvidence';
 import type { Erc20PaymentTypedData } from '../wallet/erc20PaymentProof';
 import { toPaykitDecimal } from '../wallet/amounts';
 import { UserFacingError, describeError } from './errors';
@@ -115,6 +115,8 @@ export type PaymentChain = {
   btcSent(txid: string): Promise<BtcSendStatus>;
   /** Any Sepolia transaction (WDK getTransaction). */
   evmTransaction(hash: string): Promise<EvmTransaction>;
+  /** Our own sent transfer for a payment that has no hash yet (account 0's history). Throws if it can't tell. */
+  findSentPayment(query: SentTransferQuery): Promise<SentTransferMatch>;
   /** Sign a USD₮ payment proof with EVM account 0 (WDK signTypedData; refuses any other typed data). */
   signErc20Payment(typedData: Erc20PaymentTypedData): Promise<string>;
 };
@@ -598,6 +600,7 @@ function outgoingFor(prepared: PreparedPayment, attemptId: string, stage: Outgoi
     paymentAppId: prepared.paymentAppId,
     attemptId,
     stage,
+    startedAt: Date.now(),
     updatedAt: Date.now(),
   };
 }

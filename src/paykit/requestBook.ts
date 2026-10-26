@@ -54,6 +54,8 @@ export type OutgoingPayment = {
   /** Outcome recorded in the ledger (recordPaymentOutcome). */
   outcome?: 'succeeded' | 'failed' | 'unknown';
   updatedAt: number;
+  /** When the ledger issued the handoff, just before WDK sent (ms). */
+  startedAt?: number;
   /** Not before this time (ms): background retries back off. */
   nextCheckAt?: number;
   /**
@@ -64,6 +66,13 @@ export type OutgoingPayment = {
    */
   droppedSince?: number;
   droppedChecks?: number;
+  /**
+   * 'sending' or 'unknown' without a hash (the app stopped mid-send, or the
+   * send's outcome was unclear): since when, and how many times, a search of
+   * our account's history found no matching transfer.
+   */
+  searchedSince?: number;
+  searches?: number;
   /** Last background problem, for the request page. Safe words only. */
   problem?: string;
 };
@@ -73,6 +82,15 @@ export const DROPPED_GIVE_UP_MS = 10 * 60_000;
 /** ...and over at least this many checks (they run every DROPPED_RECHECK_MS). */
 export const DROPPED_MIN_CHECKS = 10;
 export const DROPPED_RECHECK_MS = 30_000;
+
+/** An unbroken run of the same answer: since when, and how many in a row. */
+type Run = { since: number; count: number; long: boolean };
+
+function extendRun(since: number | undefined, count: number | undefined, nowMs: number, minMs: number, minCount: number): Run {
+  const start = since ?? nowMs;
+  const next = (count ?? 0) + 1;
+  return { since: start, count: next, long: nowMs - start >= minMs && next >= minCount };
+}
 
 /**
  * One more "dropped" answer for our USD₮ payment. `replaced` is true only
@@ -84,9 +102,30 @@ export function afterDroppedCheck(
   payment: Pick<OutgoingPayment, 'droppedSince' | 'droppedChecks'>,
   nowMs: number,
 ): { replaced: boolean; droppedSince: number; droppedChecks: number } {
-  const droppedSince = payment.droppedSince ?? nowMs;
-  const droppedChecks = (payment.droppedChecks ?? 0) + 1;
-  return { replaced: nowMs - droppedSince >= DROPPED_GIVE_UP_MS && droppedChecks >= DROPPED_MIN_CHECKS, droppedSince, droppedChecks };
+  const run = extendRun(payment.droppedSince, payment.droppedChecks, nowMs, DROPPED_GIVE_UP_MS, DROPPED_MIN_CHECKS);
+  return { replaced: run.long, droppedSince: run.since, droppedChecks: run.count };
+}
+
+/** A payment without a hash is looked for this long after it started, so a send still running finishes first. */
+export const SEARCH_GRACE_MS = 2 * 60_000;
+/** Searches of our history for a payment without a hash: this often... */
+export const SEARCH_RECHECK_MS = 60_000;
+/** ...and it counts as never sent only after this long and this many searches that worked and found nothing. */
+export const SEARCH_GIVE_UP_MS = 30 * 60_000;
+export const SEARCH_MIN_COUNT = 15;
+
+/**
+ * One more search of our history that found no transfer for a payment that
+ * has no hash. `neverSent` once the run is long enough: a broadcast
+ * Bitcoin transaction shows in Electrum's history at once (mempool
+ * included), so half an hour of empty searches means it never left.
+ */
+export function afterEmptySearch(
+  payment: Pick<OutgoingPayment, 'searchedSince' | 'searches'>,
+  nowMs: number,
+): { neverSent: boolean; searchedSince: number; searches: number } {
+  const run = extendRun(payment.searchedSince, payment.searches, nowMs, SEARCH_GIVE_UP_MS, SEARCH_MIN_COUNT);
+  return { neverSent: run.long, searchedSince: run.since, searches: run.count };
 }
 
 /** Payee: what we found when checking one proof on chain. */

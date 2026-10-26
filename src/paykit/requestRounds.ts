@@ -10,7 +10,9 @@
 //                             out (USD₮: once the transaction is in a
 //                             block, signed by WDK), and record the
 //                             outcome in the ledger once it is confirmed,
-//                             or Failed if it reverted.
+//                             or Failed if it reverted. Also find payments
+//                             that lost their hash (the app stopped
+//                             mid-send) and release ones that never left.
 //   payment-request-proofs    payee: check each proof that arrived on
 //                             chain, through WDK (./paymentProofs.ts has
 //                             the rules), then issue a receipt
@@ -41,7 +43,15 @@ import { bareKey, shortKey } from './keys';
 import type { PaykitService } from './PaykitService';
 import { erc20ProofJson, btcProofJson, parseProof, transferKey, verifyBtcProof, verifyErc20Proof, type Verdict } from './paymentProofs';
 import { isScheduledPeriod, parseTime, periodKey } from './recurrence';
-import { afterDroppedCheck, DROPPED_RECHECK_MS, paymentKey, type OutgoingPayment } from './requestBook';
+import {
+  afterDroppedCheck,
+  afterEmptySearch,
+  DROPPED_RECHECK_MS,
+  paymentKey,
+  SEARCH_GRACE_MS,
+  SEARCH_RECHECK_MS,
+  type OutgoingPayment,
+} from './requestBook';
 import type { SyncRoundContext } from './syncLoop';
 import { newReceiptId, recordOutcome, requestViewOf, settleUnsentPayment, submitProof, type PaymentRequests, type ProofView, type RequestView } from './requests';
 
@@ -51,6 +61,10 @@ const CHAIN_RECHECK_MS = 10_000;
 const FAILURE_BACKOFF_MS = 30_000;
 /** Look for receipts at least this often while one is expected, even if nothing arrived. */
 const RECEIPT_SCAN_MS = 30_000;
+/** A lost USD₮ payment the indexer hasn't shown after the give-up time: keep looking, slowly. */
+const SEARCH_SLOW_RECHECK_MS = 5 * 60_000;
+/** Block times and phone clocks drift: a lost payment's transfer may look this much older than its start. */
+const SEARCH_TIME_ALLOWANCE_MS = 10 * 60_000;
 
 export function registerRequestRounds(service: PaykitService, requests: PaymentRequests): void {
   service.syncLoop.addRoundHook('payment-request-payments', () => finishOurPayments(service, requests));
@@ -79,6 +93,17 @@ async function finishOurPayments(service: PaykitService, requests: PaymentReques
       book.updateOutgoing(key, { nextCheckAt: Date.now() + FAILURE_BACKOFF_MS });
       continue;
     }
+    if ((payment.stage === 'sending' || payment.stage === 'unknown') && !payment.txHash) {
+      // Give a send that is still running time to finish first.
+      if ((payment.nextCheckAt ?? 0) > now || now - (payment.startedAt ?? payment.updatedAt) < SEARCH_GRACE_MS) continue;
+      try {
+        await findLostPayment(service, requests, key, payment);
+      } catch (error) {
+        service.log.warn(`look for payment ${payment.requestId.slice(0, 8)}: ${describeError(error)}`);
+        book.updateOutgoing(key, { nextCheckAt: Date.now() + FAILURE_BACKOFF_MS });
+      }
+      continue;
+    }
     const needsProof = payment.stage === 'broadcast';
     const needsOutcome = (payment.stage === 'broadcast' || payment.stage === 'proof-sent') && payment.outcome === undefined;
     if (!payment.txHash || (!needsProof && !needsOutcome) || (payment.nextCheckAt ?? 0) > now) continue;
@@ -90,6 +115,64 @@ async function finishOurPayments(service: PaykitService, requests: PaymentReques
       book.updateOutgoing(key, { nextCheckAt: Date.now() + FAILURE_BACKOFF_MS, problem: 'Still sending the proof. Retrying.' });
     }
   }
+}
+
+/**
+ * A payment with no hash: the app stopped between the ledger's handoff and
+ * WDK's answer, or the send failed in a way that may have reached the
+ * network. Look for it in our own history (PaymentChain.findSentPayment):
+ *
+ *   found          it left: carry on as if WDK had returned the hash
+ *                  (proof, then the outcome once confirmed)
+ *   none, Bitcoin  after half an hour of empty searches it never left:
+ *                  record Failed, so the request can be paid again.
+ *                  Electrum's history includes the mempool, so a
+ *                  broadcast payment would show at once.
+ *   none, USD₮     the history comes from an indexer (Blockscout), which
+ *                  can lag by hours. A wrong "never left" here would invite
+ *                  a second payment, so the payment stays reserved, shown as
+ *                  "may have been paid", and the search goes on slowly.
+ */
+async function findLostPayment(service: PaykitService, requests: PaymentRequests, key: string, payment: OutgoingPayment) {
+  const chain = requests.getChain();
+  if (!chain) return;
+  const book = requests.book;
+  const now = Date.now();
+  const exclude = new Set(book.allOutgoing().flatMap((p) => (p.txHash ? [p.txHash.toLowerCase()] : [])));
+  const match = await chain.findSentPayment({
+    asset: payment.asset,
+    to: payment.address,
+    amount: BigInt(payment.amount),
+    notBeforeMs: (payment.startedAt ?? payment.updatedAt) - SEARCH_TIME_ALLOWANCE_MS,
+    exclude,
+  });
+  if (match.state === 'found') {
+    book.updateOutgoing(key, { stage: 'broadcast', txHash: match.hash, outcome: undefined, searchedSince: undefined, searches: undefined, nextCheckAt: undefined, problem: undefined });
+    service.log.info(`found payment for ${payment.requestId.slice(0, 8)} in the wallet's history`);
+    service.syncLoop.flush();
+    return;
+  }
+  if (match.state === 'unsure') {
+    book.updateOutgoing(key, { nextCheckAt: now + SEARCH_RECHECK_MS });
+    return;
+  }
+  const next = afterEmptySearch(payment, now);
+  if (next.neverSent && payment.asset === 'btc') {
+    book.updateOutgoing(key, { stage: 'not-sent' });
+    await settleUnsentPayment(service, key);
+    service.log.warn(`payment for ${payment.requestId.slice(0, 8)} never left; it can be paid again`);
+    return;
+  }
+  if (next.neverSent && payment.stage === 'sending') {
+    await recordOutcome(service, payment.attemptId, FfiPaymentOutcome.Unknown);
+    book.updateOutgoing(key, { stage: 'unknown', outcome: 'unknown' });
+  }
+  book.updateOutgoing(key, {
+    searchedSince: next.searchedSince,
+    searches: next.searches,
+    nextCheckAt: now + (next.neverSent ? SEARCH_SLOW_RECHECK_MS : SEARCH_RECHECK_MS),
+    problem: 'Looking for this payment in your history.',
+  });
 }
 
 async function finishBtcPayment(service: PaykitService, requests: PaymentRequests, key: string, payment: OutgoingPayment, needsProof: boolean) {

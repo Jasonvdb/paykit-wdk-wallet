@@ -1,5 +1,5 @@
 // The wallet's own notes about requests, persisted in the app store.
-import { DROPPED_GIVE_UP_MS, RequestBook, afterDroppedCheck, paymentKey, type OutgoingPayment } from '../requestBook';
+import { DROPPED_GIVE_UP_MS, RequestBook, SEARCH_GIVE_UP_MS, afterDroppedCheck, afterEmptySearch, paymentKey, type OutgoingPayment } from '../requestBook';
 
 function memoryStore() {
   const data = new Map<string, string>();
@@ -74,5 +74,14 @@ describe('afterDroppedCheck', () => {
     for (let i = 0; i < 50; i++) state = afterDroppedCheck(state, 1_000 + i * 1_000);
     expect(afterDroppedCheck(state, 60_000).replaced).toBe(false);
     expect(state.droppedSince).toBe(1_000);
+  });
+});
+
+describe('afterEmptySearch', () => {
+  it('says "never sent" only after half an hour of empty searches, not after a burst', () => {
+    let state: { searchedSince?: number; searches?: number } = {};
+    for (let i = 0; i < 30; i++) state = afterEmptySearch(state, i * 1_000);
+    expect(afterEmptySearch(state, 31_000).neverSent).toBe(false);
+    expect(afterEmptySearch(state, SEARCH_GIVE_UP_MS).neverSent).toBe(true);
   });
 });

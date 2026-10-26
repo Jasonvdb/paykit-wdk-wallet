@@ -7,13 +7,19 @@
 //                            one per account: WDK's hooks are bound to one
 //                            account index each)
 //   evmTransaction(hash)     getTransaction on Sepolia: finality, success, logs
+//   findSentPayment(query)   a payment the app lost track of (no hash):
+//                            account 0's sent transfers. Bitcoin from WDK's
+//                            getTransfers (mempool included), with block
+//                            times from Mutinynet's esplora; USD₮ from
+//                            Blockscout, since WDK's EVM module has no
+//                            history call
 //   signErc20Payment(typed)  signTypedData with EVM account 0, for exactly
 //                            the Paykit ERC-20 proof domain: the guard
 //                            isErc20PaymentTypedData refuses anything else
 //                            (an EIP-712 signature over another domain, such
 //                            as an ERC-20 permit, could authorize spending)
 //
-// All four are allowed in wdk.config.js. The Paykit side calls them through
+// The WDK methods are allowed in wdk.config.js. The Paykit side calls them through
 // src/features/requests/PaymentChainBridge.tsx. Errors from a read mean
 // "can't tell yet": callers retry later and never treat them as "not paid".
 import { useCallback, useMemo } from 'react';
@@ -21,9 +27,23 @@ import { useAccount } from '@tetherto/wdk-react-native-core';
 
 import { SEPOLIA_CHAIN_ID } from '../config/chains';
 import { BTC_NETWORK, EVM_NETWORK } from '../config/wdk';
-import { BTC_HISTORY_FETCH_LIMIT } from './activity';
+import { BTC_HISTORY_FETCH_LIMIT, parseBtcTransfers } from './activity';
 import { isErc20PaymentTypedData, type Erc20PaymentTypedData } from './erc20PaymentProof';
-import { btcReceiptFromTransfers, btcSendStatus, evmTransactionFrom, type BtcReceipt, type BtcSendStatus, type EvmTransaction } from './paymentEvidence';
+import { fetchBtcTransactionStatus } from './mutinynet';
+import {
+  btcReceiptFromTransfers,
+  btcSendStatus,
+  evmTransactionFrom,
+  matchSentTransfer,
+  sentTransferCandidates,
+  type BtcReceipt,
+  type BtcSendStatus,
+  type EvmTransaction,
+  type SentTransferMatch,
+  type SentTransferQuery,
+} from './paymentEvidence';
+import { sentTransactions } from './sentTransactions';
+import { fetchEvmActivity } from './useActivity';
 
 type BtcExtension = {
   getTransaction: (hash: string) => Promise<unknown>;
@@ -37,12 +57,16 @@ type EvmExtension = {
 export type AccountZeroPaymentChecks = {
   btcSent(txid: string): Promise<BtcSendStatus>;
   evmTransaction(hash: string): Promise<EvmTransaction>;
+  /** Throws when a source can't be read: the caller must not take that as "not sent". */
+  findSentPayment(query: SentTransferQuery): Promise<SentTransferMatch>;
   signErc20Payment(typedData: Erc20PaymentTypedData): Promise<string>;
 };
 
 export function useAccountZeroPaymentChecks(): AccountZeroPaymentChecks {
   const btc = useAccount<BtcExtension>({ network: BTC_NETWORK, accountIndex: 0 }).extension;
-  const evm = useAccount<EvmExtension>({ network: EVM_NETWORK, accountIndex: 0 }).extension;
+  const evmAccount = useAccount<EvmExtension>({ network: EVM_NETWORK, accountIndex: 0 });
+  const evm = evmAccount.extension;
+  const evmAddress = evmAccount.address;
   return useMemo(
     () => ({
       btcSent: async (txid) => {
@@ -60,6 +84,19 @@ export function useAccountZeroPaymentChecks(): AccountZeroPaymentChecks {
           return { state: 'unknown' };
         }
       },
+      findSentPayment: async (query) => {
+        if (query.asset === 'usdt') {
+          if (!evmAddress) throw new Error('The USD₮ account is not loaded yet');
+          // What this app sent this session (not indexed yet), then the indexer.
+          return matchSentTransfer([...sentTransactions(), ...(await fetchEvmActivity(evmAddress))], query);
+        }
+        const items = sentTransferCandidates(parseBtcTransfers(await btc().getTransfers({ limit: BTC_HISTORY_FETCH_LIMIT }), 0), query);
+        // WDK's transfers carry a block height, not a time.
+        for (const item of items) {
+          if (item.status === 'confirmed') item.timestamp = (await fetchBtcTransactionStatus(item.hash))?.blockTime;
+        }
+        return matchSentTransfer(items, query);
+      },
       signErc20Payment: async (typedData) => {
         if (!isErc20PaymentTypedData(typedData, SEPOLIA_CHAIN_ID)) throw new Error('Refusing to sign: not a Paykit ERC-20 payment proof');
         const signature = await evm().signTypedData(typedData);
@@ -67,7 +104,7 @@ export function useAccountZeroPaymentChecks(): AccountZeroPaymentChecks {
         return signature.toLowerCase();
       },
     }),
-    [btc, evm],
+    [btc, evm, evmAddress],
   );
 }
 

@@ -14,6 +14,7 @@
 // The payer uses the same parsers to know when its own payment settled
 // and, for USD₮, which receipt log is its Transfer (the proof names it).
 // No native imports; unit tested.
+import type { ActivityItem } from './activity';
 import { ERC20_TRANSFER_TOPIC } from './erc20PaymentProof';
 
 /** What one Bitcoin account received in one transaction. */
@@ -123,4 +124,49 @@ export function findErc20TransferLog(logs: EvmLog[], expected: { token: string; 
     );
   });
   return index >= 0 ? index : undefined;
+}
+
+/**
+ * A payment the app lost track of: it started a send (the request book
+ * says 'sending' or 'unknown') but never learned the transaction hash,
+ * because the app stopped or the send's outcome was unclear. The payer
+ * looks for it in its own history: a transfer of exactly `amount` of
+ * `asset` to `to`, not before `notBeforeMs`, that no other payment claims.
+ */
+export type SentTransferQuery = {
+  asset: 'btc' | 'usdt';
+  to: string;
+  amount: bigint;
+  notBeforeMs: number;
+  /** Hashes other payments already use (lowercase). */
+  exclude: ReadonlySet<string>;
+};
+
+/**
+ * found  a matching transfer: unconfirmed, or confirmed at or after notBeforeMs
+ * none   nothing matches
+ * unsure a confirmed match whose time is unknown: look again later
+ */
+export type SentTransferMatch = { state: 'found'; hash: string } | { state: 'none' } | { state: 'unsure' };
+
+/** Our sent transfers that could be the payment, whatever their time. */
+export function sentTransferCandidates(items: ActivityItem[], query: Omit<SentTransferQuery, 'notBeforeMs'>): ActivityItem[] {
+  const to = query.to.toLowerCase();
+  return items.filter(
+    (item) =>
+      item.asset === query.asset &&
+      item.direction === 'out' &&
+      item.status !== 'failed' &&
+      item.counterpartyAddress?.toLowerCase() === to &&
+      item.amount === query.amount &&
+      !query.exclude.has(item.hash.toLowerCase()),
+  );
+}
+
+export function matchSentTransfer(items: ActivityItem[], query: SentTransferQuery): SentTransferMatch {
+  const candidates = sentTransferCandidates(items, query);
+  const recent = candidates.find((item) => item.status === 'pending' || (item.timestamp !== undefined && item.timestamp >= query.notBeforeMs));
+  if (recent) return { state: 'found', hash: recent.hash };
+  if (candidates.some((item) => item.status !== 'pending' && item.timestamp === undefined)) return { state: 'unsure' };
+  return { state: 'none' };
 }
