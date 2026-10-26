@@ -62,7 +62,8 @@ This app has two engines and one UI:
 | `src/features/<feature>/` | Screens, one folder per feature: `onboarding`, `wallet`, `people`, `requests`, `you`. Phase-specific parts of shared screens sit in subfolders, e.g. `wallet/send/`, `wallet/receive/`, `wallet/activity/`, `people/scan/`. |
 | `src/features/people/PersonSeal.tsx` | A seal with the person's profile photo from the profile cache. Every screen that shows a person uses it. |
 | `src/features/people/usePersonName.ts`, `personName.ts` | What to call a person (your label, else their published name, else the short key) and whether that name is a contact's or self-chosen. Every screen that names a person uses it. |
-| `src/media/pickProfilePhoto.ts` | Pick, crop and shrink a profile photo for upload. |
+| `src/media/pickProfilePhoto.ts` | Pick, crop and shrink a profile photo for upload; `photoDataUri` previews it. |
+| Shared across features | A few feature components are used by other features on purpose: `wallet/receive/PayMeCode.tsx` (Receive, You, onboarding Ready), `you/RecoveryPhraseSection.tsx` (You, and onboarding before replacing a wallet), `people/PersonSeal.tsx` and `people/usePersonName.ts` (every screen that shows a person), `wallet/GetTestUsdtButton.tsx` (Wallet, Receive, You). Import them from their home folder; everything else crosses features only through `src/ui`, `src/wallet` and `src/paykit`. |
 | `wdk.config.js` | Which WDK wallet modules go into the worklet, and which account methods the app may call. |
 | `plugins/withPaykitSimulatorArchs.js` | Expo config plugin: arm64-only iOS simulator builds (Paykit ships no x86_64 slice). |
 | `scripts/` | Paykit package build, Paykit Android patch (postinstall), demo prefill generator, and the demo funding scripts `fund-*.mjs` (see "Funding the demo"). |

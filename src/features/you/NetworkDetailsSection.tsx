@@ -77,7 +77,9 @@ export function NetworkDetailsSection() {
     {
       label: 'Paykit app registry',
       value: details ? (details.apps.map((app) => `${app.appId} (${app.displayName})`).join(', ') || 'No apps registered') : '—',
-      hint: details?.apps.map((app) => `${app.appId}: ${app.capabilities}`).join('; '),
+      hint: [details?.defaultAppId ? `Default app ${details.defaultAppId}` : undefined, details?.apps.map((app) => `${app.appId}: ${app.capabilities}`).join('; ')]
+        .filter(Boolean)
+        .join('. ') || undefined,
     },
     {
       label: 'Noise public key',

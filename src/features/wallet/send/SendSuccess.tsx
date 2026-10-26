@@ -4,7 +4,7 @@
 import { Linking, StyleSheet, View } from 'react-native';
 
 import { AssetAmount, Button, DetailRow, Divider, KeyText, Text, space } from '../../../ui';
-import { formatFee, type SendResult } from '../../../wallet';
+import { CONFIRMATION_TIME, formatFee, type SendResult } from '../../../wallet';
 import type { PayableAsset } from '../AssetPicker';
 
 export type SendSuccessProps = {
@@ -25,8 +25,8 @@ export function SendSuccess({ asset, amount, toLabel, toIsName, result, onDone }
         <AssetAmount value={amount} asset={asset} size="hero" />
         <Text color="graphite">
           {asset === 'btc'
-            ? 'It shows as pending in Activity until the next Mutinynet block, usually within a minute.'
-            : 'It shows as pending in Activity until the next Sepolia block, usually within 15 seconds.'}
+            ? `It shows as pending in Activity until the next Mutinynet block, in ${CONFIRMATION_TIME.bitcoin}.`
+            : `It shows as pending in Activity until the next Sepolia block, in ${CONFIRMATION_TIME.ethereum}.`}
         </Text>
       </View>
       <View>

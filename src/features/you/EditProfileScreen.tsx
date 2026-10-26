@@ -15,10 +15,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { pickProfilePhoto, type ProfilePhoto } from '../../media/pickProfilePhoto';
+import { photoDataUri, pickProfilePhoto, type ProfilePhoto } from '../../media/pickProfilePhoto';
 import type { RootScreenProps } from '../../navigation/types';
 import { describeError, useOwnProfile, usePaykit, userMessageFor } from '../../paykit';
-import { arrayBufferToBase64 } from '../../paykit/bytes';
 import { Button, Input, Seal, SheetScreen, Text, space } from '../../ui';
 
 /** What happens to the photo when the person taps Publish. */
@@ -52,7 +51,7 @@ export function EditProfileScreen({ navigation }: RootScreenProps<'EditProfile'>
     setError(undefined);
     try {
       const picked = await pickProfilePhoto();
-      if (picked) setPhoto({ kind: 'new', photo: picked, dataUri: `data:${picked.contentType};base64,${arrayBufferToBase64(picked.bytes)}` });
+      if (picked) setPhoto({ kind: 'new', photo: picked, dataUri: photoDataUri(picked) });
     } catch {
       setError("Couldn't use that photo. Try another one.");
     }

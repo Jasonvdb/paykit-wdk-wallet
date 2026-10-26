@@ -1,8 +1,8 @@
 // Onboarding 1/5: what this app is. The only main-UI screen that names
 // the SDKs (docs/DESIGN.md, "Writing"): this app exists to show them.
 //
-// TODO(Phase 2 — Wallet): final copy and illustration (e.g. a large seal
-// built from a sample key). Navigation is already wired.
+// TODO(Phase 6 — Polish): final copy and illustration (e.g. a larger seal
+// animation). The sample seal and the copy below are the Phase 2 version.
 import { StyleSheet, View } from 'react-native';
 
 import type { OnboardingScreenProps } from '../../navigation/types';

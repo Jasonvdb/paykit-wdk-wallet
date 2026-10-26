@@ -43,7 +43,7 @@ export function AddPersonScreen({ navigation, route }: RootScreenProps<'AddPerso
       title="Add person"
       onClose={() => navigation.goBack()}
       testID="add-person-screen"
-      footer={<Button label="Add" onPress={onSave} loading={saving} disabled={!service || !text.trim()} testID="add-person-save" />}
+      footer={<Button label="Add person" onPress={onSave} loading={saving} disabled={!service || !text.trim()} testID="add-person-save" />}
     >
       <View style={styles.body}>
         <Input label="Their pubky" value={text} onChangeText={setText} mono multiline placeholder="pubky…" error={error} testID="add-person-key" />

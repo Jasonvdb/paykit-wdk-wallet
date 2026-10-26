@@ -54,6 +54,16 @@ export const ASSETS: Record<AssetId, AssetInfo> = {
   },
 };
 
+/**
+ * How long until a transaction is in a block, in words, per chain. One
+ * constant, so the Send review, the sent screen and the faucet agree.
+ * Mutinynet makes a block every 30 s; Sepolia every 12 s.
+ */
+export const CONFIRMATION_TIME: Record<Chain, string> = {
+  bitcoin: 'about 30 seconds',
+  ethereum: 'about 12 seconds',
+};
+
 /** The asset that pays the network fee for a transfer of `asset`. */
 export function feeAssetFor(asset: AssetId): AssetId {
   return ASSETS[asset].chain === 'bitcoin' ? 'btc' : 'eth';

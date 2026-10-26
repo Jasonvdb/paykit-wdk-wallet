@@ -9,9 +9,13 @@
 // - a restored wallet signs in. If that phrase never had an identity, the
 //   person says so explicitly and enters a code.
 //
-// TODO(Phase 2 — Wallet): progress steps ("Deriving your keys…",
-// "Connecting…"), map signup errors (token used / required / invalid) to
-// plain words, optional Homegate self-serve invite.
+// The button shows each step ("Connecting your identity…", "Publishing
+// your payment keys…"). Sign-up failures share one message that names the
+// usual cause (a used or mistyped invite code); telling "used" from
+// "invalid" needs the homeserver's error codes, which the SDK does not
+// expose as tags yet.
+// TODO(Phase 6 — Polish): distinct messages per sign-up error once the SDK
+// reports them, and an optional Homegate self-serve invite.
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 

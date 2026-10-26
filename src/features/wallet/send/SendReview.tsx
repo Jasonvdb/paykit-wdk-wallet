@@ -12,7 +12,7 @@
 import { StyleSheet, View } from 'react-native';
 
 import { AssetAmount, Button, DetailRow, Divider, KeyText, Text, space } from '../../../ui';
-import { formatAssetAmount, formatFee, type FeeQuote, type SendProblem } from '../../../wallet';
+import { CONFIRMATION_TIME, formatAssetAmount, formatFee, type FeeQuote, type SendProblem } from '../../../wallet';
 import type { PayableAsset } from '../AssetPicker';
 import { PersonRecipient } from './PersonRecipient';
 import type { SendRecipient } from './recipient';
@@ -34,8 +34,8 @@ export type SendReviewProps = {
 };
 
 const NETWORK: Record<PayableAsset, string> = {
-  btc: 'Bitcoin (Mutinynet). Confirms in about 30 seconds.',
-  usdt: 'Ethereum Sepolia. Confirms in about 12 seconds.',
+  btc: `Bitcoin (Mutinynet). Confirms in ${CONFIRMATION_TIME.bitcoin}.`,
+  usdt: `Ethereum Sepolia. Confirms in ${CONFIRMATION_TIME.ethereum}.`,
 };
 
 export function SendReview({ asset, amount, recipient, address, quote, problem, sending, outcomeUnknown, error, onSend, onEdit, onClose }: SendReviewProps) {

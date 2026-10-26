@@ -21,7 +21,7 @@ import { contactLinkFor, useOwnProfile, usePaykitService } from '../../../paykit
 import { Button, Card, KeyText, QrCode, Text, space } from '../../../ui';
 import { PersonSeal } from '../../people/PersonSeal';
 
-export function PayMeCode({ qrSize = 208 }: { qrSize?: number }) {
+export function PayMeCode({ qrSize = 208, showHeading = true }: { qrSize?: number; /** False where the screen already shows your seal and name. */ showHeading?: boolean }) {
   const service = usePaykitService();
   const profile = useOwnProfile();
   const [copied, setCopied] = useState(false);
@@ -53,12 +53,14 @@ export function PayMeCode({ qrSize = 208 }: { qrSize?: number }) {
 
   return (
     <Card style={styles.card}>
-      <View style={styles.heading}>
-        <PersonSeal pubky={pubky} size={40} />
-        <Text variant="heading" numberOfLines={1} style={styles.name}>
-          {profile.displayName ?? 'Your pay-me code'}
-        </Text>
-      </View>
+      {showHeading ? (
+        <View style={styles.heading}>
+          <PersonSeal pubky={pubky} size={40} />
+          <Text variant="heading" numberOfLines={1} style={styles.name}>
+            {profile.displayName ?? 'Your pay-me code'}
+          </Text>
+        </View>
+      ) : null}
       <View style={styles.qr} testID="pay-me-qr">
         <QrCode value={link} size={qrSize} />
       </View>

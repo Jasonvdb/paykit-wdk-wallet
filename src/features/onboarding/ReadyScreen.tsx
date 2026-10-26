@@ -26,7 +26,7 @@ export function ReadyScreen(_props: OnboardingScreenProps<'Ready'>) {
         <Text variant="title">You’re ready.</Text>
         <Text color="graphite">This is your seal. It is drawn from your public key, so it looks the same on every phone.</Text>
         <Text color="graphite">Share your pay-me code so people can pay you or add you.</Text>
-        {service ? <PayMeCode qrSize={168} /> : null}
+        {service ? <PayMeCode qrSize={168} showHeading={false} /> : null}
       </View>
     </Screen>
   );

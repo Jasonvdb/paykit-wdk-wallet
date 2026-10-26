@@ -67,7 +67,7 @@ export function ReceiveCard({ asset, address }: { asset: 'btc' | 'usdt'; address
           <View style={styles.actions}>
             <Button label={copied ? 'Copied' : 'Copy'} variant="secondary" compact onPress={onCopy} testID="receive-copy" />
             <Button label="Share" variant="secondary" compact onPress={onShare} testID="receive-share" />
-            <Button label="Explorer" variant="secondary" compact onPress={() => void Linking.openURL(addressUrl(chain, address))} />
+            <Button label="View on explorer" variant="secondary" compact onPress={() => void Linking.openURL(addressUrl(chain, address))} />
           </View>
         </>
       ) : null}

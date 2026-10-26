@@ -8,10 +8,13 @@
 //   Phase 2  AddressRecipientField  a pasted or typed address ('address')
 //   Phase 3  PubkyRecipientField    a person's pubky, resolved to their public
 //                                   endpoints ('pubky', route 'public')
-//   Phase 4  a contact picker       private endpoints of a linked contact ('contact')
 //
-// Later phases add their `kind` to the union and their field next to
-// AddressRecipientField; the review, send and success steps stay the same.
+// Phase 4 (paying a linked contact privately) needs no new kind: it fills
+// in privatePaymentAddressesFor (src/paykit/privatePayments.ts), which the
+// pubky field already asks first, and the field then reports
+// { kind: 'pubky', route: 'private' }. A new kind is only needed for a
+// recipient that is neither an address nor a pubky; the review, send and
+// success steps stay the same either way.
 import type { AssetId } from '../../../wallet';
 
 export type SendRecipient =

@@ -7,7 +7,7 @@
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 
-import { base64ToArrayBuffer } from '../paykit/bytes';
+import { arrayBufferToBase64, base64ToArrayBuffer } from '../paykit/bytes';
 
 export type ProfilePhoto = {
   /** For an <Image> preview. */
@@ -35,4 +35,9 @@ export async function pickProfilePhoto(): Promise<ProfilePhoto | undefined> {
   const saved = await image.saveAsync({ base64: true, compress: 0.8, format: SaveFormat.JPEG });
   if (!saved.base64) throw new Error('Could not read the photo.');
   return { previewUri: saved.uri, bytes: base64ToArrayBuffer(saved.base64), contentType: 'image/jpeg' };
+}
+
+/** A picked photo as a data: URI, to preview it before it is published. */
+export function photoDataUri(photo: ProfilePhoto): string {
+  return `data:${photo.contentType};base64,${arrayBufferToBase64(photo.bytes)}`;
 }

@@ -7,10 +7,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { pickProfilePhoto, type ProfilePhoto } from '../../media/pickProfilePhoto';
+import { photoDataUri, pickProfilePhoto, type ProfilePhoto } from '../../media/pickProfilePhoto';
 import type { OnboardingScreenProps } from '../../navigation/types';
 import { describeError, useOwnProfile, usePaykit, userMessageFor } from '../../paykit';
-import { arrayBufferToBase64 } from '../../paykit/bytes';
 import { Button, Input, Screen, Seal, Text, space } from '../../ui';
 
 export function YourNameScreen({ navigation }: OnboardingScreenProps<'YourName'>) {
@@ -49,7 +48,7 @@ export function YourNameScreen({ navigation }: OnboardingScreenProps<'YourName'>
   const onPickPhoto = async () => {
     try {
       const picked = await pickProfilePhoto();
-      if (picked) setPhoto({ ...picked, dataUri: `data:${picked.contentType};base64,${arrayBufferToBase64(picked.bytes)}` });
+      if (picked) setPhoto({ ...picked, dataUri: photoDataUri(picked) });
     } catch {
       setError("Couldn't use that photo. Try another one.");
     }

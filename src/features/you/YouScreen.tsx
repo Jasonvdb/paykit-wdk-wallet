@@ -48,7 +48,7 @@ export function YouScreen({ navigation }: MainTabScreenProps<'You'>) {
       <Text variant="heading" style={styles.section}>
         Your pay-me code
       </Text>
-      <PayMeCode qrSize={168} />
+      <PayMeCode qrSize={168} showHeading={false} />
 
       <Text variant="heading" style={styles.section}>
         What you publish

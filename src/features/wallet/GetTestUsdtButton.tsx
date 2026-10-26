@@ -14,7 +14,7 @@ import { useRef, useState } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
 
 import { Button, Text, space } from '../../ui';
-import { DEFAULT_FAUCET_MINT_UNITS, formatAssetAmount, sendFailureFor, useUsdtFaucet, useWalletBalances } from '../../wallet';
+import { CONFIRMATION_TIME, DEFAULT_FAUCET_MINT_UNITS, formatAssetAmount, sendFailureFor, useUsdtFaucet, useWalletBalances } from '../../wallet';
 
 /** "Get 1,000 test USD₮". */
 const MINT_LABEL = `Get ${formatAssetAmount(DEFAULT_FAUCET_MINT_UNITS, 'usdt').replace(/\.00$/, '')} test USD₮`;
@@ -72,7 +72,7 @@ export function GetTestUsdtButton({ compact }: { compact?: boolean }) {
       {result ? (
         <View style={styles.result}>
           <Text variant="caption" color="graphite">
-            Minting. It arrives with the next Sepolia block, in about 12 seconds.
+            Minting. It arrives with the next Sepolia block, in {CONFIRMATION_TIME.ethereum}.
           </Text>
           <Button label="View on explorer" variant="secondary" compact onPress={() => void Linking.openURL(result.explorerUrl)} />
         </View>

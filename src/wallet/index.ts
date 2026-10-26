@@ -32,3 +32,4 @@ export { checkAffordable, formatFee, sendErrorMessage, type SendProblem } from '
 export { fetchBtcFeeRate, fetchBtcTransactionStatus, type BtcTransactionStatus } from './mutinynet';
 export { MAY_HAVE_BEEN_SENT, sendFailureFor, type SendFailure } from './sendChecks';
 export { parseTypedAmount } from './amounts';
+export { CONFIRMATION_TIME } from './assets';

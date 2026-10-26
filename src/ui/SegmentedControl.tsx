@@ -1,5 +1,6 @@
-// A row of fully round choices where exactly one is selected: the asset
-// picker on Send and Receive. The selected choice is Ink filled, like a
+// A row of fully round choices where exactly one is selected: one choice
+// from a few options (the asset on Send and Receive, Send's "A person /
+// An address", Receive's mode). The selected choice is Ink filled, like a
 // primary button; the others are Sheet with a Rule outline.
 //
 // Generic over the value type, so `value` stays an AssetId (or a later
@@ -28,7 +29,7 @@ export function SegmentedControl<T extends string>({ options, value, onChange, a
           <Pressable
             key={option.value}
             accessibilityRole="radio"
-            accessibilityState={{ selected }}
+            accessibilityState={{ checked: selected }}
             accessibilityLabel={option.label}
             onPress={() => onChange(option.value)}
             testID={option.testID}
