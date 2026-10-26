@@ -22,7 +22,7 @@ export function TestFundsSection() {
   const { balances } = useWalletBalances();
   return (
     <View style={styles.root}>
-      <GetTestUsdtButton compact />
+      <GetTestUsdtButton compact faucetBelow />
       <Text color="graphite" variant="secondary">
         Gas: {balances.eth === undefined ? '—' : formatFee(balances.eth, 'eth')}. Sepolia ETH comes from a public faucet. Ask it to send
         to your Ethereum address (USD₮ arrives there too):

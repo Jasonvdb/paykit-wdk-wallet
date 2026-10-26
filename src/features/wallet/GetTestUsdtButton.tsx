@@ -19,7 +19,7 @@ import { CONFIRMATION_TIME, DEFAULT_FAUCET_MINT_UNITS, formatAssetAmount, sendFa
 /** "Get 1,000 test USD₮". */
 const MINT_LABEL = `Get ${formatAssetAmount(DEFAULT_FAUCET_MINT_UNITS, 'usdt').replace(/\.00$/, '')} test USD₮`;
 
-export function GetTestUsdtButton({ compact }: { compact?: boolean }) {
+export function GetTestUsdtButton({ compact, faucetBelow }: { compact?: boolean; /** In You > Test funds, where the ETH faucet link is right below. */ faucetBelow?: boolean }) {
   const faucet = useUsdtFaucet();
   const { balances, refresh } = useWalletBalances();
   const [minting, setMinting] = useState(false);
@@ -66,7 +66,7 @@ export function GetTestUsdtButton({ compact }: { compact?: boolean }) {
       />
       {noGas && !result ? (
         <Text variant="caption" color="graphite" testID="faucet-needs-gas">
-          Minting needs a little Sepolia ETH for gas, and this wallet has none. Get some for your Ethereum address in You &gt; Test funds.
+          Minting needs a little Sepolia ETH for gas, and this wallet has none. {faucetBelow ? 'Get some from the Sepolia ETH faucet below.' : 'Get some for your Ethereum address in You > Test funds.'}
         </Text>
       ) : null}
       {result ? (
