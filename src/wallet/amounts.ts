@@ -40,7 +40,7 @@ function groupThousands(digits: string): string {
 
 export type ParseResult =
   | { ok: true; value: bigint }
-  | { ok: false; reason: 'empty' | 'invalid' | 'too-many-decimals' };
+  | { ok: false; reason: 'empty' | 'invalid' | 'too-many-decimals' | 'ambiguous' };
 
 /**
  * Parse decimal text typed by a user (or sent by Paykit) into base units.
@@ -83,6 +83,31 @@ export function formatAssetAmount(
 /** Parse what a user typed in an amount field for `asset`. */
 export function parseAssetAmount(text: string, asset: AssetId): ParseResult {
   return parseUnits(text, ASSETS[asset].decimals);
+}
+
+/**
+ * Parse what a person typed or pasted into an amount field. Decimal keypads
+ * in many locales type "," for the decimal point, while pasted amounts may
+ * use "," to group thousands. So:
+ *
+ *   "0,5"  "12,50"           one comma, not followed by exactly 3 digits: decimal comma
+ *   "0,500"                  a whole part of 0 is never grouped: decimal comma
+ *   "1,000,000" "1,000.50"   several commas, or a point too: grouping
+ *   "1,000"                  could be 1 or 1000: refused as 'ambiguous'
+ *
+ * A thousands separator silently read as a decimal point (or the reverse)
+ * changes the amount 1000 times, so the ambiguous case asks instead.
+ */
+export function parseTypedAmount(text: string, asset: AssetId): ParseResult {
+  const trimmed = text.trim();
+  const commas = (trimmed.match(/,/g) ?? []).length;
+  if (commas === 1 && !trimmed.includes('.')) {
+    const [whole = '', fraction = ''] = trimmed.split(',');
+    const grouped = /^\d{3}$/.test(fraction) && !/^0*$/.test(whole);
+    if (grouped) return { ok: false, reason: 'ambiguous' };
+    return parseAssetAmount(`${whole}.${fraction}`, asset);
+  }
+  return parseAssetAmount(trimmed, asset);
 }
 
 /**

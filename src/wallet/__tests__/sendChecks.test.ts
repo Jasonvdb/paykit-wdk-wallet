@@ -1,7 +1,7 @@
 import { AAVE_SEPOLIA_FAUCET, SEPOLIA_USDT } from '../../config/chains';
 import { addressFromPaymentText, checkRecipientAddress } from '../addressFormat';
 import { parseRecommendedFeeRate, parseTransactionStatus } from '../mutinynet';
-import { checkAffordable, formatFee, sendErrorMessage } from '../sendChecks';
+import { checkAffordable, formatFee, MAY_HAVE_BEEN_SENT, sendErrorMessage, sendFailureFor } from '../sendChecks';
 
 const TB1 = 'tb1qh3z4yzs97s9sq9awmgm55t3auxjuc4j5srz0pg';
 const EVM = '0x83A881Ddad0F675A3d57d306F3F4E6b352b95CD0';
@@ -111,6 +111,27 @@ describe('sendErrorMessage', () => {
     expect(sendErrorMessage(new Error('execution reverted: ERC20: transfer amount exceeds balance'), 'usdt')).toBe('Not enough USD₮.');
     expect(sendErrorMessage(new Error('bad address checksum'), 'usdt')).toContain('checksum');
     expect(sendErrorMessage(new Error('CALL_EXCEPTION 0xdeadbeef'), 'usdt')).not.toContain('CALL_EXCEPTION');
+  });
+
+  it("says the fee must fit on top when WDK's after-fees dust check fails", () => {
+    const message = sendErrorMessage(new Error('The amount after fees must be bigger than the dust limit (= 546).'), 'btc');
+    expect(message).toContain('after the network fee');
+    expect(message).not.toContain('Send at least 547 sats');
+  });
+});
+
+describe('sendFailureFor', () => {
+  it('lets the person retry when WDK refused before broadcasting', () => {
+    expect(sendFailureFor(new Error('No unspent outputs available.'), 'btc')).toEqual({ outcome: 'not-sent', message: expect.stringContaining('Not enough BTC') });
+    expect(sendFailureFor(new Error('insufficient funds for gas * price + value'), 'usdt').outcome).toBe('not-sent');
+    expect(sendFailureFor(new Error('The amount must be bigger than the dust limit (= 294).'), 'btc').outcome).toBe('not-sent');
+  });
+
+  it('treats network errors and unknown errors as "may have been sent"', () => {
+    // WDK's BTC send broadcasts, then polls Electrum: a timeout there comes after the broadcast.
+    expect(sendFailureFor(new Error('Electrum request timed out'), 'btc')).toEqual({ outcome: 'unknown', message: MAY_HAVE_BEEN_SENT });
+    expect(sendFailureFor(new Error('socket hang up'), 'usdt').outcome).toBe('unknown');
+    expect(sendFailureFor(new Error('something new'), 'btc').outcome).toBe('unknown');
   });
 });
 

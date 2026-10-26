@@ -3,6 +3,7 @@ import {
   formatUnits,
   fromPaykitDecimal,
   parseAssetAmount,
+  parseTypedAmount,
   parseBaseUnits,
   parseUnits,
   toPaykitDecimal,
@@ -85,5 +86,23 @@ describe('asset helpers', () => {
     expect(parseBaseUnits('12345')).toBe(12345n);
     expect(parseBaseUnits('1.5')).toBeUndefined();
     expect(parseBaseUnits(null)).toBeUndefined();
+  });
+});
+
+describe('parseTypedAmount', () => {
+  it('reads a decimal comma from locale keypads', () => {
+    expect(parseTypedAmount('0,5', 'usdt')).toEqual({ ok: true, value: 500_000n });
+    expect(parseTypedAmount('12,50', 'usdt')).toEqual({ ok: true, value: 12_500_000n });
+    expect(parseTypedAmount('0,500', 'usdt')).toEqual({ ok: true, value: 500_000n });
+  });
+
+  it('reads commas as grouping when the text says so', () => {
+    expect(parseTypedAmount('1,000.50', 'usdt')).toEqual({ ok: true, value: 1_000_500_000n });
+    expect(parseTypedAmount('1,000,000', 'usdt')).toEqual({ ok: true, value: 1_000_000_000_000n });
+  });
+
+  it('refuses "1,000", which could be one or a thousand', () => {
+    expect(parseTypedAmount('1,000', 'usdt')).toEqual({ ok: false, reason: 'ambiguous' });
+    expect(parseTypedAmount('12,345', 'btc')).toEqual({ ok: false, reason: 'ambiguous' });
   });
 });

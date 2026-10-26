@@ -30,3 +30,5 @@ export { useBtcContactAccount } from './useBtcContactAccount';
 export { addressFromPaymentText, checkRecipientAddress, type RecipientCheck } from './addressFormat';
 export { checkAffordable, formatFee, sendErrorMessage, type SendProblem } from './sendChecks';
 export { fetchBtcFeeRate, fetchBtcTransactionStatus, type BtcTransactionStatus } from './mutinynet';
+export { MAY_HAVE_BEEN_SENT, sendFailureFor, type SendFailure } from './sendChecks';
+export { parseTypedAmount } from './amounts';

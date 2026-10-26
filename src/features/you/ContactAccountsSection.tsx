@@ -6,15 +6,18 @@
 // Collect is "almost everything": WDK keeps back a dust-sized change output
 // (src/wallet/useBtcContactAccount.ts), so a few hundred sats can stay.
 //
+// A collect that may have reached the network despite an error stays
+// disabled (sendFailureFor), and a ref stops a double tap from sending two.
+//
 // One row component per account, because WDK's account hooks are bound to
 // one account index each.
 import * as Haptics from 'expo-haptics';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
 
 import { shortKey, useContacts, usePaykitService, type PaykitService } from '../../paykit';
 import { AssetAmount, Button, Divider, Text, space } from '../../ui';
-import { sendErrorMessage, useBtcContactAccount } from '../../wallet';
+import { sendFailureFor, useBtcContactAccount } from '../../wallet';
 
 type ContactAccount = { pubky: string; accountIndex: number };
 
@@ -59,8 +62,12 @@ function ContactAccountRow({ name, accountIndex }: { name: string; accountIndex:
   const account = useBtcContactAccount(accountIndex);
   const [collecting, setCollecting] = useState(false);
   const [message, setMessage] = useState<{ text: string; explorerUrl?: string; tone: 'graphite' | 'alert' }>();
+  const [outcomeUnknown, setOutcomeUnknown] = useState(false);
+  const inFlight = useRef(false);
 
   const onCollect = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setCollecting(true);
     setMessage(undefined);
     try {
@@ -72,8 +79,14 @@ function ContactAccountRow({ name, accountIndex }: { name: string; accountIndex:
         setMessage({ text: 'Too little to move: it would all go to the network fee.', tone: 'graphite' });
       }
     } catch (e) {
-      setMessage({ text: sendErrorMessage(e, 'btc'), tone: 'alert' });
+      const failure = sendFailureFor(e, 'btc');
+      setMessage({ text: failure.message, tone: 'alert' });
+      if (failure.outcome === 'unknown') {
+        setOutcomeUnknown(true);
+        void account.refresh().catch(() => undefined);
+      }
     } finally {
+      inFlight.current = false;
       setCollecting(false);
     }
   };
@@ -97,7 +110,7 @@ function ContactAccountRow({ name, accountIndex }: { name: string; accountIndex:
           compact
           onPress={onCollect}
           loading={collecting}
-          disabled={!account.sats}
+          disabled={!account.sats || outcomeUnknown}
           testID={`collect-${accountIndex}`}
         />
         <Button label="Refresh" variant="secondary" compact onPress={() => void account.refresh().catch(() => undefined)} disabled={collecting} />

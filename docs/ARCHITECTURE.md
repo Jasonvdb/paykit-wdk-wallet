@@ -94,7 +94,7 @@ useWalletBalances(opts?: { pollMs?: number }): {
 useContactBtcBalances(accountIndices: number[]): { balances; total: bigint; isRefreshing; refresh }
 // sending from account 0
 useSend(): {
-  quote(req: { asset: AssetId; to: string; amount: bigint }): Promise<{ fee: bigint; feeAsset: AssetId; feeRate?: bigint }>;
+  quote(req: { asset: AssetId; to: string; amount: bigint; feeRate?: bigint }): Promise<{ fee: bigint; feeAsset: AssetId; feeRate?: bigint }>;  // feeRate: the rate Max used
   send(req: { asset: AssetId; to: string; amount: bigint; feeRate?: bigint }): Promise<{ hash: string; fee?: bigint; explorerUrl: string }>;
   maxBtcAmount(feeRate?: bigint): Promise<bigint>;    // getMaxSpendable on account 0
 }
@@ -113,6 +113,8 @@ checkRecipientAddress(text, chain): { ok: true; address } | { ok: false; reason;
 payeeOfPaymentText(text) / payeeOfEthereumUri(rest)                                        // BIP-21 / EIP-681: the payee, never the token contract
 checkAffordable({ asset, amount, balances, fee? }): SendProblem | undefined                // balance, amount + fee, "Not enough ETH for gas"
 formatFee(fee, asset) / sendErrorMessage(error, asset)                                     // display text; never shows the raw WDK error
+sendFailureFor(error, asset): { outcome: 'not-sent' | 'unknown'; message }                // after a send: 'unknown' = may have been broadcast, do not retry
+parseTypedAmount(text, asset): ParseResult                                                // decimal comma vs thousands separator; '1,000' is 'ambiguous'
 fetchBtcFeeRate() / fetchBtcTransactionStatus(txid)                                        // Mutinynet esplora (src/wallet/mutinynet.ts)
 ```
 
@@ -120,8 +122,22 @@ BTC fee rate: WDK estimates a fee rate itself but never reports it. `quote`
 fetches Mutinynet's recommended sats/vB and passes it to WDK explicitly
 (`quoteSendTransaction` through `extension()`), and the Send screen hands
 the quote's `feeRate` back to `send`, so the transaction pays the rate the
-review showed. If the rate API fails, WDK estimates as before and the
-review shows the fee without a rate.
+review showed. If the rate API fails (or takes over 5 s), WDK estimates as
+before and the review shows the fee without a rate. Max sizes a BTC amount
+at a rate too; the Send screen passes that rate to `quote`, so amount + fee
+still fits the balance. Collect uses one rate for `getMaxSpendable` and the
+send for the same reason.
+
+Sends that may have left: WDK's BTC `sendTransaction` broadcasts first and
+then polls Electrum for up to 10 s, and an EVM RPC timeout on
+`eth_sendRawTransaction` is just as unclear. So `sendFailureFor` treats
+every error it does not recognise as raised before the broadcast (dust,
+balance, checksum, fee cap, a reverting call) as "may have been sent". The
+Send review, the faucet button and Collect then stay disabled and say to
+check Activity, instead of offering a retry that could pay twice. The Send
+screen also freezes what it reviews (asset, recipient, amount) with the
+quote, locks its inputs while a quote runs, and guards every money handler
+with a ref so a double tap cannot send twice.
 
 USD₮ is an ERC-20 token, so its fee is paid in ETH. `checkAffordable`
 reports that case as its own problem ("Not enough ETH for gas"), and the

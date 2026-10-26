@@ -10,6 +10,16 @@
 // before asking for a fee, and the review checks amount + fee (BTC) or ETH
 // for gas (USD₮) before the Send button is enabled.
 //
+// Review and send use the request as it was when Review was tapped (a
+// SendDraft saved with the quote), never the live inputs: a fee quoted for
+// Bitcoin must not be paired with a USD₮ amount typed while it loaded.
+// The inputs are locked while a quote or send runs, and a ref guards each
+// handler against a second tap before React re-renders.
+//
+// A send that fails in a way that might have reached the network (a
+// timeout after the broadcast, see sendFailureFor) is not offered again:
+// the screen says to check Activity first, so nobody pays twice.
+//
 // Recipients plug in through ./send/recipient.ts: each way of choosing who
 // to pay is a field component that reports a SendRecipient.
 //   Person   send/PubkyRecipientField: a pubky, resolved to the addresses
@@ -21,8 +31,8 @@
 // privatePaymentAddressesFor (src/paykit/privatePayments.ts); the Person
 // field already asks it before public endpoints.
 import * as Haptics from 'expo-haptics';
-import { useCallback, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useCallback, useRef, useState } from 'react';
+import { Keyboard, StyleSheet, View } from 'react-native';
 
 import type { RootScreenProps } from '../../navigation/types';
 import { Button, SegmentedControl, SheetScreen, Text, space } from '../../ui';
@@ -30,8 +40,9 @@ import {
   checkAffordable,
   fetchBtcFeeRate,
   formatUnits,
-  parseAssetAmount,
+  parseTypedAmount,
   sendErrorMessage,
+  sendFailureFor,
   useSend,
   useWalletBalances,
   ASSETS,
@@ -46,12 +57,19 @@ import type { SendRecipient } from './send/recipient';
 import { SendReview } from './send/SendReview';
 import { SendSuccess } from './send/SendSuccess';
 
-type Step = { name: 'compose' } | { name: 'review'; quote: FeeQuote } | { name: 'sent'; result: SendResult };
+/** What is being sent, frozen when Review is tapped. */
+type SendDraft = { asset: PayableAsset; recipient: SendRecipient; address: string; amount: bigint };
+
+type Step =
+  | { name: 'compose' }
+  | { name: 'review'; draft: SendDraft; quote: FeeQuote; outcomeUnknown?: boolean }
+  | { name: 'sent'; draft: SendDraft; result: SendResult };
 
 const PARSE_ERRORS = {
   empty: undefined,
   invalid: 'Enter a number, like 0.0005 or 12.50.',
   'too-many-decimals': 'That has more decimal places than this asset allows.',
+  ambiguous: 'Is that one or a thousand? Use a point for decimals (1.5) and leave out thousands separators.',
 } as const;
 
 export function SendScreen({ navigation, route }: RootScreenProps<'Send'>) {
@@ -65,16 +83,18 @@ export function SendScreen({ navigation, route }: RootScreenProps<'Send'>) {
   /** Text to start the "To" field with: the link's `to`, or a pubky pasted into the address field. */
   const [toPrefill, setToPrefill] = useState(route.params?.to);
   const [amountText, setAmountText] = useState('');
+  /** The BTC amount Max filled in and the fee rate it was sized at; the quote reuses that rate. */
+  const [maxSizing, setMaxSizing] = useState<{ amount: bigint; feeRate?: bigint }>();
   const [step, setStep] = useState<Step>({ name: 'compose' });
   const [busy, setBusy] = useState<'max' | 'quote' | 'send' | null>(null);
   const [error, setError] = useState<string>();
+  /** Set synchronously at the top of each handler: a second tap before React re-renders must not run it twice. */
+  const inFlight = useRef(false);
 
-  const parsed = parseAssetAmount(amountText, asset);
+  const parsed = parseTypedAmount(amountText, asset);
   const amount = parsed.ok ? parsed.value : undefined;
   const address = recipient?.addresses[asset];
   const preQuoteProblem = amount !== undefined ? checkAffordable({ asset, amount, balances }) : undefined;
-  const reviewProblem =
-    step.name === 'review' && amount !== undefined ? checkAffordable({ asset, amount, balances, fee: step.quote.fee }) : undefined;
 
   // Stable, so recipient fields can report from an effect without looping.
   const onRecipientChange = useCallback((next: SendRecipient | undefined) => setRecipient(next), []);
@@ -93,53 +113,73 @@ export function SendScreen({ navigation, route }: RootScreenProps<'Send'>) {
     setError(undefined);
   };
 
-  const onMax = async () => {
-    setError(undefined);
-    if (asset === 'usdt') {
-      if (balances.usdt !== undefined) setAmountText(formatUnits(balances.usdt, ASSETS.usdt.decimals));
-      return;
-    }
-    setBusy('max');
+  /** Run `task` unless another one is running; `busy` drives the spinners and locks the inputs. */
+  const exclusive = async (kind: NonNullable<typeof busy>, task: () => Promise<void>) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(kind);
     try {
-      const rate = await fetchBtcFeeRate().catch(() => undefined);
-      const max = await wallet.maxBtcAmount(rate);
-      setAmountText(max > 0n ? formatUnits(max, ASSETS.btc.decimals) : '0');
-    } catch (e) {
-      setError(sendErrorMessage(e, 'btc'));
+      await task();
     } finally {
+      inFlight.current = false;
       setBusy(null);
     }
   };
 
-  const onReview = async () => {
-    if (!address || amount === undefined) return;
-    setBusy('quote');
-    setError(undefined);
-    try {
-      const quote = await wallet.quote({ asset, to: address, amount });
-      setStep({ name: 'review', quote });
-    } catch (e) {
-      setError(sendErrorMessage(e, asset));
-    } finally {
-      setBusy(null);
-    }
+  const onMax = () =>
+    exclusive('max', async () => {
+      setError(undefined);
+      if (asset === 'usdt') {
+        if (balances.usdt !== undefined) setAmountText(formatUnits(balances.usdt, ASSETS.usdt.decimals));
+        return;
+      }
+      try {
+        const feeRate = await fetchBtcFeeRate().catch(() => undefined);
+        const max = await wallet.maxBtcAmount(feeRate);
+        setAmountText(max > 0n ? formatUnits(max, ASSETS.btc.decimals) : '0');
+        setMaxSizing(max > 0n ? { amount: max, feeRate } : undefined);
+      } catch (e) {
+        setError(sendErrorMessage(e, 'btc'));
+      }
+    });
+
+  const onReview = () => {
+    if (!recipient || !address || amount === undefined) return;
+    const draft: SendDraft = { asset, recipient, address, amount };
+    Keyboard.dismiss();
+    return exclusive('quote', async () => {
+      setError(undefined);
+      const feeRate = draft.asset === 'btc' && maxSizing?.amount === draft.amount ? maxSizing.feeRate : undefined;
+      try {
+        const quote = await wallet.quote({ asset: draft.asset, to: draft.address, amount: draft.amount, feeRate });
+        setStep({ name: 'review', draft, quote });
+      } catch (e) {
+        setError(sendErrorMessage(e, draft.asset));
+      }
+    });
   };
 
-  const onSend = async () => {
-    if (step.name !== 'review' || !address || amount === undefined) return;
-    setBusy('send');
-    setError(undefined);
-    try {
-      const result = await wallet.send({ asset, to: address, amount, feeRate: step.quote.feeRate });
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setStep({ name: 'sent', result });
-      void refresh();
-    } catch (e) {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setError(sendErrorMessage(e, asset));
-    } finally {
-      setBusy(null);
-    }
+  const onSend = () => {
+    if (step.name !== 'review' || step.outcomeUnknown) return;
+    const { draft, quote } = step;
+    return exclusive('send', async () => {
+      setError(undefined);
+      try {
+        const result = await wallet.send({ asset: draft.asset, to: draft.address, amount: draft.amount, feeRate: quote.feeRate });
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setStep({ name: 'sent', draft, result });
+        void refresh();
+      } catch (e) {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        const failure = sendFailureFor(e, draft.asset);
+        setError(failure.message);
+        if (failure.outcome === 'unknown') {
+          // It may be on its way: no second Send. Fresh balances help the person check.
+          setStep({ name: 'review', draft, quote, outcomeUnknown: true });
+          void refresh();
+        }
+      }
+    });
   };
 
   // "Enter an amount above zero" would nag while someone types "0.0…"; the
@@ -155,14 +195,15 @@ export function SendScreen({ navigation, route }: RootScreenProps<'Send'>) {
 
   const close = () => navigation.goBack();
 
-  if (step.name === 'sent' && amount !== undefined) {
+  if (step.name === 'sent') {
+    const { draft } = step;
     return (
       <SheetScreen title="Send" onClose={close} testID="send-screen">
         <SendSuccess
-          asset={asset}
-          amount={amount}
-          toLabel={recipient?.label ?? address ?? ''}
-          toIsName={recipient?.kind === 'pubky'}
+          asset={draft.asset}
+          amount={draft.amount}
+          toLabel={draft.recipient.label}
+          toIsName={draft.recipient.kind === 'pubky'}
           result={step.result}
           onDone={close}
         />
@@ -170,23 +211,26 @@ export function SendScreen({ navigation, route }: RootScreenProps<'Send'>) {
     );
   }
 
-  if (step.name === 'review' && recipient && address && amount !== undefined) {
+  if (step.name === 'review') {
+    const { draft, quote } = step;
     return (
       <SheetScreen title="Review" onClose={close} testID="send-screen">
         <SendReview
-          asset={asset}
-          amount={amount}
-          recipient={recipient}
-          address={address}
-          quote={step.quote}
-          problem={reviewProblem}
+          asset={draft.asset}
+          amount={draft.amount}
+          recipient={draft.recipient}
+          address={draft.address}
+          quote={quote}
+          problem={checkAffordable({ asset: draft.asset, amount: draft.amount, balances, fee: quote.fee })}
           sending={busy === 'send'}
+          outcomeUnknown={step.outcomeUnknown}
           error={error}
           onSend={onSend}
           onEdit={() => {
             setError(undefined);
             setStep({ name: 'compose' });
           }}
+          onClose={close}
         />
       </SheetScreen>
     );
@@ -208,7 +252,8 @@ export function SendScreen({ navigation, route }: RootScreenProps<'Send'>) {
         />
       }
     >
-      <View style={styles.body}>
+      {/* Locked while a fee quote or Max runs: the review pairs the quote with these inputs. */}
+      <View style={[styles.body, busy !== null && styles.locked]} pointerEvents={busy !== null ? 'none' : 'auto'}>
         <SegmentedControl
           accessibilityLabel="Pay"
           value={toKind}
@@ -238,21 +283,20 @@ export function SendScreen({ navigation, route }: RootScreenProps<'Send'>) {
           asset={asset}
           text={amountText}
           onChangeText={(text) => {
-            // Decimal keypads in many locales type "," for the decimal
-            // point. parseAssetAmount reads "," as a thousands separator, so
-            // "0,5" would become 5: treat a typed comma as the decimal point.
-            setAmountText(text.replace(/,/g, '.'));
+            // Kept as typed: parseTypedAmount decides whether a comma is a
+            // decimal point ("0,5") or a thousands separator ("1,000.50").
+            setAmountText(text);
             setError(undefined);
           }}
           balance={balances[asset]}
-          onMax={onMax}
+          onMax={() => void onMax()}
           maxLoading={busy === 'max'}
           error={amountError ?? error}
         />
         {noGas ? (
           <Text color="alert" testID="send-no-gas">
-            Not enough ETH for gas. USD₮ transfers pay their network fee in Sepolia ETH, and this wallet has none. Send a little to your
-            USD₮ address first.
+            Not enough ETH for gas. USD₮ transfers pay their network fee in Sepolia ETH, and this wallet has none. Get some for your
+            Ethereum address in You &gt; Test funds.
           </Text>
         ) : null}
       </View>
@@ -262,4 +306,5 @@ export function SendScreen({ navigation, route }: RootScreenProps<'Send'>) {
 
 const styles = StyleSheet.create({
   body: { gap: space.xl },
+  locked: { opacity: 0.6 },
 });

@@ -7,8 +7,25 @@
 // - when a transaction was confirmed, because WDK's transfer list carries
 //   only a block height.
 //
-// Parsers are pure and unit tested; the fetchers are thin.
+// Parsers are pure and unit tested; the fetchers are thin. Each fetch gives
+// up after FETCH_TIMEOUT_MS: React Native's fetch never times out on its
+// own, and a stalled API must not leave the Send screen waiting forever.
+// Callers fall back (WDK estimates its own fee rate) when a fetch fails.
 import { MUTINYNET_API } from '../config/chains';
+
+export const FETCH_TIMEOUT_MS = 5_000;
+
+async function fetchJsonWithTimeout(url: string): Promise<unknown> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, { headers: { accept: 'application/json' }, signal: controller.signal });
+    if (!response.ok) return undefined;
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** Mutinynet's minimum relay rate. Also the fallback when the API is unsure. */
 export const MIN_BTC_FEE_RATE = 1n;
@@ -22,9 +39,7 @@ export function parseRecommendedFeeRate(json: unknown): bigint | undefined {
 }
 
 export async function fetchBtcFeeRate(): Promise<bigint | undefined> {
-  const response = await fetch(`${MUTINYNET_API}/v1/fees/recommended`, { headers: { accept: 'application/json' } });
-  if (!response.ok) return undefined;
-  return parseRecommendedFeeRate(await response.json());
+  return parseRecommendedFeeRate(await fetchJsonWithTimeout(`${MUTINYNET_API}/v1/fees/recommended`));
 }
 
 export type BtcTransactionStatus = { confirmed: boolean; blockHeight?: number; blockTime?: number };
@@ -42,7 +57,5 @@ export function parseTransactionStatus(json: unknown): BtcTransactionStatus | un
 
 export async function fetchBtcTransactionStatus(txid: string): Promise<BtcTransactionStatus | undefined> {
   if (!/^[0-9a-f]{64}$/i.test(txid)) return undefined;
-  const response = await fetch(`${MUTINYNET_API}/tx/${txid}/status`, { headers: { accept: 'application/json' } });
-  if (!response.ok) return undefined;
-  return parseTransactionStatus(await response.json());
+  return parseTransactionStatus(await fetchJsonWithTimeout(`${MUTINYNET_API}/tx/${txid}/status`));
 }

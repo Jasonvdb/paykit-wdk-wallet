@@ -5,6 +5,10 @@
 // enough ETH for gas) the problem replaces the button's promise: it is shown
 // in Alert and the button is disabled, so nothing is broadcast that would
 // fail.
+//
+// If a send failed in a way that may still have reached the network
+// (`outcomeUnknown`), Send stays disabled for good and the only way on is
+// to close and check Activity: a second tap could pay twice.
 import { StyleSheet, View } from 'react-native';
 
 import { AssetAmount, Button, DetailRow, Divider, KeyText, Text, space } from '../../../ui';
@@ -21,9 +25,12 @@ export type SendReviewProps = {
   quote: FeeQuote;
   problem?: SendProblem;
   sending: boolean;
+  /** The last send may have been broadcast: never offer Send again. */
+  outcomeUnknown?: boolean;
   error?: string;
   onSend: () => void;
   onEdit: () => void;
+  onClose: () => void;
 };
 
 const NETWORK: Record<PayableAsset, string> = {
@@ -31,7 +38,7 @@ const NETWORK: Record<PayableAsset, string> = {
   usdt: 'Ethereum Sepolia. Confirms in about 12 seconds.',
 };
 
-export function SendReview({ asset, amount, recipient, address, quote, problem, sending, error, onSend, onEdit }: SendReviewProps) {
+export function SendReview({ asset, amount, recipient, address, quote, problem, sending, outcomeUnknown, error, onSend, onEdit, onClose }: SendReviewProps) {
   const amountText = formatAssetAmount(amount, asset, { withSymbol: true });
   return (
     <View style={styles.root} testID="send-review">
@@ -84,14 +91,20 @@ export function SendReview({ asset, amount, recipient, address, quote, problem, 
       ) : null}
 
       <View style={styles.actions}>
-        <Button
-          label={sending ? 'Sending…' : `Send ${amountText}`}
-          onPress={onSend}
-          loading={sending}
-          disabled={!!problem}
-          testID="send-confirm"
-        />
-        <Button label="Change" variant="secondary" onPress={onEdit} disabled={sending} testID="send-edit" />
+        {outcomeUnknown ? (
+          <Button label="Close and check Activity" onPress={onClose} testID="send-check-activity" />
+        ) : (
+          <>
+            <Button
+              label={sending ? 'Sending…' : `Send ${amountText}`}
+              onPress={onSend}
+              loading={sending}
+              disabled={!!problem}
+              testID="send-confirm"
+            />
+            <Button label="Change amount or recipient" variant="secondary" onPress={onEdit} disabled={sending} testID="send-edit" />
+          </>
+        )}
       </View>
     </View>
   );

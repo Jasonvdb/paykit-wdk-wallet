@@ -31,7 +31,11 @@ export type SendRequest = {
   to: string;
   /** Base units of `asset`. */
   amount: bigint;
-  /** BTC only: sats per vbyte, from the quote. Omitted, WDK estimates its own. */
+  /**
+   * BTC only: sats per vbyte. For send(), the quote's rate. For quote(), the
+   * rate Max used, if any; omitted, quote() fetches Mutinynet's rate (and
+   * if that fails, WDK estimates its own).
+   */
   feeRate?: bigint;
 };
 
@@ -78,7 +82,9 @@ export function useSend() {
     async (request: SendRequest): Promise<FeeQuote> => {
       checkRequest(request);
       if (request.asset === 'btc') {
-        const feeRate = await fetchBtcFeeRate().catch(() => undefined);
+        // A rate the caller already used (Max sized the amount at it) wins,
+        // so amount + fee still fits the balance.
+        const feeRate = request.feeRate ?? (await fetchBtcFeeRate().catch(() => undefined));
         if (feeRate !== undefined) {
           const result = await btcAccount.extension().quoteSendTransaction({
             to: request.to.trim(),

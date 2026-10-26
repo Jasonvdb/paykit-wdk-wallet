@@ -76,19 +76,60 @@ export function formatFee(fee: bigint, asset: AssetId): string {
 /**
  * Turn an error from WDK (thrown in its worklet, carried over RPC as a
  * message) into words for the Send screen. The raw message is matched,
- * never shown.
+ * never shown. Use it for steps that never broadcast (fee quote, Max);
+ * after a send, use sendFailureFor.
  */
 export function sendErrorMessage(error: unknown, asset: AssetId): string {
-  const raw = error instanceof Error ? error.message : String(error ?? '');
-  const symbol = ASSETS[asset].symbol;
+  return knownSendError(rawMessage(error), asset) ?? (NETWORK_ERROR.test(rawMessage(error)) ? NETWORK_MESSAGE : PREPARE_MESSAGE);
+}
 
+/**
+ * Why a send (or a faucet mint, or a collect) failed, and whether it may
+ * have gone out anyway.
+ *
+ *   'not-sent'  WDK refused before broadcasting (dust, balance, checksum,
+ *               fee cap, a reverting call): safe to fix and try again.
+ *   'unknown'   anything else, network errors included. WDK's BTC send
+ *               broadcasts first and then polls Electrum for the new
+ *               outputs, so a timeout there arrives after the transaction
+ *               left; an EVM RPC timeout on eth_sendRawTransaction is just as
+ *               unclear. Trying again could pay twice (on EVM a retry signs
+ *               a new transaction with the next nonce), so the screen stops
+ *               and sends the person to Activity instead.
+ */
+export type SendFailure = { outcome: 'not-sent' | 'unknown'; message: string };
+
+export const MAY_HAVE_BEEN_SENT =
+  "This may have been sent. Check Activity in a minute before you try again, so you don't pay twice.";
+
+export function sendFailureFor(error: unknown, asset: AssetId): SendFailure {
+  const known = knownSendError(rawMessage(error), asset);
+  return known ? { outcome: 'not-sent', message: known } : { outcome: 'unknown', message: MAY_HAVE_BEEN_SENT };
+}
+
+const NETWORK_ERROR = /timeout|timed out|network|fetch|ECONN|socket/i;
+const NETWORK_MESSAGE = "Couldn't reach the network. Check the connection and try again.";
+const PREPARE_MESSAGE = 'The wallet could not prepare this transaction. Check the address and amount, then try again.';
+
+function rawMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error ?? '');
+}
+
+/** Errors WDK (or useSend's own checks) raise before anything is broadcast. */
+function knownSendError(raw: string, asset: AssetId): string | undefined {
+  const symbol = ASSETS[asset].symbol;
+  const afterFees = /after fees must be bigger than the dust limit \(= ?(\d+)\)/i.exec(raw);
+  if (afterFees) {
+    return `That amount is too small: after the network fee, less than ${BigInt(afterFees[1] ?? '0') + 1n} sats would arrive. Send more.`;
+  }
   const dust = /dust limit \(= ?(\d+)\)/i.exec(raw);
-  if (dust) return `That amount is too small to send. Send at least ${BigInt(dust[1]) + 1n} sats.`;
+  if (dust) return `That amount is too small to send. Send at least ${BigInt(dust[1] ?? '0') + 1n} sats.`;
   if (/no unspent outputs|insufficient balance/i.test(raw)) return `Not enough ${symbol} for this amount plus the network fee.`;
   if (/insufficient funds/i.test(raw)) return asset === 'usdt' ? 'Not enough ETH for gas.' : `Not enough ${symbol} for this amount plus the network fee.`;
   if (/transfer amount exceeds balance|exceeds balance/i.test(raw)) return `Not enough ${symbol}.`;
   if (/bad address checksum/i.test(raw)) return 'That address has a typo: its capital letters do not match its checksum. Copy it again.';
   if (/maximum fee/i.test(raw)) return 'The network fee is higher than this wallet allows right now. Try again later.';
-  if (/timeout|timed out|network|fetch|ECONN|socket/i.test(raw)) return "Couldn't reach the network. Check the connection and try again.";
-  return 'The wallet could not prepare this transaction. Check the address and amount, then try again.';
+  if (/execution reverted|CALL_EXCEPTION/i.test(raw)) return 'The network refused this transaction. Check the amount and your balance, then try again.';
+  if (/not ready yet|contract address|not a testnet Bitcoin address|not an Ethereum address|amount above zero/i.test(raw)) return PREPARE_MESSAGE;
+  return undefined;
 }

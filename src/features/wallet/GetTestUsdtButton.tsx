@@ -3,14 +3,18 @@
 // little Sepolia ETH; with no ETH the button is disabled and says why,
 // instead of failing after a tap.
 //
+// A mint that fails in a way that may have reached the network keeps the
+// button disabled (sendFailureFor): a second mint would cost gas twice.
+// A ref guards against a double tap before React re-renders.
+//
 // Used on Receive (next to USD₮), on the Wallet tab when USD₮ is empty, and
-// in You > Test funds.
+// in You &gt; Test funds.
 import * as Haptics from 'expo-haptics';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
 
 import { Button, Text, space } from '../../ui';
-import { DEFAULT_FAUCET_MINT_UNITS, formatAssetAmount, sendErrorMessage, useUsdtFaucet, useWalletBalances } from '../../wallet';
+import { DEFAULT_FAUCET_MINT_UNITS, formatAssetAmount, sendFailureFor, useUsdtFaucet, useWalletBalances } from '../../wallet';
 
 /** "Get 1,000 test USD₮". */
 const MINT_LABEL = `Get ${formatAssetAmount(DEFAULT_FAUCET_MINT_UNITS, 'usdt').replace(/\.00$/, '')} test USD₮`;
@@ -21,9 +25,13 @@ export function GetTestUsdtButton({ compact }: { compact?: boolean }) {
   const [minting, setMinting] = useState(false);
   const [result, setResult] = useState<{ explorerUrl: string }>();
   const [error, setError] = useState<string>();
+  const [outcomeUnknown, setOutcomeUnknown] = useState(false);
+  const inFlight = useRef(false);
 
   const noGas = balances.eth === 0n;
   const onMint = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setMinting(true);
     setError(undefined);
     setResult(undefined);
@@ -33,8 +41,14 @@ export function GetTestUsdtButton({ compact }: { compact?: boolean }) {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       void refresh();
     } catch (e) {
-      setError(sendErrorMessage(e, 'usdt'));
+      const failure = sendFailureFor(e, 'usdt');
+      setError(failure.message);
+      if (failure.outcome === 'unknown') {
+        setOutcomeUnknown(true);
+        void refresh();
+      }
     } finally {
+      inFlight.current = false;
       setMinting(false);
     }
   };
@@ -47,12 +61,12 @@ export function GetTestUsdtButton({ compact }: { compact?: boolean }) {
         compact={compact}
         onPress={onMint}
         loading={minting}
-        disabled={!faucet.isReady || noGas}
+        disabled={!faucet.isReady || noGas || outcomeUnknown}
         testID="get-test-usdt"
       />
       {noGas && !result ? (
         <Text variant="caption" color="graphite" testID="faucet-needs-gas">
-          Minting needs a little Sepolia ETH for gas, and this wallet has none. Send some to your USD₮ address first.
+          Minting needs a little Sepolia ETH for gas, and this wallet has none. Get some for your Ethereum address in You &gt; Test funds.
         </Text>
       ) : null}
       {result ? (

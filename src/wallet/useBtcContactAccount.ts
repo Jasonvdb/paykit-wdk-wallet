@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAccount } from '@tetherto/wdk-react-native-core';
 
 import { BTC, BTC_NETWORK } from '../config/wdk';
+import { fetchBtcFeeRate } from './mutinynet';
 import { parseBaseUnits } from './amounts';
 import { BTC_HISTORY_FETCH_LIMIT, newestItems, parseBtcTransfers, type ActivityItem } from './activity';
 import { transactionUrl } from './explorers';
@@ -27,7 +28,8 @@ import { recordSentTransaction } from './sentTransactions';
 const HISTORY_LIMIT = 10;
 
 type BtcAccountExtension = {
-  getMaxSpendable: () => Promise<{ amount: string; fee: string; changeValue: string }>;
+  getMaxSpendable: (options: { feeRate?: number }) => Promise<{ amount: string; fee: string; changeValue: string }>;
+  sendTransaction: (tx: { to: string; value: string; feeRate?: number }) => Promise<{ hash: string; fee: string }>;
   getTransfers: (options: { limit?: number }) => Promise<unknown>;
 };
 
@@ -37,7 +39,7 @@ export function useBtcContactAccount(accountIndex: number) {
   const [sats, setSats] = useState<bigint>();
   const [transfers, setTransfers] = useState<ActivityItem[]>([]);
 
-  const { getBalance, extension, send } = account;
+  const { getBalance, extension } = account;
   const ready = account.address !== null;
 
   const refresh = useCallback(async () => {
@@ -59,30 +61,36 @@ export function useBtcContactAccount(accountIndex: number) {
    * Move what WDK reports as spendable to account 0 (a dust-sized remainder
    * may stay, see the header). Resolves with the hash, or undefined if there
    * was nothing to move.
+   *
+   * One fee rate for both steps: getMaxSpendable sizes the amount at a rate,
+   * and the send must pay that same rate, or amount + fee no longer fits
+   * ("Insufficient balance after fees").
    */
   const collect = useCallback(async () => {
     if (!spending.address) throw new Error('The wallet is not ready yet.');
-    const max = await extension().getMaxSpendable();
+    const rate = await fetchBtcFeeRate().catch(() => undefined);
+    const feeRate = rate !== undefined ? Number(rate) : undefined;
+    const max = await extension().getMaxSpendable(feeRate !== undefined ? { feeRate } : {});
     const amount = parseBaseUnits(String(max?.amount ?? ''));
     if (amount === undefined || amount <= 0n) return undefined;
-    const result = await send({ to: spending.address, asset: BTC, amount: amount.toString() });
-    if (!result.success || !result.hash) throw new Error(result.error ?? 'The transfer to your main account was not sent.');
+    const sent = await extension().sendTransaction({ to: spending.address, value: amount.toString(), ...(feeRate !== undefined ? { feeRate } : {}) });
+    if (!sent?.hash) throw new Error('The transfer to your main account was not sent.');
     recordSentTransaction({
-      id: `bitcoin:${result.hash}:local:collect:${accountIndex}`,
+      id: `bitcoin:${sent.hash}:local:collect:${accountIndex}`,
       chain: 'bitcoin',
       asset: 'btc',
       direction: 'out',
       amount,
-      fee: parseBaseUnits(String(result.fee)),
-      hash: result.hash,
+      fee: parseBaseUnits(String(sent.fee)),
+      hash: sent.hash,
       counterpartyAddress: spending.address,
       timestamp: Date.now(),
       status: 'pending',
       accountIndex,
     });
-    await refresh();
-    return { hash: result.hash, explorerUrl: transactionUrl('bitcoin', result.hash) };
-  }, [spending.address, extension, send, accountIndex, refresh]);
+    await refresh().catch(() => undefined);
+    return { hash: sent.hash, explorerUrl: transactionUrl('bitcoin', sent.hash) };
+  }, [spending.address, extension, accountIndex, refresh]);
 
   return { address: account.address ?? undefined, sats, transfers, refresh, collect };
 }
