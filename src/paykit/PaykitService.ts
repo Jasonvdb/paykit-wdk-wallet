@@ -67,7 +67,7 @@ import { connectSession, type SessionOrigin } from './session';
 import { loadOrCreateStorageKey } from './secureStorage';
 import { registerPrivatePaymentHooks } from './privatePayments';
 import { PrivateListStore } from './privatePaymentLists';
-import { registerPaymentRequestHooks } from './requests';
+import { paymentsWithUndeliveredProof, registerPaymentRequestHooks } from './requests';
 import { ProfileDirectory, cleanDisplayName } from './profiles';
 import { openPaykitAppStore, openStateStore } from './stateStore';
 import { PaykitSyncLoop } from './syncLoop';
@@ -567,6 +567,11 @@ export class PaykitService {
    * contact's Bitcoin account stays in You > Bitcoin from contacts.
    */
   async removeContact(publicKey: string): Promise<void> {
+    // Removing ends the link and drops its queued messages: a proof of
+    // payment still waiting to go out would be lost for good.
+    if (paymentsWithUndeliveredProof(this, publicKey) > 0) {
+      throw new UserFacingError("A proof of your payment to them hasn't gone out yet. Try again in a minute, once it has.");
+    }
     const linked = this.state?.linkedPeers.some((p) => p.counterparty === publicKey && p.state === FfiLinkedPeerState.Linked);
     if (linked) {
       try {

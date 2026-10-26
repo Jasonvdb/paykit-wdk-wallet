@@ -227,6 +227,8 @@ export type ProofView = {
   recordedAtMs?: number;
   /** True for proofs we sent (payer), false for proofs we received (payee). */
   ours: boolean;
+  /** Ours only: whether it has left the outbound queue. */
+  delivery?: Delivery;
 };
 
 /** A request for screens: the record's facts in plain data, plus the terms read once. */
@@ -274,6 +276,7 @@ export function requestViewOf(record: FfiPaymentRequestRecord): RequestView {
       txHash: proofTransactionHash(proofJson),
       recordedAtMs: parseTime(proof.recordedAt),
       ours: proof.outboundMessageId !== undefined,
+      delivery: deliveryOf(proof.outboundStatus),
     };
   });
   const view: RequestView = {
@@ -820,6 +823,30 @@ export async function submitProof(service: PaykitService, key: string, payment: 
   book.updateOutgoing(key, { stage: 'proof-sent', problem: undefined });
   await service.refreshState('background');
   service.syncLoop.flush();
+}
+
+/**
+ * Our payments to `counterparty` whose proof hasn't left yet: broadcast
+ * with the proof still to queue, or queued and not sent. Removing the
+ * contact discards the link and its queued messages ("Blocking discards
+ * Encrypted Link state and retires pending private work"), and the book
+ * would still say 'proof-sent', so the payee would never see the proof.
+ */
+export function paymentsWithUndeliveredProof(service: PaykitService, counterparty: string): number {
+  const book = paymentRequestsOf(service).book;
+  let count = 0;
+  for (const payment of book.allOutgoing()) {
+    if (payment.counterparty !== counterparty) continue;
+    if (payment.stage === 'broadcast') {
+      count += 1;
+      continue;
+    }
+    if (payment.stage !== 'proof-sent') continue;
+    const record = findRequestRecord(service, payment.counterparty, payment.requestId);
+    const proof = record ? requestViewOf(record).proofs.find((p) => p.ours && periodKey(p.period) === periodKey(payment.period)) : undefined;
+    if (proof?.delivery !== 'sent') count += 1;
+  }
+  return count;
 }
 
 /**
