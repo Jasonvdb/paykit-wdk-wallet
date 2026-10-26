@@ -57,12 +57,12 @@ This app has two engines and one UI:
 | `src/wallet/` | The wallet service (see below). |
 | `src/paykit/` | The Paykit service (see below). |
 | `src/ui/` | Design system from `docs/DESIGN.md`, including the seal (`src/ui/seal/`). |
-| `src/navigation/` | Route types, root gate, onboarding stack, tabs, deep links. |
-| `src/features/<feature>/` | Screens, one folder per feature: `onboarding`, `wallet`, `people`, `requests`, `you`. |
+| `src/navigation/` | Route types, root gate, onboarding stack, tabs, deep links (`contact`, `send`, `receive`, tab names). |
+| `src/features/<feature>/` | Screens, one folder per feature: `onboarding`, `wallet`, `people`, `requests`, `you`. Phase-specific parts of shared screens sit in subfolders, e.g. `wallet/send/`, `wallet/receive/`, `wallet/activity/`. |
 | `src/media/pickProfilePhoto.ts` | Pick, crop and shrink a profile photo for upload. |
 | `wdk.config.js` | Which WDK wallet modules go into the worklet, and which account methods the app may call. |
 | `plugins/withPaykitSimulatorArchs.js` | Expo config plugin: arm64-only iOS simulator builds (Paykit ships no x86_64 slice). |
-| `scripts/` | Paykit package build, Paykit Android patch (postinstall), demo prefill generator. |
+| `scripts/` | Paykit package build, Paykit Android patch (postinstall), demo prefill generator, and the demo funding scripts `fund-*.mjs` (see "Funding the demo"). |
 
 ## Wallet service (`src/wallet`)
 
@@ -92,8 +92,9 @@ useWalletBalances(opts?: { pollMs?: number }): {
 useContactBtcBalances(accountIndices: number[]): { balances; total: bigint; isRefreshing; refresh }
 // sending from account 0
 useSend(): {
-  quote(req: { asset: AssetId; to: string; amount: bigint }): Promise<{ fee: bigint; feeAsset: AssetId }>;
-  send(req: { asset: AssetId; to: string; amount: bigint }): Promise<{ hash: string; fee?: bigint; explorerUrl: string }>;
+  quote(req: { asset: AssetId; to: string; amount: bigint }): Promise<{ fee: bigint; feeAsset: AssetId; feeRate?: bigint }>;
+  send(req: { asset: AssetId; to: string; amount: bigint; feeRate?: bigint }): Promise<{ hash: string; fee?: bigint; explorerUrl: string }>;
+  maxBtcAmount(feeRate?: bigint): Promise<bigint>;    // getMaxSpendable on account 0
 }
 // history
 useActivity(): { items: ActivityItem[]; isLoading; error?; refresh(): Promise<void> }
@@ -106,7 +107,22 @@ formatAssetAmount(value: bigint, asset: AssetId, opts?): string
 parseAssetAmount(text: string, asset: AssetId): ParseResult
 toPaykitDecimal(value: bigint, asset): string / fromPaykitDecimal(text, asset): ParseResult
 isBtcTestnetAddress / isEvmAddress / chainOfAddress / transactionUrl / addressUrl
+checkRecipientAddress(text, chain): { ok: true; address } | { ok: false; reason; message }  // refuses mainnet, wrong chain, pubkys
+checkAffordable({ asset, amount, balances, fee? }): SendProblem | undefined                // balance, amount + fee, "Not enough ETH for gas"
+formatFee(fee, asset) / sendErrorMessage(error, asset)                                     // display text; never shows the raw WDK error
+fetchBtcFeeRate() / fetchBtcTransactionStatus(txid)                                        // Mutinynet esplora (src/wallet/mutinynet.ts)
 ```
+
+BTC fee rate: WDK estimates a fee rate itself but never reports it. `quote`
+fetches Mutinynet's recommended sats/vB and passes it to WDK explicitly
+(`quoteSendTransaction` through `extension()`), and the Send screen hands
+the quote's `feeRate` back to `send`, so the transaction pays the rate the
+review showed. If the rate API fails, WDK estimates as before and the
+review shows the fee without a rate.
+
+USD₮ is an ERC-20 token, so its fee is paid in ETH. `checkAffordable`
+reports that case as its own problem ("Not enough ETH for gas"), and the
+Send screen shows it as soon as USD₮ is chosen with a zero ETH balance.
 
 History sources: BTC uses WDK's `getTransfers` (Electrum), which returns the
 oldest transfers first and stops at `limit`, so the app fetches the whole
@@ -270,6 +286,22 @@ connection (saved session first, then sign-in).
   layers (`src/ui`, `src/wallet`, `src/paykit`, `src/navigation`) change only
   for additions the feature needs.
 
+### The Send flow and recipients
+
+`SendScreen` runs three steps: compose (recipient, asset, amount with Max),
+review (WDK fee quote and `checkAffordable`) and sent (hash, explorer link,
+haptic). Who receives the money is decoupled from how the person chose
+them, in `src/features/wallet/send/recipient.ts`:
+
+```ts
+type SendRecipient = { kind: 'address'; label: string; addresses: Partial<Record<AssetId, string>> };
+type RecipientFieldProps = { asset: AssetId; initialText?: string; onChange(recipient?: SendRecipient): void };
+```
+
+Phase 2 ships `AddressRecipientField`. Phase 3 adds `kind: 'pubky'` and a
+pubky field that resolves public endpoints into `addresses`; Phase 4 adds a
+contact field for private endpoints. Review, send and success do not change.
+
 ### Files that several phases edit
 
 Feature folders follow the tabs, but phases cut across them. These screens
@@ -286,7 +318,8 @@ another, not in parallel**:
 A phase that adds to one of these screens should put its part in its own
 component file next to the screen (for example
 `src/features/wallet/send/PubkySend.tsx`) and keep its edit to the screen
-small. Edits to the barrels (`src/paykit/index.ts`, `src/wallet/index.ts`,
+small. Phase 2 left marked slots (`{/* Phase 3: ... */}`, `{/* Phase 5: ... */}`)
+where those parts render. Edits to the barrels (`src/paykit/index.ts`, `src/wallet/index.ts`,
 `src/ui/index.ts`) and to routes (`src/navigation/types.ts`,
 `RootNavigator.tsx`) are append-only: add lines, do not reorder or rewrite
 existing ones, so merges stay trivial.
@@ -310,8 +343,30 @@ asks first, and deletes the saved session secret. The old identity's
 encrypted Paykit files are kept, keyed by its pubky, so restoring the same
 phrase later keeps its links.
 
+The recovery phrase is shown in two places, You > Recovery phrase (behind a
+confirmation) and onboarding's BackupPhrase step (after a tap). Both read
+it from WDK only on request, hold it with `useForegroundSecret` (dropped
+when the app leaves the foreground, so the app-switcher snapshot cannot
+show it), never copy it to the clipboard and never log it.
+
 Logging rules: ESLint forbids `console.log`. Paykit records are not redacted
 in JS, so never log them; the event log takes short, secret-free strings.
+
+## Funding the demo
+
+The host-side scripts in `scripts/` read the git-ignored `.env.demo` and
+derive the demo wallets' addresses with the same paths WDK uses, so
+scripts and app agree (checked: the derived addresses match what both apps
+show):
+
+| Chain | Path | WDK call |
+|---|---|---|
+| EVM (ETH, USD₮) | `m/44'/60'/0'/0/i` | wallet-evm `getAccount(i)` |
+| BTC (Mutinynet) | `m/84'/1'/0'/0/i`, P2WPKH `tb1q…` | wallet-btc `getAccount(i)`, `network: 'testnet'` |
+
+Both use the BIP-39 seed with an empty passphrase. The iOS demo wallet's
+EVM account 0 is the treasury that signs the Sepolia scripts. The scripts
+use `ethers` and `@scure/base` (pinned devDependencies); the app does not.
 
 ## Rules for developing
 

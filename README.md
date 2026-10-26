@@ -12,9 +12,12 @@ and [Pubky Paykit](https://github.com/pubky/paykit-rs) work together:
 
 ## Status
 
-Phase 1 (foundation) is done: the app skeleton, design system, navigation
-with a screen for every route, and the wallet and Paykit service layers.
-Later phases fill in the feature screens. The plan is in
+Phases 1 (foundation) and 2 (wallet) are done: the app skeleton, design
+system, navigation, the wallet and Paykit service layers, and the WDK side
+of the app: receive cards with QR codes, sending to an address with a fee
+review, activity with a detail screen, the recovery phrase, "Get test
+USD₮", collecting BTC from contact accounts, and demo funding scripts.
+Later phases add identity, contacts and payment requests. The plan is in
 [`docs/PLAN.md`](docs/PLAN.md), the design in [`docs/DESIGN.md`](docs/DESIGN.md)
 and the code structure in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
@@ -85,9 +88,54 @@ adb shell am start -a android.intent.action.VIEW -d "paykitwdk://contact?pubky=<
 Both phones must add each other; the seal ring closes when the private link
 is ready. You > Sync status shows the sync loop and its event log.
 
+Simulators cannot scan each other's QR codes, so the wallet screens also
+open from links:
+
+```sh
+xcrun simctl openurl booted "paykitwdk://receive?asset=usdt"
+xcrun simctl openurl booted "paykitwdk://send?to=<address>&asset=btc"   # fills the form; nothing is sent
+xcrun simctl openurl booted "paykitwdk://you"                          # also wallet, people, requests
+```
+
 `.env.demo` (git-ignored, mode 600) can hold `IOS_MNEMONIC`, `ANDROID_MNEMONIC`,
 one single-use staging signup code per platform, and the two public keys.
 `node scripts/demo-env.mjs --generate-missing` creates missing mnemonics.
+
+### Funding the demo
+
+The demo wallets start empty. Everything below runs on the Mac, reads
+`.env.demo`, and never prints a phrase or a token. The iOS demo wallet is
+the treasury: its Ethereum account pays for the Sepolia scripts.
+
+```sh
+node scripts/fund-status.mjs                 # both wallets: BTC (Mutinynet), ETH and USD₮ (Sepolia)
+node scripts/fund-status.mjs --contacts 3    # plus BTC contact accounts 1..3
+node scripts/fund-eth.mjs android 0.001      # Sepolia ETH (gas) from the treasury to Android
+node scripts/fund-usdt.mjs android 1000      # mint Aave test USD₮ (treasury pays gas)
+node scripts/fund-btc.mjs --login            # once a day: GitHub device login for the Mutinynet faucet
+node scripts/fund-btc.mjs ios 100000         # Mutinynet sats from the faucet API
+```
+
+One-time human steps:
+
+1. **Sepolia ETH for the treasury.** Send about 0.05 Sepolia ETH to the iOS
+   wallet's Ethereum address (`node scripts/fund-status.mjs` prints it) from
+   a public faucet, such as Google Cloud's Web3 faucet or the pk910 PoW
+   faucet. After that, `fund-eth` and `fund-usdt` (and the in-app "Get test
+   USD₮" button) need no human.
+2. **Mutinynet faucet token.** `node scripts/fund-btc.mjs --login` prints a
+   GitHub device code: open <https://github.com/login/device>, enter it, and
+   approve the Mutinynet faucet app. The script exchanges the GitHub token
+   for the faucet's 24-hour token and saves it as `MUTINYNET_FAUCET_TOKEN`
+   in `.env.demo`. The faucet gives at most 1,000,000 sats per GitHub user
+   and IP per day. The `--login` flow has not been run end to end yet. If it
+   fails, use the faucet's own CLI (`cargo install mutinynet-cli`,
+   `mutinynet-cli login`) and put the token it stores in
+   `~/.mutinynet/token` into `.env.demo` as `MUTINYNET_FAUCET_TOKEN=…`.
+   Background: [`docs/research/04-testnet-funding.md`](docs/research/04-testnet-funding.md).
+
+In the app, You > Test funds has "Get test USD₮" (disabled, with the reason,
+while the wallet has no ETH for gas) and links to the faucets.
 
 ### Checks
 
@@ -97,8 +145,8 @@ npm run lint
 npm test
 ```
 
-Screenshots of the foundation running on both platforms are in
-[`docs/screenshots/phase1/`](docs/screenshots/phase1/); the Phase 0 spike
+Screenshots of each phase on both platforms are in
+[`docs/screenshots/`](docs/screenshots/) (`phase1/`, `phase2/`); the Phase 0 spike
 screenshots are in [`docs/spike/`](docs/spike/).
 
 ## Paykit package

@@ -13,6 +13,10 @@
 // stores the faucet JWT as MUTINYNET_FAUCET_TOKEN in the git-ignored
 // .env.demo. The token is never printed. The GitHub token itself is used
 // once and not stored. Limit: 1,000,000 sats per GitHub user and IP per day.
+//
+// Not yet run end to end (GitHub's device-code step is verified; the
+// faucet's token exchange is not). Fallback: `mutinynet-cli login`, then
+// copy ~/.mutinynet/token into .env.demo as MUTINYNET_FAUCET_TOKEN.
 import { appendFileSync, chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
