@@ -1,10 +1,12 @@
 // History with one person: the activity rows that involve them
 // (src/features/wallet/activity/activityPeople.ts): what they paid into
 // your Bitcoin account for them, what you paid to an address they shared
-// with you, and USD₮ between your two accounts.
+// with you, and payment requests between you. Inside the Person page's
+// section, so an empty history is one line and a small action, not a
+// second heading.
 import { StyleSheet, View } from 'react-native';
 
-import { Divider, EmptyState, Text, space } from '../../../ui';
+import { Button, Divider, Text, space } from '../../../ui';
 import { useActivity } from '../../../wallet';
 import { ActivityRow } from '../../wallet/activity/ActivityRow';
 import { useActivityPeople } from '../../wallet/activity/useActivityPeople';
@@ -23,7 +25,10 @@ export function PersonHistory({ publicKey, name, onOpen, onPay }: { publicKey: s
     return activity.isLoading ? (
       <Text color="graphite">Loading…</Text>
     ) : (
-      <EmptyState title={`No payments with ${name} yet`} message="Payments between you show up here." action={{ label: `Pay ${name}`, onPress: onPay }} />
+      <View style={styles.empty} testID="person-history-empty">
+        <Text color="graphite">No payments with {name} yet.</Text>
+        <Button label={`Pay ${name}`} variant="secondary" compact onPress={onPay} />
+      </View>
     );
   }
   return (
@@ -40,4 +45,5 @@ export function PersonHistory({ publicKey, name, onOpen, onPay }: { publicKey: s
 
 const styles = StyleSheet.create({
   root: { gap: space.xs },
+  empty: { gap: space.s, alignItems: 'flex-start' },
 });

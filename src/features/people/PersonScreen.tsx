@@ -93,7 +93,7 @@ export function PersonScreen({ navigation, route }: RootScreenProps<'Person'>) {
         <>
           <View style={styles.actions}>
             <Button label={`Pay ${name}`} onPress={() => navigation.navigate('Send', { to: pubky })} style={styles.action} testID="person-pay" />
-            <Button label="Request" variant="secondary" onPress={() => navigation.navigate('RequestMoney', { pubky })} style={styles.action} testID="person-request" />
+            <Button label="Request money" variant="secondary" onPress={() => navigation.navigate('RequestMoney', { pubky })} style={styles.action} testID="person-request" />
           </View>
           {linkState === 'waiting' ? (
             <Text variant="secondary" color="graphite" style={styles.section}>

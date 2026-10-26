@@ -185,7 +185,7 @@ export function AddPersonScreen({ navigation, route }: RootScreenProps<'AddPerso
             publicKey={publicKey}
             profile={preview.state === 'ready' ? preview.profile : undefined}
             name={personName({ publicKey, publishedName }).name}
-            accepts={preview.state === 'ready' ? publicAcceptsWords(preview.options, publishedName ?? 'They') : undefined}
+            accepts={preview.state === 'ready' ? publicAcceptsWords(preview.options, personName({ publicKey, publishedName }).name) : undefined}
           />
         ) : null}
 
