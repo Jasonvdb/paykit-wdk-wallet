@@ -13,7 +13,7 @@
 // - Private endpoints per contact: a stable BTC account index allocated per
 //   contact (1, 2, 3, ...), so incoming BTC is attributable to that contact,
 //   plus the shared EVM account 0 (each EVM index would need its own gas).
-//   "Collect" sweeps contact BTC accounts back to account 0.
+//   "Collect" moves contact BTC accounts back to account 0.
 //
 // The contact -> account index map is persisted (injected key-value store)
 // and indices are never reused, even if a contact is removed: a removed and

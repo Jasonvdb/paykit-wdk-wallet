@@ -2,6 +2,11 @@
 //
 // BTC history comes from WDK (`getTransfers` through the account's
 // `extension()` proxy, which forwards any allowed method to the worklet).
+// Careful: getTransfers returns the OLDEST transfers first (Electrum history
+// order: confirmed by block height, then the mempool) and stops at `limit`.
+// So `limit: 25` would drop the newest and pending ones on a busy account.
+// This app asks for the whole (short, testnet) history and keeps the newest;
+// a production wallet would page with `skip` or use an indexer.
 // EVM history comes from Blockscout's keyless API, because WDK's EVM module
 // has no history call. Transactions this app just sent are merged in from
 // ./sentTransactions.ts until an indexer reports them. See ./activity.ts.
@@ -15,7 +20,9 @@ import { SEPOLIA_BLOCKSCOUT_API, SEPOLIA_USDT } from '../config/chains';
 import { BALANCE_POLL_MS } from '../config/sync';
 import { BTC_NETWORK, EVM_NETWORK } from '../config/wdk';
 import {
+  BTC_HISTORY_FETCH_LIMIT,
   mergeActivity,
+  newestItems,
   parseBlockscoutTokenTransfers,
   parseBlockscoutTransactions,
   parseBtcTransfers,
@@ -29,6 +36,7 @@ type BtcAccountExtension = {
   getTransfers: (options: { limit?: number; skip?: number; direction?: 'incoming' | 'outgoing' | 'all' }) => Promise<unknown>;
 };
 
+/** How many BTC transfers to show. */
 const HISTORY_LIMIT = 25;
 
 async function fetchJson(url: string): Promise<unknown> {
@@ -76,8 +84,8 @@ export function useActivity(options: { pollMs?: number } = {}): WalletActivity {
     try {
       await Promise.all([
         extension()
-          .getTransfers({ limit: HISTORY_LIMIT })
-          .then((transfers) => setBtcItems(parseBtcTransfers(transfers, 0)))
+          .getTransfers({ limit: BTC_HISTORY_FETCH_LIMIT })
+          .then((transfers) => setBtcItems(newestItems(parseBtcTransfers(transfers, 0), HISTORY_LIMIT)))
           .catch(() => failures.push('Bitcoin history')),
         fetchEvmActivity(evmAddress)
           .then(setEvmItems)

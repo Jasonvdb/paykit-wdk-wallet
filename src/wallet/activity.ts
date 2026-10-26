@@ -178,6 +178,18 @@ export function mergeActivity(sources: ActivityItem[][], localSends: ActivityIte
   return [...byId.values()].sort(compareNewestFirst);
 }
 
+/**
+ * How many BTC transfers to ask WDK for. getTransfers returns the oldest
+ * first and stops at the limit, so the app asks for the whole (short,
+ * testnet) history and keeps the newest with newestItems().
+ */
+export const BTC_HISTORY_FETCH_LIMIT = 1_000;
+
+/** The newest `count` items, newest first (same order as mergeActivity). */
+export function newestItems(items: ActivityItem[], count: number): ActivityItem[] {
+  return [...items].sort(compareNewestFirst).slice(0, count);
+}
+
 function compareNewestFirst(a: ActivityItem, b: ActivityItem): number {
   if (a.status === 'pending' && b.status !== 'pending') return -1;
   if (b.status === 'pending' && a.status !== 'pending') return 1;

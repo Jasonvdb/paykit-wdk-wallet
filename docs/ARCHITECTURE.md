@@ -108,7 +108,9 @@ toPaykitDecimal(value: bigint, asset): string / fromPaykitDecimal(text, asset): 
 isBtcTestnetAddress / isEvmAddress / chainOfAddress / transactionUrl / addressUrl
 ```
 
-History sources: BTC uses WDK's `getTransfers` (Electrum). WDK's EVM module
+History sources: BTC uses WDK's `getTransfers` (Electrum), which returns the
+oldest transfers first and stops at `limit`, so the app fetches the whole
+history and keeps the newest. WDK's EVM module
 has no history call and the WDK Indexer does not cover testnets, so EVM
 activity comes from the keyless Blockscout Sepolia API, merged with a local
 in-memory record of transactions this app just sent.
@@ -206,7 +208,9 @@ Account model: BTC account 0 and EVM account 0 are public and spend
 everything. Each contact gets a stable BTC account index (1, 2, ...) for its
 private payment list, persisted in encrypted MMKV and never reused. EVM uses
 account 0 for everyone, because each EVM index would need its own gas.
-`useBtcContactAccount(index).collect()` sweeps a contact account to account 0.
+`useBtcContactAccount(index).collect()` moves a contact account's funds to
+account 0. It is not a full sweep: WDK's `getMaxSpendable` keeps back a
+dust-limit change output, so a few hundred sats may stay or go to the fee.
 
 ### The call queue
 

@@ -1,5 +1,5 @@
 import { AAVE_FAUCET_MINT_SELECTOR, AAVE_SEPOLIA_FAUCET, SEPOLIA_USDT } from '../../config/chains';
-import { mergeActivity, parseBlockscoutTokenTransfers, parseBtcTransfers, type ActivityItem } from '../activity';
+import { mergeActivity, newestItems, parseBlockscoutTokenTransfers, parseBtcTransfers, type ActivityItem } from '../activity';
 import { chainOfAddress, isBtcTestnetAddress, isEvmAddress } from '../addressFormat';
 import { encodeFaucetMint, usdtFaucetTransaction } from '../faucet';
 import { arrayBufferToBase64, base64ToArrayBuffer } from '../../paykit/bytes';
@@ -49,6 +49,20 @@ describe('activity parsing', () => {
     );
     expect(items[0]).toMatchObject({ direction: 'in', amount: 1500n, status: 'pending' });
     expect(items[1]).toMatchObject({ direction: 'out', amount: 700n, fee: 141n, counterpartyAddress: 'tb1qx', status: 'confirmed' });
+  });
+
+  it('keeps the newest BTC transfers from the oldest-first WDK list', () => {
+    // WDK order: confirmed by height (oldest first), then the mempool.
+    const items = parseBtcTransfers(
+      [
+        { txid: 'old', address: 'tb1q', vout: 0, height: 5, value: '1', direction: 'incoming' },
+        { txid: 'mid', address: 'tb1q', vout: 0, height: 9, value: '2', direction: 'incoming' },
+        { txid: 'new', address: 'tb1q', vout: 0, height: 12, value: '3', direction: 'incoming' },
+        { txid: 'mempool', address: 'tb1q', vout: 0, height: 0, value: '4', direction: 'incoming' },
+      ],
+      0,
+    );
+    expect(newestItems(items, 2).map((item) => item.hash)).toEqual(['mempool', 'new']);
   });
 
   it('keeps only USD₮ token transfers and detects direction', () => {

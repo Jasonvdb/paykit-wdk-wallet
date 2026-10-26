@@ -35,9 +35,9 @@ module.exports = {
         'getAddress',
         'getBalance',
         'quoteSendTransaction', // BTC send fee
-        'sendTransaction', // BTC send and the contact-account "collect" sweep
+        'sendTransaction', // BTC send and the contact-account "collect" transfer
         'getTransfers', // BTC history
-        'getMaxSpendable', // collect: sweep a contact account to account 0
+        'getMaxSpendable', // collect: how much of a contact account can move to account 0
         'getTransaction', // Phase 5: verify a BTC payment before issuing a receipt
       ],
     },
