@@ -14,7 +14,8 @@ and [Pubky Paykit](https://github.com/pubky/paykit-rs) work together:
 
 Phases 1 (foundation), 2 (wallet), 3 (identity and public payments),
 4 (contacts and private payments) and 5 (payment requests and receipts)
-are done: the app skeleton, design system, navigation, the wallet and
+are done, and Phase 6 has added the remaining Paykit features (see
+"Phase 6" below): the app skeleton, design system, navigation, the wallet and
 Paykit service layers, and the WDK side of the app: receive cards with QR
 codes, sending to an address with a fee review, activity with a detail
 screen, the recovery phrase, "Get test USD₮", collecting BTC from contact
@@ -62,6 +63,44 @@ payment we sent or verified, and a USD₮ address is no longer called
 private. See "Payment requests" in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the details and what
 risk remains.
+
+### Phase 6: automatic payments, block and forget, backup
+
+- **Automatic payments** (Paykit Allowances). Person > Automatic payments
+  offers a contact to pay their requests without a tap, within limits:
+  up to an amount per payment, at most 10 payments and 4 payments' worth
+  an hour, 10 payments' worth in all, ending after an hour, a day or a
+  week. They accept or decline; either side can end it, and the page
+  shows what has been used. Their covered requests are then accepted and
+  paid by a sync round hook through the same payment ledger, WDK send
+  and proof path as the Pay button; over a limit, a request waits for
+  you with the reason on its page. Rows say "Paid automatically".
+- **Block, unblock, forget.** Block ignores a contact's requests and
+  messages and ends the private connection (they stay listed, under
+  "Blocked", with the Graphite dashed ring); Unblock forms a fresh link;
+  Forget deletes what a blocked person sent that you never answered (the
+  SDK keeps any history you acted on, and the page says so).
+- **Backup and restore of contacts and requests.** You > Contacts and
+  requests backup seals Paykit's backup (which the SDK leaves
+  unencrypted) and the app's own records with a key from the recovery
+  phrase, then Copy or Share; "Check a copied backup" restores it into a
+  throwaway in-memory SDK handle and says what it holds. A restored
+  wallet can paste a backup on the sign-in step of onboarding. The
+  phrase alone opens a backup, but you must keep the backup text.
+- **Network details** shows each contact's Encrypted Link recovery
+  markers and the backup revisions.
+
+Checked on both simulators, still without money (the demo wallets are
+empty): Ana offered Ben automatic payments and Ben accepted; Ben's
+recurring USD₮ request to Ana was matched by the SDK
+(`evaluateAllowanceCandidates`) and stopped at "Not enough USD₮", with
+nothing accepted; Ana blocked Ben (Forget was refused, as it must be
+with history), unblocked him, and the link was back in about 30 seconds
+with the Allowance still accepted; both phones made and checked a backup
+(1 contact, 4 and 5 requests). Not exercised: an automatic acceptance
+and payment (needs funds), and the onboarding restore (needs wiping a
+demo identity). Details in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md),
+"Automatic payments" and "Backup and restore".
 
 Known gaps left for Phase 6 (polish): the recovery phrase screens do not
 block screenshots yet (Android `FLAG_SECURE` needs a native module and a
@@ -157,6 +196,8 @@ xcrun simctl openurl booted "paykitwdk://scan"                         # scan a 
 xcrun simctl openurl booted "paykitwdk://you"                          # also wallet, people, requests
 xcrun simctl openurl booted "paykitwdk://request-money?pubky=<pubky>"  # ask a contact for money
 xcrun simctl openurl booted "paykitwdk://request?counterparty=<pubky>&requestId=<id>"  # one request
+xcrun simctl openurl booted "paykitwdk://person?pubky=<pubky>"         # a contact's Person page
+xcrun simctl openurl booted "paykitwdk://automatic-payments?pubky=<pubky>"  # offer them automatic payments
 ```
 
 To test the scanner on a simulator, put a screenshot of the other phone's
@@ -222,7 +263,7 @@ npm test
 ```
 
 Screenshots of each phase on both platforms are in
-[`docs/screenshots/`](docs/screenshots/) (`phase1/` to `phase5/`); the Phase 0 spike
+[`docs/screenshots/`](docs/screenshots/) (`phase1/` to `phase6/`); the Phase 0 spike
 screenshots are in [`docs/spike/`](docs/spike/).
 
 Before taking screenshots, hide the dev client's floating tools button so
