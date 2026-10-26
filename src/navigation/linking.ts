@@ -7,6 +7,12 @@
 //   adb shell am start -a android.intent.action.VIEW -d "paykitwdk://contact?pubky=<key>"
 //
 // Links only resolve after onboarding: before that, the routes do not exist.
+//
+// Wallet links (handy for demo scripts and simulators, which cannot scan):
+//   paykitwdk://receive?asset=usdt          Receive, with an asset chosen
+//   paykitwdk://send?to=<address>&asset=btc  Send, with the recipient filled in
+// A send link only fills in the form: nothing moves until the person
+// reviews the fee and taps Send.
 import type { LinkingOptions } from '@react-navigation/native';
 
 import type { RootStackParamList } from './types';
@@ -16,6 +22,8 @@ export const linking: LinkingOptions<RootStackParamList> = {
   config: {
     screens: {
       AddPerson: 'contact',
+      Send: 'send',
+      Receive: 'receive',
       Main: {
         screens: {
           Wallet: 'wallet',
