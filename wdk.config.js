@@ -6,6 +6,9 @@
 //
 // `allowedMethods` limits which account methods the app can call over that
 // RPC bridge. Without it, any method is callable, including key export.
+// Keep it to what the app calls. After editing, run
+// `npx wdk-worklet-bundler generate` and cold-relaunch the app (the worklet
+// does not hot reload).
 /** @type {import('@tetherto/wdk-worklet-bundler').WdkBundleConfig} */
 module.exports = {
   networks: {
@@ -16,30 +19,26 @@ module.exports = {
     ethereum: {
       methods: [
         'getAddress',
-        'getBalance',
-        'getTokenBalance',
-        'getTokenBalances',
-        'quoteSendTransaction',
-        'sendTransaction',
-        'quoteTransfer',
-        'transfer',
-        'getTransactionReceipt',
-        'sign',
-        'verify',
-        'signTypedData',
+        'getBalance', // ETH balance
+        'getTokenBalance', // USD₮ balance
+        'getTokenBalances', // WDK's balance hooks batch token reads
+        'quoteSendTransaction', // ETH send fee
+        'sendTransaction', // ETH send, and the Aave faucet mint call (src/wallet/useUsdtFaucet.ts)
+        'quoteTransfer', // USD₮ send fee
+        'transfer', // USD₮ (ERC-20) send
+        'getTransactionReceipt', // Phase 5: verify a USD₮ payment before issuing a receipt
+        'signTypedData', // Phase 5: erc20-transfer-eip712 payment proofs
       ],
     },
     bitcoin: {
       methods: [
         'getAddress',
         'getBalance',
-        'quoteSendTransaction',
-        'sendTransaction',
-        'getTransfers',
-        'getTransaction',
-        'getMaxSpendable',
-        'sign',
-        'verify',
+        'quoteSendTransaction', // BTC send fee
+        'sendTransaction', // BTC send and the contact-account "collect" sweep
+        'getTransfers', // BTC history
+        'getMaxSpendable', // collect: sweep a contact account to account 0
+        'getTransaction', // Phase 5: verify a BTC payment before issuing a receipt
       ],
     },
   },

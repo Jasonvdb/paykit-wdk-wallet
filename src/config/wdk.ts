@@ -2,47 +2,33 @@
 //
 // The network keys ('bitcoin', 'ethereum') must match `networks` in
 // wdk.config.js, which decides which wallet modules go into the worklet
-// bundle. Keep every endpoint here so switching testnets is a one-file change.
+// bundle. Chain constants live in ./chains.ts, so switching testnets is a
+// change in those two files.
 import { BaseAsset, type WdkConfigs } from '@tetherto/wdk-react-native-core';
+
+import { MUTINYNET_ELECTRUM, SEPOLIA_CHAIN_ID, SEPOLIA_RPC, SEPOLIA_USDT } from './chains';
 
 export const BTC_NETWORK = 'bitcoin';
 export const EVM_NETWORK = 'ethereum';
 
 /**
- * Bitcoin on Mutinynet (a signet with 30 s blocks).
- *
- * WDK's BTC module only knows 'bitcoin' | 'testnet' | 'regtest'. Signets use
- * testnet address rules (tb1..., m/84'/1'), so 'testnet' is right here.
- * Mutinynet's Electrum TLS port (50002) has an expired certificate, so we use
- * plain TCP on 50001. That is fine for public testnet data, never for mainnet.
+ * The one WDK wallet (seed) this app manages. WDK stores the encrypted seed
+ * in the Keychain/Keystore under this id. Do not change it: existing installs
+ * would no longer find their wallet.
  */
-export const BTC_ELECTRUM = {
-  host: 'electrum.mutinynet.com',
-  port: 50001,
-  protocol: 'tcp',
-} as const;
-
-/** Fallback if Electrum over TCP fails inside the worklet: testnet4 over TLS. */
-export const BTC_ELECTRUM_TESTNET4 = {
-  host: 'mempool.space',
-  port: 40002,
-  protocol: 'tls',
-} as const;
-
-export const SEPOLIA_CHAIN_ID = 11155111;
-export const SEPOLIA_RPC = 'https://ethereum-sepolia-rpc.publicnode.com';
-
-/** Aave's test USDT on Sepolia. Anyone can mint it through the Aave faucet. */
-export const SEPOLIA_USDT = '0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0';
+export const WALLET_ID = 'paykit-wdk-demo';
 
 export const wdkConfigs: WdkConfigs = {
   networks: {
     [BTC_NETWORK]: {
       blockchain: BTC_NETWORK,
       config: {
+        // WDK's BTC module only knows 'bitcoin' | 'testnet' | 'regtest'.
+        // Signets use testnet address rules (tb1..., m/84'/1'), so 'testnet'
+        // is right for Mutinynet.
         network: 'testnet',
         bip: 84,
-        client: { type: 'electrum', clientConfig: { ...BTC_ELECTRUM } },
+        client: { type: 'electrum', clientConfig: { ...MUTINYNET_ELECTRUM } },
       },
     },
     [EVM_NETWORK]: {
@@ -55,6 +41,7 @@ export const wdkConfigs: WdkConfigs = {
   },
 };
 
+/** WDK asset descriptors. `id` values are local to WDK's balance cache. */
 export const BTC = new BaseAsset({
   id: 'btc-mutinynet',
   network: BTC_NETWORK,
