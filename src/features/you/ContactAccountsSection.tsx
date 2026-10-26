@@ -10,33 +10,20 @@
 // disabled (sendFailureFor), and a ref stops a double tap from sending two.
 //
 // One row component per account, because WDK's account hooks are bound to
-// one account index each.
+// one account index each. A Person's page shows the same row for that
+// contact's account (ContactAccountRow is shared with features/people).
 import * as Haptics from 'expo-haptics';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
 
-import { usePaykitService, type PaykitService } from '../../paykit';
+import { useContactAccounts, usePaykitService } from '../../paykit';
 import { AssetAmount, Button, Divider, Text, space } from '../../ui';
 import { sendFailureFor, useBtcContactAccount } from '../../wallet';
 import { usePersonName } from '../people/usePersonName';
 
-type ContactAccount = { pubky: string; accountIndex: number };
-
-/** The contact -> BTC account map, kept current as contacts are added. */
-function useContactAccounts(service: PaykitService | undefined): ContactAccount[] {
-  const [accounts, setAccounts] = useState<ContactAccount[]>(() => service?.addressCache.allContactAccounts() ?? []);
-  useEffect(() => {
-    if (!service) return;
-    const update = () => setAccounts(service.addressCache.allContactAccounts());
-    update();
-    return service.addressCache.subscribe(update);
-  }, [service]);
-  return accounts;
-}
-
 export function ContactAccountsSection() {
   const service = usePaykitService();
-  const accounts = useContactAccounts(service);
+  const accounts = useContactAccounts();
 
   return (
     <View style={styles.root}>
@@ -57,7 +44,8 @@ export function ContactAccountsSection() {
   );
 }
 
-function ContactAccountRow({ pubky, accountIndex }: { pubky: string; accountIndex: number }) {
+/** One contact account: whose it is, its balance, Collect and Refresh. */
+export function ContactAccountRow({ pubky, accountIndex }: { pubky: string; accountIndex: number }) {
   const { name } = usePersonName(pubky);
   const account = useBtcContactAccount(accountIndex);
   const [collecting, setCollecting] = useState(false);
