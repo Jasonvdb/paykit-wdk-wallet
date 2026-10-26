@@ -563,7 +563,10 @@ Remove, each after a confirmation (`person/PersonActions.tsx`):
   `endAllowance`, which queues an End message and needs a ready link; for
   a peer who is unreachable, that fails, and the local stop still holds.
   After an Unblock the Person page marks a stopped Allowance as stopped,
-  with End to tell them, and allows a new offer.
+  with End to tell them, and allows a new offer. Checked on the
+  simulators: blocking Ben ended Ana's accepted Allowance on both phones
+  (the End left with the withdrawn list, before the block), and after
+  Unblock a new offer and acceptance worked.
 - **Unblock** (`unblockPeer`): back to NotLinked; the SDK does not restore
   the old link. Because they are still a contact, the next sync round
   calls `ensureLinkWithPeer` with a new attempt id; their wallet sees the
