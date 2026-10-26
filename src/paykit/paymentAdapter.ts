@@ -21,7 +21,7 @@
 //   SDK then calls `currentPrivateReceivingDetails`. Cancelling therefore
 //   has nothing to release; it must still be idempotent, and it is.
 //   `reservationInputsFor` builds the explicit-input form for
-//   `syncPrivatePaymentListsWithReservationsAndProcessOutbound` (Phase 4).
+//   `syncPrivatePaymentListsWithReservationsAndProcessOutbound` (./privatePayments.ts).
 //
 // Paying:
 // - select*: our supported identifiers in preference order (USD₮, then BTC),

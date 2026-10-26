@@ -4,7 +4,7 @@
 // is where test money comes from.
 //
 // Only account 0 is shown here: it is the public address. Contacts get
-// their own BTC addresses through private payment lists (Phase 4). The
+// their own BTC addresses through private payment lists. The
 // pay-me code (receive/PayMeCode.tsx) lets people pay you by pubky
 // instead, through the public addresses you publish.
 import { useState } from 'react';

@@ -1,20 +1,23 @@
 // You tab: profile, your pay-me code, what you publish publicly, test
-// funds, Bitcoin from contacts, recovery phrase, network details, sync
+// funds, Bitcoin from contacts, recovery phrase, contacts and requests
+// backup, network details, sync
 // status and log.
 //
-// Phase 1 shows your identity and the Paykit sync status and event log, so
-// developers can watch the loop work. The loop never signs in by itself
-// (staging rate-limits sign-ins), so when a round fails, "Reconnect" builds
-// a fresh connection: saved session first, then sign-in.
+// The sync status and event log are here so developers can watch the loop
+// work. The loop never signs in by itself (staging rate-limits sign-ins),
+// so when a round fails, "Reconnect" builds a fresh connection: saved
+// session first, then sign-in.
 //
 // Sections, each in its own file next to this screen:
-//   Phase 2  recovery phrase, test funds ("Get test USD₮"), Bitcoin from
-//            contacts (collect)
-//   Phase 3  profile (name, photo; edited in the EditProfile modal), your
-//            pay-me code, what you publish (public endpoint switches) and
-//            network details ("Paykit" and "Noise" may appear there,
-//            nowhere else in the main UI)
-//   Phase 6  contacts and requests backup (make, copy or share, check)
+//   identity  profile (name, photo; edited in the EditProfile modal), your
+//             pay-me code and what you publish (public endpoint switches)
+//   money     test funds ("Get test USD₮") and Bitcoin from contacts
+//             (collect)
+//   safety    recovery phrase, and the contacts and requests backup (make,
+//             copy or share, check; resume automatic payments after a
+//             restore)
+//   network   network details ("Paykit" and "Noise" may appear there,
+//             nowhere else in the main UI), sync status and log
 import { StyleSheet, View } from 'react-native';
 
 import type { MainTabScreenProps } from '../../navigation/types';

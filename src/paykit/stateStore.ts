@@ -93,8 +93,13 @@ export class MmkvStateBlobStore implements FfiSdkStateBlobStore {
 
 /**
  * Encrypted app-side store for small Paykit-related data that is not SDK
- * state: the contact -> BTC account map (src/paykit/addressCache.ts) and
- * what later phases need (consumed private list versions, receipt drafts).
+ * state, one key each (docs/ARCHITECTURE.md, "Storage and secrets"):
+ * the contact -> BTC account map and the public endpoint switches
+ * (./addressCache.ts), the request book (./requestBook.ts), stopped
+ * Allowances (./allowances.ts), acceptance timings
+ * (./automaticPayments.ts), the last backup kept (./backup.ts) and the
+ * restore review (./restoreReview.ts). BACKUP_APP_KEYS (./backup.ts) says
+ * which of them travel with a backup.
  */
 export function openPaykitAppStore(publicKey: string, encryptionKey: string): MMKV {
   return createMMKV({

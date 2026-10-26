@@ -6,7 +6,8 @@
 // and the next poll usually works. Only a run of failures is worth a line
 // on screen, and sooner when there is nothing to show at all.
 //
-// Pure, so the rule is unit tested (src/wallet/__tests__/failureStreak.test.ts).
+// Pure, so the rule is unit tested (the "failure streaks" tests in
+// src/wallet/__tests__/electrumRetry.test.ts).
 
 /** Consecutive failed polls, reset by any success. */
 export type FailureStreak = { failures: number };

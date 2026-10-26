@@ -44,7 +44,7 @@ export {
 } from './hooks';
 export { loadReceivedPrivateList } from './privatePayments';
 export { addressKey, assetsOf, type IncomingList, type OutgoingListStatus, type PayeeAddresses } from './privatePaymentLists';
-// Payment requests and receipts (Phase 5)
+// Payment requests and receipts
 export {
   acceptRequest,
   cancelRequest,

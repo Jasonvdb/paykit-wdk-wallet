@@ -5,13 +5,13 @@
 // component that reports a SendRecipient (or undefined while the input is
 // not usable):
 //
-//   Phase 2  AddressRecipientField  a pasted or typed address ('address')
-//   Phase 3  PubkyRecipientField    a person's pubky, resolved to their public
+//   address  AddressRecipientField  a pasted or typed address ('address')
+//   public   PubkyRecipientField    a person's pubky, resolved to their public
 //                                   endpoints ('pubky', route 'public')
-//   Phase 4                         the same field, for a linked contact:
+//   contact                         the same field, for a linked contact:
 //                                   their private addresses ('pubky', route
 //                                   'private', from privatePaymentAddressesFor)
-//   Phase 5  PayRequestScreen       the address a payment request binds
+//   request  PayRequestScreen       the address a payment request binds
 //                                   ('pubky', route 'request'), locked
 //
 // A new kind is only needed for a recipient that is neither an address nor

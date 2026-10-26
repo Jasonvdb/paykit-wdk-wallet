@@ -34,6 +34,6 @@ export { MAY_HAVE_BEEN_SENT, sendFailureFor, type SendFailure } from './sendChec
 export { parseTypedAmount } from './amounts';
 export { CONFIRMATION_TIME } from './assets';
 export { clearContactAccountActivity, useContactAccountWatcher } from './useContactAccountActivity';
-// Payment requests (Phase 5): reading payments back and signing USD₮ proofs.
+// Payment requests: reading payments back and signing USD₮ proofs.
 export { useAccountZeroPaymentChecks, useBtcReceivedReader, type AccountZeroPaymentChecks } from './usePaymentChecks';
 export { ELECTRUM_CONNECTION_LOST_LOG, isElectrumConnectionLost, retryIfElectrumDropped } from './electrumRetry';

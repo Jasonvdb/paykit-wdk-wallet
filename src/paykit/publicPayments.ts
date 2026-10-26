@@ -9,7 +9,7 @@
 //     address for the chosen asset with useSend.
 //
 // Public endpoints are the same for every payer and anyone can read them.
-// A linked contact also shares private, per-contact addresses; Phase 4
+// A linked contact also shares private, per-contact addresses; Send
 // prefers those (see `privatePaymentAddressesFor` in ./privatePayments.ts,
 // which the Send screen asks first).
 import { FfiPublicPaymentResolutionStatus } from '@synonymdev/react-native-paykit';

@@ -181,7 +181,7 @@ export function usePublicEndpointStatus(): PublicEndpointStatus | undefined {
   );
 }
 
-// Private payments (Phase 4) ------------------------------------------------------
+// Private payments -----------------------------------------------------------------
 
 /** Re-render when the service's private lists change; returns the store (or undefined). */
 function usePrivateListStore() {
@@ -244,7 +244,7 @@ export function useContactAccounts(): ContactAccount[] {
   );
 }
 
-// Payment requests (Phase 5) -------------------------------------------------------
+// Payment requests -----------------------------------------------------------------
 
 /** Re-render when the request book changes; returns it (or undefined while disconnected). */
 export function useRequestBook(): RequestBook | undefined {
@@ -303,7 +303,7 @@ export function useRequestLinks(): ReadonlyMap<string, RequestLink> {
   );
 }
 
-// Automatic payments (Phase 6) ------------------------------------------------------
+// Automatic payments ---------------------------------------------------------------
 
 /** Re-render when the Allowance cache changes; returns it (or undefined while disconnected). */
 function useAllowanceStore(): Allowances | undefined {
