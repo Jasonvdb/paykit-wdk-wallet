@@ -26,6 +26,12 @@ export type SealProps = {
   ring?: SealRing;
   /** A data: URI or https URL of the person's photo. */
   imageUri?: string;
+  /**
+   * The ring to start from on mount. Pass 'linking' to play the closing
+   * animation when the seal first renders already 'linked' (a link that
+   * completed while the person was being added).
+   */
+  initialRing?: SealRing;
   testID?: string;
 };
 
@@ -123,14 +129,14 @@ function EnvelopeBadge({ size }: { size: number }) {
 
 let nextClipId = 0;
 
-export function Seal({ pubky, size = 48, ring = 'none', imageUri, testID }: SealProps) {
+export function Seal({ pubky, size = 48, ring = 'none', imageUri, initialRing, testID }: SealProps) {
   const [clipId] = useState(() => `seal${nextClipId++}`);
   const reduceMotion = useReduceMotion();
   const geometry = sealGeometry(size);
 
   // Closing animation: 0 = dashed, 1 = solid. Driven by JS frames (400 ms).
-  const [closing, setClosing] = useState<number | null>(null);
-  const previousRing = useRef(ring);
+  const [closing, setClosing] = useState<number | null>(() => (initialRing === 'linking' && ring === 'linked' ? 0 : null));
+  const previousRing = useRef(initialRing ?? ring);
   useEffect(() => {
     const from = previousRing.current;
     previousRing.current = ring;

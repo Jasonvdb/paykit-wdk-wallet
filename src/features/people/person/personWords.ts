@@ -27,7 +27,7 @@ export function incomingListWords(linkState: LinkState, incoming: IncomingList |
   if (linkState !== 'linked') return { text: 'Shared once you are connected privately.', ready: false };
   const assets = incoming ? assetList(incoming.addresses) : '';
   if (assets) return { text: `${assets}, only for you.`, hint: `${name} can see which payments came from you.`, ready: true };
-  return { text: incoming ? `${name} hasn't shared any yet.` : 'Checking…', ready: false };
+  return { text: incoming ? `None from ${name} right now.` : 'Checking…', ready: false };
 }
 
 /** "Your private addresses shared with them": whether our list reached them. */

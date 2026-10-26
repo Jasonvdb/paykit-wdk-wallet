@@ -2,7 +2,9 @@
 //
 //   seal + name      their seal with photo and the link ring; the ring
 //                    closes with the app's one animation when the link
-//                    becomes Linked while this page is open
+//                    becomes Linked while this page is open, or right
+//                    away if it formed while you were adding them
+//                    (./justAdded.ts)
 //   link state       in words (docs/DESIGN.md, "Writing")
 //   Pay / Request    Send with them as the person; Request money (Phase 5)
 //   your name        a local label (./person/LabelEditor.tsx)
@@ -22,6 +24,7 @@ import type { RootScreenProps } from '../../navigation/types';
 import { describeError, useContactAccounts, useContacts, useLinkState, usePaykit, usePersonProfile, userMessageFor } from '../../paykit';
 import { Button, KeyText, PushedScreen, Text, linkStateWords, sealRingFor, space } from '../../ui';
 import { ContactAccountRow } from '../you/ContactAccountsSection';
+import { takeJustAdded } from './justAdded';
 import { LabelEditor } from './person/LabelEditor';
 import { PersonHistory } from './person/PersonHistory';
 import { WhatTheyAccept } from './person/WhatTheyAccept';
@@ -38,6 +41,7 @@ export function PersonScreen({ navigation, route }: RootScreenProps<'Person'>) {
   // Their published name: the fresh profile, else what the contact record remembers.
   const publishedName = usePersonProfile(pubky, hint).displayName;
   const account = useContactAccounts().find((a) => a.pubky === pubky);
+  const [justAdded] = useState(() => takeJustAdded(pubky));
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -68,7 +72,14 @@ export function PersonScreen({ navigation, route }: RootScreenProps<'Person'>) {
   return (
     <PushedScreen onBack={() => navigation.goBack()} testID="person-screen">
       <View style={styles.header}>
-        <PersonSeal pubky={pubky} size={112} ring={sealRingFor(linkState)} profileHint={hint} testID="person-seal" />
+        <PersonSeal
+          pubky={pubky}
+          size={112}
+          ring={sealRingFor(linkState)}
+          initialRing={justAdded ? 'linking' : undefined}
+          profileHint={hint}
+          testID="person-seal"
+        />
         <Text variant="title" testID="person-title">
           {name}
         </Text>

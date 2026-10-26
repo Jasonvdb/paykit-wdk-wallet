@@ -35,6 +35,7 @@ import {
 } from '../../paykit';
 import { Button, Input, KeyText, SheetScreen, Text, space } from '../../ui';
 import { personName } from './personName';
+import { markJustAdded } from './justAdded';
 import { publicAcceptsWords } from './person/personWords';
 import { PersonSeal } from './PersonSeal';
 
@@ -57,6 +58,8 @@ export function AddPersonScreen({ navigation, route }: RootScreenProps<'AddPerso
   const [preview, setPreview] = useState<Preview>({ state: 'idle' });
   const [attempt, setAttempt] = useState(0);
   const [saving, setSaving] = useState(false);
+  /** Set once the save worked: the contact list updates before the screen is replaced, and must not flash "already in your contacts". */
+  const [added, setAdded] = useState(false);
   const [error, setError] = useState<string>();
   const key = pubkyFromText(text);
 
@@ -99,10 +102,10 @@ export function AddPersonScreen({ navigation, route }: RootScreenProps<'AddPerso
   }, [key, service, log, attempt]);
 
   const publicKey = preview.state === 'ready' || preview.state === 'loading' || preview.state === 'unreachable' ? preview.publicKey : undefined;
-  const existing = publicKey ? contacts.find((c) => c.publicKey === publicKey) : undefined;
+  const existing = publicKey && !added ? contacts.find((c) => c.publicKey === publicKey) : undefined;
   const publishedName = preview.state === 'ready' ? preview.profile?.displayName : undefined;
   const name = publicKey ? personName({ publicKey, label, publishedName }).name : '';
-  const canAdd = !!service && !!publicKey && !existing && preview.state !== 'loading' && !saving;
+  const canAdd = !!service && !!publicKey && !existing && preview.state !== 'loading' && !saving && !added;
 
   const onPaste = async () => {
     const pasted = await Clipboard.getStringAsync();
@@ -115,6 +118,8 @@ export function AddPersonScreen({ navigation, route }: RootScreenProps<'AddPerso
     setError(undefined);
     try {
       const record = await service.saveContactAndLink(publicKey, label.trim() || undefined);
+      markJustAdded(record.publicKey);
+      setAdded(true);
       navigation.replace('Person', { pubky: record.publicKey });
     } catch (e) {
       log.warn(`add contact: ${describeError(e)}`);

@@ -28,7 +28,7 @@ describe('person words', () => {
     expect(incomingListWords('waiting', undefined, 'Ben').text).toBe('Shared once you are connected privately.');
     expect(incomingListWords('linked', undefined, 'Ben').text).toBe('Checking…');
     expect(incomingListWords('linked', { addresses: { btc: 'tb1q' }, loadedAt: 1 }, 'Ben')).toMatchObject({ text: 'Bitcoin, only for you.', ready: true });
-    expect(incomingListWords('linked', { addresses: {}, loadedAt: 1 }, 'Ben').text).toBe("Ben hasn't shared any yet.");
+    expect(incomingListWords('linked', { addresses: {}, loadedAt: 1 }, 'Ben').text).toBe('None from Ben right now.');
 
     expect(outgoingListWords('linked', { state: 'shared', at: 1, assets: ['btc', 'usdt'] })).toMatchObject({ text: 'Bitcoin and USD₮, only for them.', ready: true });
     expect(outgoingListWords('linked', { state: 'waiting-for-address' }).text).toBe('Preparing your Bitcoin address for them…');
