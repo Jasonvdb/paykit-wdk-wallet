@@ -9,6 +9,9 @@
 //             key generation, registered apps)
 //   Payments  the public endpoint ids you publish now, and how many
 //             contacts have your Private Payment List (and you theirs)
+//   Links     each contact's Encrypted Link recovery markers (ours and
+//             theirs, by attempt id), and the backup revisions
+//             (src/paykit/backup.ts)
 //   Chains    Electrum (Mutinynet), Sepolia RPC, chain id, USD₮ contract,
 //             explorer APIs
 //   SDKs      WDK and Paykit package versions
@@ -35,9 +38,12 @@ import {
   usePrivateListSummary,
   usePublicEndpointStatus,
   userMessageFor,
+  readBackupStatus,
+  type BackupStatus,
   type NetworkDetails,
 } from '../../paykit';
-import { Button, DetailRow, Divider, KeyText, Text, space } from '../../ui';
+import { Button, DetailRow, Divider, KeyText, Text, formatDateTime, space } from '../../ui';
+import { usePersonName } from '../people/usePersonName';
 
 const SESSION_ORIGIN_WORDS = {
   import: 'Saved session, imported at launch',
@@ -54,6 +60,7 @@ export function NetworkDetailsSection() {
   const endpointStatus = usePublicEndpointStatus();
   const privateLists = usePrivateListSummary();
   const [details, setDetails] = useState<NetworkDetails>();
+  const [backup, setBackup] = useState<BackupStatus>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -63,6 +70,7 @@ export function NetworkDetailsSection() {
     setError(undefined);
     try {
       setDetails(await loadNetworkDetails(service));
+      setBackup(await readBackupStatus(service));
     } catch (e) {
       log.warn(`network details: ${describeError(e)}`);
       setError(userMessageFor(e, "Couldn't read your Paykit registry. Try again."));
@@ -103,6 +111,22 @@ export function NetworkDetailsSection() {
       value: privateLists ? `Yours shared with ${countWords(privateLists.sharedWith)}; received from ${countWords(privateLists.receivedFrom)}` : '—',
       hint: 'Sent over each Encrypted Link: that contact’s own Bitcoin address plus your USD₮ address.',
     },
+    ...(details?.recoveryMarkers ?? []).map((marker) => ({
+      label: `Encrypted Link recovery markers`,
+      value: <MarkerWords counterparty={marker.counterparty} ours={marker.ours} theirs={marker.theirs} />,
+      hint: [
+        marker.oursAt ? `Ours published ${formatDateTime(Date.parse(marker.oursAt))}` : undefined,
+        marker.theirsAt ? `theirs seen ${formatDateTime(Date.parse(marker.theirsAt))}` : undefined,
+        marker.problem ? 'the last publish failed' : undefined,
+      ]
+        .filter(Boolean)
+        .join(', ') || undefined,
+    })),
+    {
+      label: 'Backup revision',
+      value: backup ? backup.revision.slice(0, 16) : '—',
+      hint: `backupStateRevision. observedBackupStateRevision: ${backup?.observedRevision ?? 'none'} (it is only kept in the SDK's shared-state storage mode; this app stores state on the phone).`,
+    },
     {
       label: 'Bitcoin (Mutinynet signet)',
       value: `Electrum ${MUTINYNET_ELECTRUM.protocol}://${MUTINYNET_ELECTRUM.host}:${MUTINYNET_ELECTRUM.port}`,
@@ -125,7 +149,7 @@ export function NetworkDetailsSection() {
   return (
     <View testID="network-details">
       {rows.map((row, index) => (
-        <View key={row.label}>
+        <View key={`${row.label}-${index}`}>
           {index > 0 ? <Divider /> : null}
           <DetailRow label={row.label} value={row.value} hint={row.hint} />
         </View>
@@ -145,3 +169,9 @@ export function NetworkDetailsSection() {
 const styles = StyleSheet.create({
   actions: { marginTop: space.s, alignItems: 'flex-start' },
 });
+
+/** "Ben: ours 1a2b3c4d, theirs 5e6f7a8b" (attempt ids name a link's stream generation). */
+function MarkerWords({ counterparty, ours, theirs }: { counterparty: string; ours?: string; theirs?: string }) {
+  const { name } = usePersonName(counterparty);
+  return <Text>{`${name}: ours ${ours ?? 'none'}, theirs ${theirs ?? 'none'}`}</Text>;
+}

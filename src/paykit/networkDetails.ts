@@ -4,6 +4,14 @@
 // generation). This is the developer view, so Paykit's own words are fine
 // here (docs/DESIGN.md, "Writing").
 //
+// Also, per contact, the Encrypted Link recovery markers as this phone
+// tracks them (encryptedLinkRecoveryMarkerStatus, a local read). A marker
+// is a small public file naming the attempt id of a link's stream
+// generation: ensureLinkWithPeer publishes ours and reads theirs, and a
+// changed one tells the other side to form the link again (after a
+// restore, or a remove and re-add). The SDK's removeEncryptedLinkRecoveryMarker
+// is only for blocked peers; this app leaves markers to the SDK.
+//
 // Everything here is public (the registry is published for anyone) or a
 // status, never a secret. The Noise key shown is the PUBLIC key.
 import { FfiPubkyIdentityCapability, type FfiPaykitAppCapabilities } from '@synonymdev/react-native-paykit';
@@ -19,6 +27,8 @@ export type NetworkDetails = {
   noisePublicKey?: string;
   apps: { appId: string; displayName: string; capabilities: string }[];
   defaultAppId?: string;
+  /** Per contact: our marker's attempt id (shortened) and theirs, as last seen. */
+  recoveryMarkers: { counterparty: string; ours?: string; oursAt?: string; theirs?: string; theirsAt?: string; problem?: boolean }[];
 };
 
 function capabilityWords(capability: FfiPubkyIdentityCapability | undefined): string {
@@ -44,11 +54,24 @@ function capabilityList(c: FfiPaykitAppCapabilities): string {
   return names.length > 0 ? names.join(', ') : 'none';
 }
 
-/** Two SDK calls through the queue: identityStatus and our own paykitAppRegistry. */
+/** SDK calls through the queue: identityStatus, our own paykitAppRegistry, and each contact's marker status. */
 export async function loadNetworkDetails(service: PaykitService): Promise<NetworkDetails> {
   const identity = await service.call('identityStatus', (sdk, signal) => sdk.identityStatus({ signal }));
   const registry = await service.call('paykitAppRegistry', (sdk, signal) => sdk.paykitAppRegistry(service.publicKey, { signal }));
+  const recoveryMarkers: NetworkDetails['recoveryMarkers'] = [];
+  for (const contact of service.getState()?.contacts ?? []) {
+    const report = await service.call('encryptedLinkRecoveryMarkerStatus', (sdk, signal) => sdk.encryptedLinkRecoveryMarkerStatus(contact.publicKey, { signal }));
+    recoveryMarkers.push({
+      counterparty: contact.publicKey,
+      ours: report?.localAttemptId?.slice(0, 8),
+      oursAt: report?.localMarkerCreatedAt,
+      theirs: report?.remoteAttemptId?.slice(0, 8),
+      theirsAt: report?.remoteMarkerObservedAt,
+      problem: !!report?.localMarkerLastError,
+    });
+  }
   return {
+    recoveryMarkers,
     capability: capabilityWords(identity?.capability),
     keyGeneration: registry ? String(registry.keyGeneration) : undefined,
     noisePublicKey: registry?.noisePublicKey,
