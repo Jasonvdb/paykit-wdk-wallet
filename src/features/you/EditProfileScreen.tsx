@@ -6,9 +6,12 @@
 // (src/media/pickProfilePhoto.ts), uploaded as a blob, and the profile
 // points at it.
 //
-// Publishing reads the current profile first and passes its revision, so a
-// change made from another device in between is not overwritten: the
-// person sees "Still finishing another change…" and tries again.
+// Publishing is a field-level merge (PaykitService.publishProfile): it
+// reads the current profile just before publishing and keeps the fields
+// this screen does not change. Its revision check only catches another
+// device writing in the moment between that read and the publish (the
+// person then sees "Still finishing another change…"); a name edited here
+// still replaces one another device published while the screen was open.
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 

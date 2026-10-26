@@ -284,11 +284,13 @@ export class PaykitService {
   /**
    * Publish name and avatar (/pub/paykit/profile.json).
    *
-   * Optimistic concurrency: it reads the published profile first and
-   * passes that revision as `expectedRevision`. If another device changed
-   * the profile in between, the SDK refuses (ConcurrentUpdate) instead of
-   * overwriting it, and the person tries again on fresh data. Fields the
-   * input leaves out (and `extraJson`) are carried over from that read.
+   * A field-level merge: it reads the published profile right before
+   * publishing, carries over the fields the input leaves out (and
+   * `extraJson`), and passes that read's revision as `expectedRevision`.
+   * So ConcurrentUpdate only catches another device writing between this
+   * read and the publish; it does not protect what an edit screen loaded
+   * earlier. To guard that too, the screen would load the revision when
+   * it opens and pass it through ProfileInput.
    */
   async publishProfile(input: ProfileInput): Promise<void> {
     const avatar = input.avatar;

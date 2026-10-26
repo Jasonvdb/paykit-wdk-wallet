@@ -3,12 +3,14 @@
 // This sends a contract call from EVM account 0 through WDK's
 // `sendTransaction` with `data` (see ./faucet.ts for the encoding). It needs
 // a little Sepolia ETH for gas; Sepolia gas is usually a few gwei or less.
-// `sendTransaction` must be in wdk.config.js `allowedMethods`.
+// `sendTransaction` must be in wdk.config.js `allowedMethods`, which lets it
+// sign any call data; isAllowedContractCall (./faucet.ts) is checked first
+// so this hook can only ever send the faucet's mint.
 import { useCallback } from 'react';
 import { useAccount } from '@tetherto/wdk-react-native-core';
 
 import { EVM_NETWORK } from '../config/wdk';
-import { DEFAULT_FAUCET_MINT_UNITS, usdtFaucetTransaction } from './faucet';
+import { DEFAULT_FAUCET_MINT_UNITS, isAllowedContractCall, usdtFaucetTransaction } from './faucet';
 import { transactionUrl } from './explorers';
 import { recordSentTransaction } from './sentTransactions';
 
@@ -25,7 +27,9 @@ export function useUsdtFaucet() {
   const mint = useCallback(
     async (amount: bigint = DEFAULT_FAUCET_MINT_UNITS) => {
       if (!address) throw new Error('The wallet is not ready yet.');
-      const result = await extension().sendTransaction(usdtFaucetTransaction(address, amount));
+      const tx = usdtFaucetTransaction(address, amount);
+      if (!isAllowedContractCall(tx)) throw new Error('Refusing a contract call other than the faucet mint.');
+      const result = await extension().sendTransaction(tx);
       if (!result?.hash) throw new Error('The faucet transaction was not sent.');
       recordSentTransaction({
         id: `ethereum:${result.hash}:local:faucet`,

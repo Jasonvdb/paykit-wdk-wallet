@@ -1,7 +1,7 @@
 import { AAVE_FAUCET_MINT_SELECTOR, AAVE_SEPOLIA_FAUCET, SEPOLIA_USDT } from '../../config/chains';
 import { mergeActivity, newestItems, parseBlockscoutTokenTransfers, parseBtcTransfers, type ActivityItem } from '../activity';
 import { chainOfAddress, isBtcTestnetAddress, isEvmAddress } from '../addressFormat';
-import { encodeFaucetMint, usdtFaucetTransaction } from '../faucet';
+import { encodeFaucetMint, isAllowedContractCall, usdtFaucetTransaction } from '../faucet';
 
 const ME = '0x00000000000000000000000000000000000000aa';
 
@@ -92,5 +92,18 @@ describe('activity parsing', () => {
     expect(mergeActivity([[]], [local])).toEqual([local]);
     const indexed = { ...local, id: 'ethereum:0x1:usdt:0', status: 'confirmed' as const };
     expect(mergeActivity([[indexed]], [local])).toEqual([indexed]);
+  });
+});
+
+describe('isAllowedContractCall', () => {
+  const ME = '0x83A881Ddad0F675A3d57d306F3F4E6b352b95CD0';
+  it('allows only the faucet mint with no ETH attached', () => {
+    const mint = usdtFaucetTransaction(ME);
+    expect(isAllowedContractCall(mint)).toBe(true);
+    expect(isAllowedContractCall({ ...mint, value: '1' })).toBe(false);
+    expect(isAllowedContractCall({ ...mint, to: ME })).toBe(false);
+    // ERC-20 approve(spender, max) aimed at the faucet address: wrong selector.
+    expect(isAllowedContractCall({ ...mint, data: `0x095ea7b3${'0'.repeat(128)}` })).toBe(false);
+    expect(isAllowedContractCall({ ...mint, data: `${mint.data}00` })).toBe(false);
   });
 });

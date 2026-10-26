@@ -13,6 +13,10 @@
 // Dev builds can restore the git-ignored demo phrase (src/config/demo.ts)
 // without it ever being put on screen.
 //
+// Paste reads the phrase from the clipboard and then empties the clipboard
+// (the app's rule: a phrase never stays where other apps, or clipboard
+// sync, can read it), and says so under the field.
+//
 // "Create" continues to BackupPhrase (write the new phrase down). A wallet
 // that is about to be replaced can show its phrase first, so its funds are
 // not lost by accident.
@@ -58,6 +62,18 @@ export function CreateOrRestoreScreen({ navigation }: OnboardingScreenProps<'Cre
   // a screenshot or the app-switcher snapshot.
   const [useDemoPhrase, setUseDemoPhrase] = useState(demoPrefill.mnemonic !== undefined);
   const [typedPhrase, setTypedPhrase] = useState('');
+  const [clipboardCleared, setClipboardCleared] = useState(false);
+
+  const pastePhrase = async () => {
+    const pasted = (await Clipboard.getStringAsync()) ?? '';
+    setTypedPhrase(pasted);
+    // Anything shaped like a phrase leaves the clipboard, typos included.
+    const words = normalizeMnemonic(pasted).split(' ').filter(Boolean).length;
+    if (words >= 12) {
+      await Clipboard.setStringAsync('');
+      setClipboardCleared(true);
+    }
+  };
   const [busy, setBusy] = useState<'create' | 'restore' | null>(null);
   const [error, setError] = useState<string>();
 
@@ -138,13 +154,17 @@ export function CreateOrRestoreScreen({ navigation }: OnboardingScreenProps<'Cre
             multiline
             secret
             error={error}
-            hint={phraseHint(typedPhrase, wallet.isValidMnemonic(typedPhrase))}
+            hint={
+              [phraseHint(typedPhrase, wallet.isValidMnemonic(typedPhrase)), clipboardCleared ? 'Removed from the clipboard.' : undefined]
+                .filter(Boolean)
+                .join(' ') || undefined
+            }
             accessory={
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Paste"
                 hitSlop={8}
-                onPress={async () => setTypedPhrase((await Clipboard.getStringAsync()) ?? '')}
+                onPress={() => void pastePhrase()}
                 testID="paste-phrase"
               >
                 <Text variant="bodyStrong" color="seal">

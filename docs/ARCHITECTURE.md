@@ -334,9 +334,13 @@ is in your contacts or "Not in your contacts: this is the name they gave
 themselves".
 
 Publishing (`publishProfile`) uploads a new photo first, reads the current
-profile, and publishes with that revision as `expectedRevision`, so a
-change made elsewhere in between fails with ConcurrentUpdate instead of
-being overwritten. The new profile goes straight into the cache.
+profile, and publishes with that revision as `expectedRevision`. That is a
+field-level merge: fields the edit leaves out, and `extraJson`, keep what
+was just read, and ConcurrentUpdate only catches a write from another
+device in the moment between that read and the publish. It does not
+protect what the Edit profile screen showed when it opened: a name edited
+there replaces whatever another device published meanwhile. The new
+profile goes straight into the cache.
 
 ### Paying a person by pubky (public endpoints)
 
@@ -492,8 +496,16 @@ phrase later keeps its links.
 The recovery phrase is shown in two places, You > Recovery phrase (behind a
 confirmation) and onboarding's BackupPhrase step (after a tap). Both read
 it from WDK only on request, hold it with `useForegroundSecret` (dropped
-when the app leaves the foreground, so the app-switcher snapshot cannot
-show it), never copy it to the clipboard and never log it.
+when the app leaves the foreground), never copy it to the clipboard and
+never log it. Restore's Paste empties the clipboard after reading a
+phrase from it.
+
+Hiding the phrase from the app switcher is best effort: AppState changes
+reach JS asynchronously, so an Android recents thumbnail can be taken
+before React re-renders, and screenshots and screen recording are not
+blocked. A production wallet would set `FLAG_SECURE` (for example with
+`expo-screen-capture`) while the words are on screen; that needs a native
+rebuild and is not done here yet.
 
 Logging rules: ESLint forbids `console.log`. Paykit records are not redacted
 in JS, so never log them; the event log takes short, secret-free strings.

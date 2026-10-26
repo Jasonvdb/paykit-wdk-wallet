@@ -5,13 +5,20 @@
 // needs a little Sepolia ETH for gas. The ABI encoding is done by hand here
 // because it is three 32-byte words; pulling in an ABI library for that
 // would hide what is going on.
+//
+// Trust boundary: WDK's EVM `sendTransaction` (allowed in wdk.config.js)
+// signs ANY call data, including an ERC-20 approve() that hands the
+// wallet's tokens to someone else. This file is the only place that sends
+// call data, and isAllowedContractCall says exactly which call that is:
+// the faucet's mint, with no ETH attached. useUsdtFaucet checks it before
+// it signs. Plain ETH sends go through WDK's `send`, which takes no data.
 import {
   AAVE_FAUCET_MAX_MINT_UNITS,
   AAVE_FAUCET_MINT_SELECTOR,
   AAVE_SEPOLIA_FAUCET,
   SEPOLIA_USDT,
 } from '../config/chains';
-import { isEvmAddress } from './addressFormat';
+import { isEvmAddress, sameEvmAddress } from './addressFormat';
 
 /** Default amount for "Get test USD₮": 1,000 USD₮ in micro-units. */
 export const DEFAULT_FAUCET_MINT_UNITS = 1_000n * 10n ** 6n;
@@ -43,4 +50,17 @@ export function usdtFaucetTransaction(to: string, amount: bigint = DEFAULT_FAUCE
     value: '0',
     data: encodeFaucetMint(SEPOLIA_USDT, to, amount),
   };
+}
+
+/**
+ * The one contract call this app may sign: the Aave faucet's mint, sending
+ * no ETH. Anything else with `data` is refused (see the header).
+ */
+export function isAllowedContractCall(tx: { to: string; value: string; data: string }): boolean {
+  return (
+    sameEvmAddress(tx.to, AAVE_SEPOLIA_FAUCET) &&
+    tx.value === '0' &&
+    tx.data.toLowerCase().startsWith(AAVE_FAUCET_MINT_SELECTOR) &&
+    tx.data.length === AAVE_FAUCET_MINT_SELECTOR.length + 3 * 64
+  );
 }

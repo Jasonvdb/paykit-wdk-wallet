@@ -23,7 +23,12 @@ module.exports = {
         'getTokenBalance', // USD₮ balance
         'getTokenBalances', // WDK's balance hooks batch token reads
         'quoteSendTransaction', // ETH send fee
-        'sendTransaction', // ETH send, and the Aave faucet mint call (src/wallet/useUsdtFaucet.ts)
+        // General on-chain authority: it signs any call data (an ERC-20
+        // approve() included), so it is as powerful as 'signTypedData'.
+        // The app sends call data from one place only, the Aave faucet mint,
+        // behind isAllowedContractCall (src/wallet/faucet.ts). ETH sends use
+        // WDK's `send`, which takes no data.
+        'sendTransaction',
         'quoteTransfer', // USD₮ send fee
         'transfer', // USD₮ (ERC-20) send
         'getTransactionReceipt', // Phase 5: verify a USD₮ payment before issuing a receipt (read-only)
