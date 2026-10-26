@@ -231,7 +231,8 @@ function ringLabel(ring: SealRing): string {
     case 'linked':
       return 'Seal, private connection ready';
     case 'unreachable':
-      return 'Seal, cannot reach them right now';
+      // The Graphite ring means unreachable or blocked: the words next to it say which.
+      return 'Seal, no private connection';
     default:
       return 'Seal';
   }
