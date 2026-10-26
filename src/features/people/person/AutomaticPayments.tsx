@@ -15,7 +15,8 @@
 // src/paykit/allowanceTerms.ts): one tap must never let a contact take the
 // whole balance.
 //   none             "Set up automatic payments" (AutomaticPaymentsScreen),
-//                    once the private connection is ready
+//                    once the private connection is ready; until then a
+//                    sentence says why there is no button
 //
 // Ended, declined and conflicted ones are not listed; their history stays
 // in the SDK. Accepting names the exact offer shown here (its proposal
@@ -51,7 +52,11 @@ export function AutomaticPayments({ pubky, name, linkState, onSetUp }: { pubky: 
   return (
     <View style={styles.root} testID="automatic-payments">
       {allowances.length === 0 ? (
-        <Text color="graphite">{`Let ${name}'s payment requests be paid without a tap, up to limits you choose.`}</Text>
+        <Text color="graphite">
+          {linkState === 'linked'
+            ? `Let ${name}'s payment requests be paid without a tap, up to limits you choose.`
+            : `Let ${name}'s payment requests be paid without a tap, up to limits you choose. You can set this up once your private connection with ${name} is ready.`}
+        </Text>
       ) : (
         allowances.map((allowance, index) => (
           <View key={allowance.allowanceId}>

@@ -12,6 +12,11 @@
 // "Offer to Ben" proposes the Allowance (offerAutomaticPayments, as the
 // payer). Nothing is paid until Ben's wallet accepts; the Person page then
 // shows the limits and what has been used, with "Stop automatic payments".
+// Only one at a time: while you already pay them automatically, or an
+// offer of yours is open, the screen says so and doesn't offer again (two
+// accepted Allowances would each have their own limits, doubling them).
+// The deep link paykitwdk://automatic-payments opens it directly, so the
+// check lives here, not only on the Person page.
 import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -26,6 +31,7 @@ import {
   offerAutomaticPayments,
   PER_PAYMENT_CHOICES,
   readAllowanceTerms,
+  useAllowancesWith,
   useLinkState,
   usePaykit,
   userMessageFor,
@@ -42,6 +48,9 @@ export function AutomaticPaymentsScreen({ navigation, route }: RootScreenProps<'
   const { service, log } = usePaykit();
   const { name } = usePersonName(pubky);
   const linkState = useLinkState(pubky);
+  const existing = useAllowancesWith(pubky).find(
+    (a) => a.role === 'allower' && !a.stoppedHere && (a.state === 'accepted' || (a.state === 'proposed' && a.proposedByUs)),
+  );
   const [asset, setAsset] = useState<PayableAsset>('usdt');
   const [perPayment, setPerPayment] = useState<bigint>(DEFAULT_PER_PAYMENT.usdt);
   const [duration, setDuration] = useState<DurationChoice>(DEFAULT_DURATION);
@@ -78,13 +87,20 @@ export function AutomaticPaymentsScreen({ navigation, route }: RootScreenProps<'
       title="Automatic payments"
       onClose={close}
       testID="automatic-payments-screen"
-      footer={<Button label={`Offer to ${name}`} onPress={() => void offer()} loading={sending} disabled={!service || !linked} testID="automatic-payments-offer" />}
+      footer={<Button label={`Offer to ${name}`} onPress={() => void offer()} loading={sending} disabled={!service || !linked || !!existing} testID="automatic-payments-offer" />}
     >
       <View style={styles.body}>
         <PersonHeader publicKey={pubky} sealSize={44} />
         <Text color="graphite">
           {`${name}'s payment requests within these limits are accepted and paid without asking you each time. Anything over a limit waits for you, as now. You can stop it at any time.`}
         </Text>
+        {existing ? (
+          <Text color="graphite" testID="automatic-payments-existing">
+            {existing.state === 'accepted'
+              ? `You already pay ${name}'s requests automatically. To change the limits, stop those on their page first.`
+              : `You already offered ${name} automatic payments. Withdraw that offer on their page to make a new one.`}
+          </Text>
+        ) : null}
         {!linked ? (
           <Text color="graphite" testID="automatic-payments-not-linked">
             {`You can set this up once your private connection with ${name} is ready (${linkStateWords(linkState).toLowerCase()}).`}

@@ -342,7 +342,7 @@ async function acceptAutomatically(service: PaykitService, requests: PaymentRequ
     if (!chosen) {
       const blocked = candidates.find((c) => ours.has(c.allowanceId) && c.blocked)?.blocked;
       const code = blocked && 'inner' in blocked ? (blocked.inner as { code?: string }).code : undefined;
-      notes.set(rkey, `Not paid automatically: ${automaticBlockWords(blocked?.tag ?? '', code)}`, RETRY_BLOCKED_MS);
+      notes.set(rkey, `Not paid automatically. ${automaticBlockWords(blocked?.tag ?? '', code)}`, RETRY_BLOCKED_MS);
       return true;
     }
     // Then the wallet: the bound address, WDK's fee and the balance.
@@ -362,7 +362,7 @@ async function acceptAutomatically(service: PaykitService, requests: PaymentRequ
   } catch (error) {
     service.log.warn(`automatic acceptance of ${view.requestId.slice(0, 8)}: ${describeError(error)}`);
     const policy = paykitErrorTag(error) === 'Policy';
-    notes.set(rkey, policy ? "Not paid automatically: your limits don't cover it right now." : "Couldn't pay it automatically yet. Trying again.", policy ? RETRY_BLOCKED_MS : RETRY_WALLET_MS);
+    notes.set(rkey, policy ? "Not paid automatically. Your limits don't cover it right now." : "Couldn't pay it automatically yet. Trying again.", policy ? RETRY_BLOCKED_MS : RETRY_WALLET_MS);
   }
   return true;
 }
@@ -393,7 +393,7 @@ async function payOccurrence(
     if (!FfiPaymentAttemptDecision.Ready.instanceOf(reserved)) {
       const reason = reserved.inner.reason;
       const code = 'inner' in reason ? (reason.inner as { code?: string }).code : undefined;
-      notes.set(key, `Not paid automatically: ${automaticBlockWords(reason.tag, code)}${reason.tag === 'SharedRule' ? ' You can pay it yourself.' : ''}`, RETRY_BLOCKED_MS);
+      notes.set(key, `Not paid automatically. ${automaticBlockWords(reason.tag, code)}${reason.tag === 'SharedRule' ? ' You can pay it yourself.' : ''}`, RETRY_BLOCKED_MS);
       service.log.info(`automatic payment of ${view.requestId.slice(0, 8)} blocked: ${reason.tag}${code ? `/${code}` : ''}`);
       allowances.markDirty();
       return true;
@@ -409,7 +409,7 @@ async function payOccurrence(
     if (!FfiPaymentAttemptDecision.Ready.instanceOf(begun)) {
       // No handoff: nothing was sent, so free the reservation.
       await releaseAttempt(service, requests, prepared, attemptId, association.allowanceId);
-      notes.set(key, `Not paid automatically: ${automaticBlockWords(begun.inner.reason.tag)}`, RETRY_BLOCKED_MS);
+      notes.set(key, `Not paid automatically. ${automaticBlockWords(begun.inner.reason.tag)}`, RETRY_BLOCKED_MS);
       return true;
     }
     // From here on a restart finds the payment in the book and never pays it twice.
@@ -422,7 +422,7 @@ async function payOccurrence(
       service.log.info(`paid request ${view.requestId.slice(0, 8)} automatically`);
     } else {
       await finishPayment(service, prepared, attemptId, { failure: result.failure });
-      notes.set(key, `Couldn't pay it automatically: ${result.message}`, result.failure === 'unknown' ? RETRY_BLOCKED_MS : RETRY_WALLET_MS);
+      notes.set(key, `Couldn't pay it automatically. ${result.message}`, result.failure === 'unknown' ? RETRY_BLOCKED_MS : RETRY_WALLET_MS);
     }
     allowances.markDirty();
   } catch (error) {
