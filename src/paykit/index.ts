@@ -61,7 +61,8 @@ export {
   type RequestMoneyInput,
   type RequestView,
 } from './requests';
-export { usePaymentRequest, usePaymentRequests, useRequestBook, useRequestFacts, useRequestLinks, type RequestLink } from './hooks';
+export { usePaymentRequest, usePaymentRequests, useRequestBook, useRequestFacts, useRequestLinks } from './hooks';
+export type { RequestLink } from './requestLinks';
 export {
   EXPIRY_CHOICES,
   NOTE_MAX_CHARS,

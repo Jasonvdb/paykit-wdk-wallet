@@ -1,11 +1,11 @@
-// Activity detail's Phase 5 slot: the payment request a transaction paid
-// and its receipt.
+// Activity detail: the payment request a transaction paid, and its receipt.
 //
-// A transaction is linked to a request through the request's payment
-// proof, which names the transaction hash (useRequestLinks in
-// src/paykit/hooks.ts), or through a payment of ours still in flight. The
-// receipt is the payee's: retrieved and decrypted on the payer's side,
-// issued after the on-chain check on the payee's side.
+// A transaction is linked to a request only when we know it paid it
+// (src/paykit/requestLinks.ts): our own payment, or a payment to us whose
+// proof our on-chain check verified. A hash named in a proof proves
+// nothing by itself, since anyone can see it on chain. The receipt is the
+// payee's: retrieved and decrypted on the payer's side, issued after the
+// on-chain check on the payee's side.
 import { StyleSheet, View } from 'react-native';
 
 import { useRequestLinks, type RequestLink } from '../../../paykit';
@@ -17,9 +17,7 @@ import { usePersonName } from '../../people/usePersonName';
 /** The row subtitle's words for a transaction that paid a request ("Paid Ana's request", "Receipt from Ana"). */
 export function requestLinkWords(link: RequestLink, name: string): string {
   if (link.role === 'payer') return link.receipt === 'received' ? `Receipt from ${name}` : `Paid ${name}'s request`;
-  if (link.receipt === 'sent') return 'Paid your request, receipt sent';
-  if (link.check === 'rejected') return "Paid your request, didn't check out";
-  return link.check === 'verified' ? 'Paid your request, checked on chain' : 'Paid your request, checking on chain';
+  return link.receipt === 'sent' ? 'Paid your request, receipt sent' : 'Paid your request, checked on chain';
 }
 
 export function useRequestLinkFor(item: ActivityItem): RequestLink | undefined {
@@ -51,9 +49,7 @@ export function ActivityPaykitLinks({ item, onOpenRequest }: { item: ActivityIte
               : `Waiting for ${name} to check it and send a receipt`
             : link.receipt === 'sent'
               ? `Receipt sent to ${name}`
-              : link.check === 'rejected'
-                ? "The payment didn't check out: no receipt"
-                : 'Sent once the payment is checked on chain'
+              : 'Checked on chain. Sending the receipt…'
         }
         testID="activity-receipt"
       />
