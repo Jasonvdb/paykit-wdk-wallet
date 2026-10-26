@@ -1,7 +1,7 @@
 // Every route in the app and its parameters, in one place.
 //
 // Root stack
-//   Onboarding (stack)  Welcome -> CreateOrRestore -> InviteCode -> YourName -> Ready
+//   Onboarding (stack)  Welcome -> CreateOrRestore (-> BackupPhrase) -> InviteCode -> YourName -> Ready
 //   Main (tabs)         Wallet | People | Requests | You
 //   Modals              Send, Receive, RequestMoney, AddPerson, ScanQr
 //   Pushed cards        Person, RequestDetail, ActivityDetail
@@ -21,6 +21,8 @@ export type OnboardingStackParamList = {
   InviteCode: undefined;
   YourName: undefined;
   Ready: undefined;
+  /** After "Create a new wallet": write the new phrase down. */
+  BackupPhrase: undefined;
 };
 
 export type MainTabParamList = {

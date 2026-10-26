@@ -13,18 +13,29 @@
 // Dev builds can restore the git-ignored demo phrase (src/config/demo.ts)
 // without it ever being put on screen.
 //
-// TODO(Phase 2 — Wallet): show the new phrase after "Create" (with a "write
-// it down" step), reveal the current phrase before replacing it, paste
-// button, word-count feedback.
+// "Create" continues to BackupPhrase (write the new phrase down). A wallet
+// that is about to be replaced can show its phrase first, so its funds are
+// not lost by accident.
+import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { demoPrefill } from '../../config/demo';
 import type { OnboardingScreenProps } from '../../navigation/types';
 import { clearSessionSecret } from '../../paykit';
 import { setWalletOrigin } from '../../settings/appSettings';
 import { Button, Divider, Input, Screen, Text, space } from '../../ui';
-import { useWalletLifecycle } from '../../wallet';
+import { normalizeMnemonic, useWalletLifecycle } from '../../wallet';
+import { RecoveryPhraseSection } from '../you/RecoveryPhraseSection';
+
+/** "7 of 12 words", or a hint when the words do not form a phrase. */
+function phraseHint(text: string, valid: boolean): string | undefined {
+  const count = normalizeMnemonic(text).split(' ').filter(Boolean).length;
+  if (count === 0) return undefined;
+  if (valid) return `${count} words. Looks right.`;
+  if (count === 12 || count === 24) return 'These words do not form a valid phrase. Check the spelling and the order.';
+  return `${count} of ${count > 12 ? 24 : 12} words`;
+}
 
 /** Ask before deleting the wallet on this device. Resolves true to go ahead. */
 function confirmReplace(): Promise<boolean> {
@@ -59,7 +70,7 @@ export function CreateOrRestoreScreen({ navigation }: OnboardingScreenProps<'Cre
     try {
       await wallet.createWallet();
       setWalletOrigin('created');
-      navigation.navigate('InviteCode');
+      navigation.navigate('BackupPhrase');
     } catch {
       setError("Couldn't create the wallet. Try again.");
     } finally {
@@ -92,6 +103,7 @@ export function CreateOrRestoreScreen({ navigation }: OnboardingScreenProps<'Cre
               This device already has a wallet, from an unfinished setup or an earlier install of this app.
             </Text>
             <Button label="Continue with this wallet" onPress={() => navigation.navigate('InviteCode')} testID="continue-wallet" />
+            <RecoveryPhraseSection />
           </>
         ) : (
           <>
@@ -126,6 +138,20 @@ export function CreateOrRestoreScreen({ navigation }: OnboardingScreenProps<'Cre
             multiline
             secret
             error={error}
+            hint={phraseHint(typedPhrase, wallet.isValidMnemonic(typedPhrase))}
+            accessory={
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Paste"
+                hitSlop={8}
+                onPress={async () => setTypedPhrase((await Clipboard.getStringAsync()) ?? '')}
+                testID="paste-phrase"
+              >
+                <Text variant="bodyStrong" color="seal">
+                  Paste
+                </Text>
+              </Pressable>
+            }
             testID="restore-phrase"
           />
         )}

@@ -8,10 +8,10 @@
 //   and when the screen unmounts;
 // - never logged, never copied to the clipboard (other apps can read it),
 //   and the error path shows a fixed message, never the thrown error.
-import { useEffect, useState } from 'react';
-import { Alert, AppState, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, StyleSheet, View } from 'react-native';
 
-import { Button, Text, space } from '../../ui';
+import { Button, RecoveryWords, Text, space, useForegroundSecret } from '../../ui';
 import { useWalletLifecycle } from '../../wallet';
 
 function confirmReveal(): Promise<boolean> {
@@ -30,17 +30,9 @@ function confirmReveal(): Promise<boolean> {
 
 export function RecoveryPhraseSection() {
   const { getMnemonic } = useWalletLifecycle();
-  const [words, setWords] = useState<string[]>();
+  // Dropped as soon as the app is no longer in front.
+  const [words, setWords] = useForegroundSecret<string[]>();
   const [error, setError] = useState<string>();
-
-  // Hide as soon as the app is no longer in front.
-  useEffect(() => {
-    if (!words) return;
-    const subscription = AppState.addEventListener('change', (next) => {
-      if (next !== 'active') setWords(undefined);
-    });
-    return () => subscription.remove();
-  }, [words]);
 
   const onReveal = async () => {
     setError(undefined);
@@ -59,16 +51,7 @@ export function RecoveryPhraseSection() {
       </Text>
       {words ? (
         <>
-          <View style={styles.grid} testID="recovery-words">
-            {words.map((word, index) => (
-              <View key={index} style={styles.word}>
-                <Text variant="caption" color="graphite" style={styles.number}>
-                  {index + 1}
-                </Text>
-                <Text variant="bodyStrong">{word}</Text>
-              </View>
-            ))}
-          </View>
+          <RecoveryWords words={words} testID="recovery-words" />
           <Button label="Hide recovery phrase" variant="secondary" compact onPress={() => setWords(undefined)} testID="hide-phrase" />
         </>
       ) : (
@@ -81,7 +64,4 @@ export function RecoveryPhraseSection() {
 
 const styles = StyleSheet.create({
   root: { gap: space.m, alignItems: 'flex-start' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: space.s, alignSelf: 'stretch' },
-  word: { width: '33.33%', flexDirection: 'row', alignItems: 'baseline', gap: space.xs },
-  number: { minWidth: 20, textAlign: 'right' },
 });

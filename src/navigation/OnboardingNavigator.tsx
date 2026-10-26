@@ -7,6 +7,7 @@ import { InviteCodeScreen } from '../features/onboarding/InviteCodeScreen';
 import { ReadyScreen } from '../features/onboarding/ReadyScreen';
 import { WelcomeScreen } from '../features/onboarding/WelcomeScreen';
 import { YourNameScreen } from '../features/onboarding/YourNameScreen';
+import { BackupPhraseScreen } from '../features/onboarding/BackupPhraseScreen';
 import { colors } from '../ui';
 import type { OnboardingStackParamList } from './types';
 
@@ -20,6 +21,7 @@ export function OnboardingNavigator() {
       <Stack.Screen name="InviteCode" component={InviteCodeScreen} />
       <Stack.Screen name="YourName" component={YourNameScreen} />
       <Stack.Screen name="Ready" component={ReadyScreen} options={{ gestureEnabled: false }} />
+      <Stack.Screen name="BackupPhrase" component={BackupPhraseScreen} />
     </Stack.Navigator>
   );
 }
