@@ -18,6 +18,19 @@ PAYKIT_REPO="https://github.com/pubky/paykit-rs.git"
 PAYKIT_COMMIT="23c702c8f75c7bc211b2deaaaafbcac6f33f15d1"
 ANDROID_ABIS="${ANDROID_ABIS:-arm64-v8a}"
 
+# cargo-ndk needs a complete NDK (one with source.properties). If none is set,
+# take the newest complete one under the Android SDK.
+if [ -z "${ANDROID_NDK_HOME:-}" ]; then
+  sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
+  for ndk in $(ls -d "$sdk"/ndk/*/ 2>/dev/null | sort -rV); do
+    if [ -f "$ndk/source.properties" ]; then
+      export ANDROID_NDK_HOME="${ndk%/}"
+      break
+    fi
+  done
+fi
+echo "==> Using NDK: ${ANDROID_NDK_HOME:?no complete Android NDK found; set ANDROID_NDK_HOME}"
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_DIR="$ROOT/.paykit-build"
 SRC="$BUILD_DIR/paykit-rs"
