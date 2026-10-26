@@ -201,17 +201,22 @@ function nextDue(view: RequestView, requests: PaymentRequests, ledger: Allowance
 
 type Payable = { address: string; appId: string; feeRate?: bigint };
 
+/** Take the request for this app (claimPaymentRequestForPreparation); every automatic step needs the claim. */
+async function claimForThisApp(service: PaykitService, view: RequestView): Promise<void> {
+  await service.call(
+    'claimPaymentRequestForPreparation',
+    (sdk, signal) => sdk.claimPaymentRequestForPreparation(view.counterparty, view.requestId, { signal }),
+    'background',
+  );
+}
+
 /** Claim the request, resolve its address and check the wallet can pay it now. A problem is noted and returns undefined. */
 async function preparePayable(service: PaykitService, requests: PaymentRequests, view: RequestView, noteKey: string): Promise<Payable | undefined> {
   const notes = automaticPaymentNotesOf(service);
   const terms = view.terms;
   const chain = requests.getChain();
   if (!terms?.asset || terms.amount === undefined || !chain) return undefined;
-  await service.call(
-    'claimPaymentRequestForPreparation',
-    (sdk, signal) => sdk.claimPaymentRequestForPreparation(view.counterparty, view.requestId, { signal }),
-    'background',
-  );
+  await claimForThisApp(service, view);
   const endpoint = await resolveRequestAddress(service, view.counterparty, view.requestId, { ...terms, asset: terms.asset });
   const quote = await chain.quoteSend(terms.asset, endpoint.address, terms.amount);
   if (!quote.ok) {
@@ -248,11 +253,10 @@ async function acceptAutomatically(service: PaykitService, requests: PaymentRequ
   if (!asset) return false;
   try {
     await ensureLedgerReady(service);
-    const payable = await preparePayable(service, requests, view, rkey);
-    if (!payable) return true;
-    const trustedTime = toRfc3339(Date.now());
+    await claimForThisApp(service, view);
+    // The SDK's view first (cheap, local): which of our Allowances may cover it now.
     const scope = { counterparty: view.counterparty, paymentRequestId: view.requestId };
-    const candidates = await service.call('evaluateAllowanceCandidates', (sdk, signal) => sdk.evaluateAllowanceCandidates(scope, trustedTime, { signal }), 'background');
+    const candidates = await service.call('evaluateAllowanceCandidates', (sdk, signal) => sdk.evaluateAllowanceCandidates(scope, toRfc3339(Date.now()), { signal }), 'background');
     const identifier = ENDPOINT_FOR_ASSET[asset];
     const ours = new Set(mine.map((a) => a.allowanceId));
     // Local priority: the first eligible one the SDK lists (newest first).
@@ -263,6 +267,10 @@ async function acceptAutomatically(service: PaykitService, requests: PaymentRequ
       notes.set(rkey, `Not paid automatically: ${automaticBlockWords(blocked?.tag ?? '', code)}`, RETRY_BLOCKED_MS);
       return true;
     }
+    // Then the wallet: the bound address, WDK's fee and the balance.
+    const payable = await preparePayable(service, requests, view, rkey);
+    if (!payable) return true;
+    const trustedTime = toRfc3339(Date.now());
     const checks = executionChecks(preparedPayment(view, payable, undefined), trustedTime);
     await service.call('acceptPaymentRequestAutomatically', (sdk, signal) =>
       sdk.acceptPaymentRequestAutomatically(scope, { allowanceId: chosen.allowanceId, expectedRevision: undefined, trustedTime }, checks, { signal }),
