@@ -28,6 +28,15 @@ export interface StringStore {
 }
 
 const CONTACT_ACCOUNTS_KEY = 'contact-btc-accounts-v1';
+const PUBLIC_ENDPOINT_CHOICE_KEY = 'public-endpoints-v1';
+
+/**
+ * Which assets are published as public endpoints (You > What you publish).
+ * Public endpoints let anyone pay you by your pubky; contacts get private
+ * addresses either way. Both are on by default.
+ */
+export type PublicEndpointChoice = { btc: boolean; usdt: boolean };
+const DEFAULT_PUBLIC_ENDPOINT_CHOICE: PublicEndpointChoice = { btc: true, usdt: true };
 
 /** BTC account 0 is the public and spending account; contacts start here. */
 export const FIRST_CONTACT_BTC_ACCOUNT = 1;
@@ -47,11 +56,24 @@ export class ReceivingAddressCache {
   private publicAddresses: PublicAddresses = {};
   private readonly btcAddresses = new Map<number, string>();
   private contactAccounts: PersistedContactAccounts;
+  private endpointChoice: PublicEndpointChoice;
   private readonly changeListeners = new Set<Listener>();
   private readonly missingListeners = new Set<(pubky: string, accountIndex: number) => void>();
 
   constructor(private readonly store: StringStore) {
     this.contactAccounts = this.load();
+    this.endpointChoice = this.loadEndpointChoice();
+  }
+
+  private loadEndpointChoice(): PublicEndpointChoice {
+    try {
+      const parsed = JSON.parse(this.store.getString(PUBLIC_ENDPOINT_CHOICE_KEY) ?? 'null') as Partial<PublicEndpointChoice> | null;
+      if (!parsed) return DEFAULT_PUBLIC_ENDPOINT_CHOICE;
+      return { btc: parsed.btc !== false, usdt: parsed.usdt !== false };
+    } catch {
+      // Unreadable preference: fall back to publishing both, the default.
+      return DEFAULT_PUBLIC_ENDPOINT_CHOICE;
+    }
   }
 
   private load(): PersistedContactAccounts {
@@ -106,12 +128,34 @@ export class ReceivingAddressCache {
     return this.publicAddresses;
   }
 
-  /** What we publish as public payment endpoints. */
+  publicEndpointChoice(): PublicEndpointChoice {
+    return this.endpointChoice;
+  }
+
+  /** Persist which assets to publish. The service then publishes (or removes) to match. */
+  setPublicEndpointChoice(choice: PublicEndpointChoice): void {
+    if (choice.btc === this.endpointChoice.btc && choice.usdt === this.endpointChoice.usdt) return;
+    this.endpointChoice = { btc: choice.btc, usdt: choice.usdt };
+    this.store.set(PUBLIC_ENDPOINT_CHOICE_KEY, JSON.stringify(this.endpointChoice));
+    this.emitChange();
+  }
+
+  /**
+   * What we publish as public payment endpoints: account-0 addresses of
+   * the assets switched on. An empty list is a real answer when both are
+   * off (the SDK then removes our endpoints), so callers check
+   * `publicAddressesKnown()` before treating "empty" as "remove all".
+   */
   publicReceivingDetails(): ReceivingDetail[] {
     const details: ReceivingDetail[] = [];
-    if (this.publicAddresses.evm) details.push(usdtReceivingDetail(this.publicAddresses.evm));
-    if (this.publicAddresses.btc) details.push(btcReceivingDetail(this.publicAddresses.btc));
+    if (this.endpointChoice.usdt && this.publicAddresses.evm) details.push(usdtReceivingDetail(this.publicAddresses.evm));
+    if (this.endpointChoice.btc && this.publicAddresses.btc) details.push(btcReceivingDetail(this.publicAddresses.btc));
     return details;
+  }
+
+  /** True once both account-0 addresses are cached. */
+  publicAddressesKnown(): boolean {
+    return !!this.publicAddresses.btc && !!this.publicAddresses.evm;
   }
 
   // Per-contact BTC accounts ---------------------------------------------------

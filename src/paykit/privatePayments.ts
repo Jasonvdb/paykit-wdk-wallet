@@ -26,3 +26,17 @@ import type { PaykitService } from './PaykitService';
 export function registerPrivatePaymentHooks(_service: PaykitService): void {
   // Phase 4.
 }
+
+/**
+ * Phase 4 hook for paying a person: a linked contact's private,
+ * per-contact addresses (from the Private Payment List they shared).
+ * The Send screen's pubky recipient asks this first and uses public
+ * endpoints only when it returns undefined, which it always does until
+ * Phase 4 fills it in (with `prepareAndResolvePrivateContactPayment`).
+ */
+export async function privatePaymentAddressesFor(
+  _service: PaykitService,
+  _publicKey: string,
+): Promise<Partial<Record<'btc' | 'usdt', string>> | undefined> {
+  return undefined;
+}

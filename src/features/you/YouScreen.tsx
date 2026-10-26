@@ -19,6 +19,7 @@ import { usePaykit, useSyncLog, useSyncStatus, type SyncStatus } from '../../pay
 import { Button, Divider, KeyText, Screen, Text, relativeTime, space } from '../../ui';
 import { ContactAccountsSection } from './ContactAccountsSection';
 import { ProfileSection } from './ProfileSection';
+import { PublicEndpointsSection } from './PublicEndpointsSection';
 import { RecoveryPhraseSection } from './RecoveryPhraseSection';
 import { TestFundsSection } from './TestFundsSection';
 
@@ -39,6 +40,11 @@ export function YouScreen({ navigation }: MainTabScreenProps<'You'>) {
   return (
     <Screen scroll title="You" edges={['top']} testID="you-screen">
       <ProfileSection onEdit={() => navigation.navigate('EditProfile')} />
+
+      <Text variant="heading" style={styles.section}>
+        What you publish
+      </Text>
+      <PublicEndpointsSection />
 
       <Text variant="heading" style={styles.section}>
         Test funds

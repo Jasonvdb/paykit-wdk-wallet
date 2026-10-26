@@ -10,7 +10,7 @@ import type { FfiPaykitStateObservation } from '@synonymdev/react-native-paykit'
 import type { SyncLogEntry } from './eventLog';
 import { linkStateOf, type LinkState } from './linkState';
 import { PaykitContext, type PaykitContextValue } from './PaykitProvider';
-import type { PaykitService } from './PaykitService';
+import type { PaykitService, PublicEndpointStatus } from './PaykitService';
 import type { PersonProfile } from './profiles';
 import type { SyncStatus } from './syncLoop';
 
@@ -158,4 +158,13 @@ export function usePersonProfile(publicKey: string | undefined, hint?: PersonPro
 /** Your own published name and avatar. */
 export function useOwnProfile(): DisplayProfile {
   return usePersonProfile(usePaykitService()?.publicKey);
+}
+
+/** The last public endpoint publish (You > What you publish). */
+export function usePublicEndpointStatus(): PublicEndpointStatus | undefined {
+  const service = usePaykitService();
+  return useSyncExternalStore(
+    service ? (listener) => service.subscribePublicEndpointStatus(listener) : noopSubscribe,
+    () => service?.publicEndpointStatus(),
+  );
 }

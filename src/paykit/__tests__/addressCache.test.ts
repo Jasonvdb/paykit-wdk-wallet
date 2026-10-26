@@ -20,6 +20,36 @@ describe('ReceivingAddressCache', () => {
     expect(JSON.parse(cache.publicReceivingDetails()[1]!.payload)).toEqual({ value: BTC0 });
   });
 
+  it('publishes only the assets switched on, and remembers the choice', () => {
+    const store = memoryStore();
+    const cache = new ReceivingAddressCache(store);
+    cache.setPublicAddresses({ btc: BTC0, evm: EVM });
+    expect(cache.publicEndpointChoice()).toEqual({ btc: true, usdt: true });
+
+    cache.setPublicEndpointChoice({ btc: true, usdt: false });
+    expect(cache.publicReceivingDetails().map((d) => d.identifier)).toEqual([ENDPOINT_BTC]);
+    cache.setPublicEndpointChoice({ btc: false, usdt: false });
+    expect(cache.publicReceivingDetails()).toEqual([]);
+    expect(cache.publicAddressesKnown()).toBe(true);
+
+    const reloaded = new ReceivingAddressCache(store);
+    expect(reloaded.publicEndpointChoice()).toEqual({ btc: false, usdt: false });
+  });
+
+  it('keeps private lists complete whatever is published publicly', () => {
+    const cache = new ReceivingAddressCache(memoryStore());
+    cache.setPublicAddresses({ btc: BTC0, evm: EVM });
+    cache.setPublicEndpointChoice({ btc: false, usdt: false });
+    cache.setBtcAddress(cache.ensureContactAccount(ALICE), 'tb1qalice000000000000000000000000000000000');
+    expect(cache.privateReceivingDetails(ALICE)?.map((d) => d.identifier)).toEqual([ENDPOINT_USDT, ENDPOINT_BTC]);
+  });
+
+  it('falls back to publishing both when the stored choice is unreadable', () => {
+    const store = memoryStore();
+    store.set('public-endpoints-v1', '{not json');
+    expect(new ReceivingAddressCache(store).publicEndpointChoice()).toEqual({ btc: true, usdt: true });
+  });
+
   it('allocates stable, increasing BTC accounts per contact and persists them', () => {
     const store = memoryStore();
     const cache = new ReceivingAddressCache(store);

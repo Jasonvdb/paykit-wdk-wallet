@@ -51,7 +51,7 @@ import {
 
 import { PAYKIT_APP_ID, PAYKIT_APP_NAME } from '../config/paykit';
 import { PAYKIT_CALL_TIMEOUT_MS, PAYKIT_LINK_ADVANCE_STEPS } from '../config/sync';
-import { ReceivingAddressCache } from './addressCache';
+import { ReceivingAddressCache, type PublicEndpointChoice } from './addressCache';
 import { SerialCallQueue, type CallPriority } from './callQueue';
 import { UserFacingError, describeError, isRetryablePaykitError } from './errors';
 import { SyncEventLog } from './eventLog';
@@ -98,6 +98,18 @@ export type PeerOverview = {
   profile?: FfiProfileResolution;
 };
 
+/**
+ * The last public endpoint publish, for You > What you publish.
+ * `published` and `failed` are endpoint identifiers.
+ */
+export type PublicEndpointStatus = {
+  state: 'waiting' | 'publishing' | 'published' | 'failed';
+  published: string[];
+  failed: string[];
+  /** When the last publish finished (ms since epoch). */
+  at?: number;
+};
+
 type Task<T> = (sdk: FfiPaykitSdkInterface, signal: AbortSignal) => Promise<T>;
 
 /** Largest avatar we download for display. */
@@ -114,9 +126,11 @@ export class PaykitService {
   private state: FfiPaykitStateObservation | undefined;
   private readonly stateListeners = new Set<() => void>();
   private disposed = false;
-  /** The address pair last published without failures (see publishPublicEndpointsIfNeeded). */
+  /** The endpoint set last published without failures (see publishPublicEndpointsIfNeeded). */
   private endpointsPublishedFor: string | undefined;
-  private publishingEndpoints = false;
+  private publishingEndpoints: Promise<void> | undefined;
+  private endpointStatus: PublicEndpointStatus = { state: 'waiting', published: [], failed: [] };
+  private readonly endpointStatusListeners = new Set<() => void>();
 
   private constructor(
     private readonly sdk: FfiPaykitSdkInterface,
@@ -334,39 +348,96 @@ export class PaykitService {
     void this.publishPublicEndpointsIfNeeded('user');
   }
 
-  /**
-   * Publish account-0 addresses as public payment endpoints, once per
-   * address pair. Skips (and a later sync round retries) while the app is
-   * not registered yet or the addresses are not known yet. Only a publish
-   * with no failed endpoint counts as done, so a partial failure is retried.
-   */
-  private async publishPublicEndpointsIfNeeded(priority: CallPriority): Promise<void> {
-    if (this.disposed || !this.appPublished || this.publishingEndpoints) return;
-    const { btc, evm } = this.addressCache.getPublicAddresses();
-    if (!btc || !evm) return;
-    const addressPair = `${btc}|${evm}`;
-    if (addressPair === this.endpointsPublishedFor) return;
-    this.publishingEndpoints = true;
-    try {
-      const report = await this.syncPublicEndpoints(priority);
-      if (report.failed.length === 0) this.endpointsPublishedFor = addressPair;
-    } catch (error) {
-      this.log.warn(`public endpoints: ${describeError(error)} (retrying next round)`);
-    } finally {
-      this.publishingEndpoints = false;
-    }
+  publicEndpointChoice(): PublicEndpointChoice {
+    return this.addressCache.publicEndpointChoice();
   }
 
   /**
-   * Publish the cached account-0 addresses as public payment endpoints. Uses
-   * the explicit-input SDK call, so publication does not depend on the
-   * adapter callbacks. Unchanged endpoints are not rewritten. Requires the
-   * app to be registered (setUpIdentity).
+   * Switch public endpoints on or off per asset (You > What you publish),
+   * then publish to match: a switched-off asset's endpoint is removed from
+   * the homeserver. Contacts keep getting private addresses either way.
+   * Resolves once the publish ran; its outcome is in publicEndpointStatus().
+   */
+  async setPublicEndpointChoice(choice: PublicEndpointChoice): Promise<void> {
+    this.addressCache.setPublicEndpointChoice(choice);
+    await this.publishPublicEndpointsIfNeeded('user');
+  }
+
+  publicEndpointStatus(): PublicEndpointStatus {
+    return this.endpointStatus;
+  }
+
+  subscribePublicEndpointStatus(listener: () => void): () => void {
+    this.endpointStatusListeners.add(listener);
+    return () => this.endpointStatusListeners.delete(listener);
+  }
+
+  private setEndpointStatus(status: PublicEndpointStatus): void {
+    this.endpointStatus = status;
+    for (const listener of this.endpointStatusListeners) listener();
+  }
+
+  /** What should be published right now, as a comparable key, or undefined while addresses are unknown. */
+  private desiredEndpointsKey(): string | undefined {
+    if (!this.addressCache.publicAddressesKnown()) return undefined;
+    return this.addressCache
+      .publicReceivingDetails()
+      .map((d) => `${d.identifier}=${d.payload}`)
+      .join('|');
+  }
+
+  /**
+   * Publish what the cache says (account-0 addresses of the switched-on
+   * assets), once per distinct set. Skips (and a later sync round retries)
+   * while the app is not registered yet or the addresses are not known yet.
+   * Only a publish with no failed endpoint counts as done, so a partial
+   * failure is retried. If the choice changes while a publish runs, it runs
+   * again for the new choice.
+   */
+  private async publishPublicEndpointsIfNeeded(priority: CallPriority): Promise<void> {
+    if (this.disposed || !this.appPublished) return;
+    if (this.publishingEndpoints) return this.publishingEndpoints;
+    const run = async () => {
+      for (;;) {
+        const desired = this.desiredEndpointsKey();
+        if (this.disposed || desired === undefined || desired === this.endpointsPublishedFor) return;
+        this.setEndpointStatus({ ...this.endpointStatus, state: 'publishing' });
+        try {
+          const report = await this.syncPublicEndpoints(priority);
+          const failed = report.failed.map((c) => c.identifier);
+          if (failed.length === 0) this.endpointsPublishedFor = desired;
+          this.setEndpointStatus({
+            state: failed.length === 0 ? 'published' : 'failed',
+            published: this.addressCache.publicReceivingDetails().map((d) => d.identifier),
+            failed,
+            at: Date.now(),
+          });
+          if (failed.length > 0) return;
+        } catch (error) {
+          this.log.warn(`public endpoints: ${describeError(error)} (retrying next round)`);
+          this.setEndpointStatus({ ...this.endpointStatus, state: 'failed', at: Date.now() });
+          return;
+        }
+      }
+    };
+    this.publishingEndpoints = run().finally(() => {
+      this.publishingEndpoints = undefined;
+    });
+    return this.publishingEndpoints;
+  }
+
+  /**
+   * Publish the cached public receiving details (see publicReceivingDetails)
+   * and remove our other SDK-managed endpoints. Uses the explicit-input SDK
+   * call, so publication does not depend on the adapter callbacks.
+   * Unchanged endpoints are not rewritten. Requires the app to be
+   * registered (setUpIdentity).
    */
   async syncPublicEndpoints(priority: CallPriority = 'user'): Promise<FfiEndpointSyncReport> {
+    // An empty list unpublishes every endpoint. That is only right when the
+    // person switched both off, never because addresses are not known yet.
+    if (!this.addressCache.publicAddressesKnown()) throw new Error('No receiving addresses yet');
     const details = this.addressCache.publicReceivingDetails();
-    // An empty list would unpublish every endpoint; never send one by accident.
-    if (details.length === 0) throw new Error('No receiving addresses yet');
     const report = await this.call(
       'syncPublicEndpointsWithReceivingDetails',
       (sdk, signal) =>
@@ -377,7 +448,7 @@ export class PaykitService {
       priority,
     );
     const names = (list: { identifier: string }[]) => list.map((c) => c.identifier).join(', ') || 'none';
-    this.log.info(`public endpoints: published ${names(report.published)}; failed ${names(report.failed)}`);
+    this.log.info(`public endpoints: published ${names(report.published)}; removed ${names(report.removed)}; failed ${names(report.failed)}`);
     return report;
   }
 
