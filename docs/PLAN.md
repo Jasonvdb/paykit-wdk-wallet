@@ -56,7 +56,9 @@ to read over code that is hardened.
 ## Phases
 
 Each phase ends with commits pushed to `main` and a check on both simulators
-where it applies. Device builds run one at a time: this Mac has crashed under a
+where it applies. Phases 2 to 5 run one after another: several screens
+(Send, Receive, Activity detail, You) carry work for more than one phase
+(see "Files that several phases edit" in [`ARCHITECTURE.md`](ARCHITECTURE.md)). Device builds run one at a time: this Mac has crashed under a
 simulator, an emulator, Xcode and Gradle all at once.
 
 0. **Spike.** Expo app with both native stacks on both simulators. WDK

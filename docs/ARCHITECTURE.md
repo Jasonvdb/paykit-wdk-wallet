@@ -270,6 +270,27 @@ connection (saved session first, then sign-in).
   layers (`src/ui`, `src/wallet`, `src/paykit`, `src/navigation`) change only
   for additions the feature needs.
 
+### Files that several phases edit
+
+Feature folders follow the tabs, but phases cut across them. These screens
+carry TODOs for more than one phase, so **phases 2 to 5 run one after
+another, not in parallel**:
+
+| File | Phases |
+|---|---|
+| `src/features/wallet/SendScreen.tsx` | 2 (address send), 3 (pay a pubky), 4 (pay a contact privately) |
+| `src/features/wallet/ReceiveScreen.tsx` | 2 (receive card), 3 (pay-me code) |
+| `src/features/wallet/ActivityDetailScreen.tsx` | 2 (transaction), 5 (request and receipt links) |
+| `src/features/you/YouScreen.tsx` | 2 (phrase, faucet, collect), 3 (profile, endpoints, network details) |
+
+A phase that adds to one of these screens should put its part in its own
+component file next to the screen (for example
+`src/features/wallet/send/PubkySend.tsx`) and keep its edit to the screen
+small. Edits to the barrels (`src/paykit/index.ts`, `src/wallet/index.ts`,
+`src/ui/index.ts`) and to routes (`src/navigation/types.ts`,
+`RootNavigator.tsx`) are append-only: add lines, do not reorder or rewrite
+existing ones, so merges stay trivial.
+
 ## Storage and secrets
 
 | Data | Where | Notes |
