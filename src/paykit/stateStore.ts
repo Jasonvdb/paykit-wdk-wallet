@@ -4,95 +4,123 @@
 // on the JS thread while a Rust worker waits for the answer. That rules out
 // AsyncStorage and any `await` here. MMKV reads and writes are synchronous.
 //
-// The blob holds Paykit secrets (Noise keys, link state), so the MMKV file is
-// encrypted with a random AES-256 key kept in the Keychain/Keystore. Keychain
-// access is async, so `openStateStore` loads the key before the SDK exists.
+// The blob holds Paykit secrets (Noise keys, link state, receipt keys), so the
+// MMKV file is encrypted with a random AES-256 key from the Keychain/Keystore
+// (src/paykit/secureStorage.ts), loaded before the SDK is built.
 //
 // Contract (paykit-ffi/src/storage.rs):
 // - a save whose expected revision differs from the stored one throws
-//   PaykitFfiError.ConcurrentUpdate and writes nothing;
-// - each successful save returns a new revision that was never used before.
-import * as Crypto from 'expo-crypto';
-import * as Keychain from 'react-native-keychain';
+//   PaykitFfiError.ConcurrentUpdate and writes nothing (this includes "no
+//   revision expected, but a blob exists");
+// - each successful save returns a new, non-empty revision that was never
+//   used before.
+//
+// Blob and revision are written as ONE value (`encodeSdkStateBlobSnapshot`),
+// so a crash can never leave a new blob with an old revision.
 import { createMMKV, type MMKV } from 'react-native-mmkv';
+import * as Crypto from 'expo-crypto';
 import {
   FfiSdkStateBlob,
   PaykitFfiError,
+  decodeSdkStateBlobSnapshot,
+  encodeSdkStateBlobSnapshot,
   type FfiSdkStateBlobInterface,
   type FfiSdkStateBlobSnapshot,
   type FfiSdkStateBlobStore,
 } from '@synonymdev/react-native-paykit';
 
-const KEYCHAIN_SERVICE = 'paykit-state-encryption-key';
-const BLOB_KEY = 'blob';
-const REVISION_KEY = 'revision';
+import { asCallbackError } from './errors';
 
-/** 24 random bytes as base64 = 32 characters, the AES-256 key length MMKV takes. */
-async function loadOrCreateEncryptionKey(): Promise<string> {
-  const existing = await Keychain.getGenericPassword({ service: KEYCHAIN_SERVICE });
-  if (existing) return existing.password;
-  const bytes = Crypto.getRandomBytes(24);
-  const key = btoa(String.fromCharCode(...bytes));
-  await Keychain.setGenericPassword('paykit', key, {
-    service: KEYCHAIN_SERVICE,
-    accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-  });
-  return key;
+const SNAPSHOT_KEY = 'snapshot-v1';
+// The Phase 0 spike stored blob and revision under two keys; migrated on open.
+const LEGACY_BLOB_KEY = 'blob';
+const LEGACY_REVISION_KEY = 'revision';
+
+/** Short, filesystem-safe id for per-identity files. A pubky is public, so it may appear in a file name. */
+export function identityFileId(publicKey: string): string {
+  return publicKey.replace(/^pubky/, '').slice(0, 16);
 }
 
 /** Open the state store for one Pubky identity. Call before building the SDK. */
-export async function openStateStore(publicKey: string): Promise<MmkvStateBlobStore> {
-  const encryptionKey = await loadOrCreateEncryptionKey();
-  // One MMKV instance per identity, so a different mnemonic never loads
-  // another identity's state. The pubky is public; it is fine in a file name.
+export function openStateStore(publicKey: string, encryptionKey: string): MmkvStateBlobStore {
+  // One MMKV file per identity, so a different mnemonic never loads another
+  // identity's state.
   const storage = createMMKV({
-    id: `paykit-state-${publicKey.replace(/^pubky/, '').slice(0, 16)}`,
+    id: `paykit-state-${identityFileId(publicKey)}`,
     encryptionKey,
     encryptionType: 'AES-256',
   });
+  migrateLegacyLayout(storage);
   return new MmkvStateBlobStore(storage);
 }
 
+function migrateLegacyLayout(storage: MMKV): void {
+  if (storage.contains(SNAPSHOT_KEY)) return;
+  const revision = storage.getString(LEGACY_REVISION_KEY);
+  const bytes = storage.getBuffer(LEGACY_BLOB_KEY);
+  if (revision === undefined || bytes === undefined) return;
+  const snapshot = { blob: new FfiSdkStateBlob(bytes.slice(0)), revision };
+  storage.set(SNAPSHOT_KEY, encodeSdkStateBlobSnapshot(snapshot).slice(0));
+  storage.remove(LEGACY_BLOB_KEY);
+  storage.remove(LEGACY_REVISION_KEY);
+}
+
 export class MmkvStateBlobStore implements FfiSdkStateBlobStore {
-  // Revisions are `<random store session>-<counter>`. They are identifiers,
-  // not secrets; the random prefix keeps them unique across app launches.
-  private readonly session = Crypto.randomUUID();
+  // Revisions are `<random per-launch id>-<counter>`. They are identifiers,
+  // not secrets; the random prefix keeps them unique across app launches, so
+  // a revision is never reused (the SDK relies on that to detect ABA writes).
+  private readonly launchId = Crypto.randomUUID();
   private counter = 0;
 
   constructor(private readonly storage: MMKV) {}
 
-  loadStateBlob(): FfiSdkStateBlobSnapshot | undefined {
-    const revision = this.storage.getString(REVISION_KEY);
-    const bytes = this.storage.getBuffer(BLOB_KEY);
-    if (revision === undefined || bytes === undefined) return undefined;
-    return { blob: new FfiSdkStateBlob(bytes.slice(0)), revision };
+  private storedSnapshot(): FfiSdkStateBlobSnapshot | undefined {
+    const bytes = this.storage.getBuffer(SNAPSHOT_KEY);
+    return bytes === undefined ? undefined : decodeSdkStateBlobSnapshot(bytes.slice(0));
   }
 
-  saveStateBlobAtomically(
-    blob: FfiSdkStateBlobInterface,
-    expectedRevision: string | undefined,
-  ): string {
+  loadStateBlob(): FfiSdkStateBlobSnapshot | undefined {
     try {
-      if (this.storage.getString(REVISION_KEY) !== expectedRevision) {
+      return this.storedSnapshot();
+    } catch (error) {
+      throw asCallbackError(error, 'state_store_read_failed', 'mmkv');
+    }
+  }
+
+  saveStateBlobAtomically(blob: FfiSdkStateBlobInterface, expectedRevision: string | undefined): string {
+    try {
+      const stored = this.storedSnapshot();
+      if (stored?.revision !== expectedRevision) {
         throw new PaykitFfiError.ConcurrentUpdate({
           code: 'state_revision_mismatch',
           context: 'stored SDK state revision changed',
         });
       }
-      const revision = `${this.session}-${++this.counter}`;
-      this.storage.set(BLOB_KEY, blob.exportBytes().slice(0));
-      this.storage.set(REVISION_KEY, revision);
+      const revision = `${this.launchId}-${++this.counter}`;
+      this.storage.set(SNAPSHOT_KEY, encodeSdkStateBlobSnapshot({ blob, revision }).slice(0));
       return revision;
     } catch (error) {
       // Callbacks must throw PaykitFfiError only; anything else is an
       // unexpected callback error on the Rust side.
-      if (PaykitFfiError.instanceOf(error)) throw error;
-      throw new PaykitFfiError.Storage({ code: 'state_store_write_failed', context: 'mmkv' });
+      throw asCallbackError(error, 'state_store_write_failed', 'mmkv');
     }
   }
 
-  /** Forget this identity's state (spike "reset" button). */
+  /** Forget this identity's Paykit state (developer reset). */
   clear(): void {
     this.storage.clearAll();
   }
+}
+
+/**
+ * Encrypted app-side store for small Paykit-related data that is not SDK
+ * state: the contact -> BTC account map (src/paykit/addressCache.ts) and
+ * what later phases need (consumed private list versions, receipt drafts).
+ */
+export function openPaykitAppStore(publicKey: string, encryptionKey: string): MMKV {
+  return createMMKV({
+    id: `paykit-app-${identityFileId(publicKey)}`,
+    encryptionKey,
+    encryptionType: 'AES-256',
+  });
 }

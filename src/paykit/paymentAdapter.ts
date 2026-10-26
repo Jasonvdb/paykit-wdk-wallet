@@ -1,12 +1,27 @@
-// Paykit payment adapter backed by WDK addresses.
+// The Paykit payment adapter: how Paykit asks this wallet what to publish,
+// what to share privately, and which of a peer's endpoints it can pay.
 //
 // Every method here is called synchronously on the JS thread while a Rust
-// worker waits. WDK runs in a separate worklet and answers asynchronously, so
-// we can never ask WDK from inside a callback. Instead the app loads the
-// addresses first and puts them in this cache; the callbacks only read it.
+// worker waits, and must not call back into the SDK. WDK answers
+// asynchronously from its worklet, so the adapter never talks to WDK: it
+// reads the ReceivingAddressCache, which the app fills ahead of time.
+// Callbacks may only throw PaykitFfiError; anything else becomes an
+// "unexpected callback error" on the Rust side.
 //
-// For now the same addresses are used publicly and for every contact
-// (account 0 on each chain). Per-contact BTC accounts come in a later phase.
+// Receiving:
+// - Public details: BTC account 0 + EVM account 0.
+// - Private details per contact: that contact's own BTC account + EVM 0.
+// - Reservations: our per-contact addresses are stable, not one-time, so
+//   `reservePrivateReceivingDetails` answers "use current details" and the
+//   SDK then calls `currentPrivateReceivingDetails`. Cancelling therefore
+//   has nothing to release; it must still be idempotent, and it is.
+//   `reservationInputsFor` builds the explicit-input form for
+//   `syncPrivatePaymentListsWithReservationsAndProcessOutbound` (Phase 4).
+//
+// Paying:
+// - select*: our supported identifiers in preference order (USD₮, then BTC),
+//   dropping payloads we do not accept (wrong chain id or token, malformed).
+// - build*Target: re-validate and return a canonical payload.
 import {
   FfiPaymentPayload,
   FfiPrivateReceivingDetailReservationResponseKind,
@@ -14,6 +29,7 @@ import {
   type FfiPaymentTarget,
   type FfiPrivatePaymentEndpointCandidate,
   type FfiPrivatePaymentEndpointReservationCancellation,
+  type FfiPrivatePaymentEndpointReservationInput,
   type FfiPrivatePaymentEndpointSelectionRequest,
   type FfiPrivateReceivingDetail,
   type FfiPrivateReceivingDetailReservationResponse,
@@ -23,57 +39,37 @@ import {
   type FfiSdkPaymentAdapter,
 } from '@synonymdev/react-native-paykit';
 
-import { ENDPOINT_BTC, ENDPOINT_USDT, SUPPORTED_ENDPOINTS } from '../config/paykit';
-import { SEPOLIA_CHAIN_ID, SEPOLIA_USDT } from '../config/wdk';
+import type { ReceivingAddressCache } from './addressCache';
+import { canonicalPayload, parseEndpoint, payableCandidateIds, type ReceivingDetail } from './endpoints';
 
-export type AddressCache = {
-  btc?: string;
-  evm?: string;
-};
+function toFfiDetails(details: ReceivingDetail[]): (FfiPublicReceivingDetail & FfiPrivateReceivingDetail)[] {
+  return details.map(({ identifier, payload }) => ({ identifier, payload: new FfiPaymentPayload(payload) }));
+}
 
-/** Endpoint payloads: small JSON, so they fit Paykit's message size limit. */
-export function receivingDetails(addresses: AddressCache): Array<{ identifier: string; payload: string }> {
-  const details: Array<{ identifier: string; payload: string }> = [];
-  if (addresses.btc) {
-    details.push({ identifier: ENDPOINT_BTC, payload: JSON.stringify({ value: addresses.btc }) });
+function adapterError(code: string, context: string): PaykitFfiError {
+  return new PaykitFfiError.PaymentAdapter({ code, context });
+}
+
+function guard<T>(code: string, body: () => T): T {
+  try {
+    return body();
+  } catch (error) {
+    if (PaykitFfiError.instanceOf(error)) throw error;
+    throw adapterError(code, 'wallet adapter');
   }
-  if (addresses.evm) {
-    details.push({
-      identifier: ENDPOINT_USDT,
-      payload: JSON.stringify({
-        value: addresses.evm,
-        chain_id: String(SEPOLIA_CHAIN_ID),
-        token: SEPOLIA_USDT,
-      }),
-    });
-  }
-  return details;
 }
 
 export class WdkPaymentAdapter implements FfiSdkPaymentAdapter {
-  private addresses: AddressCache = {};
+  constructor(private readonly cache: ReceivingAddressCache) {}
 
-  /** Called by the app after WDK has derived the addresses. */
-  setAddresses(addresses: AddressCache): void {
-    this.addresses = { ...addresses };
+  currentPublicReceivingDetails(): FfiPublicReceivingDetail[] {
+    return guard('public_details_failed', () => toFfiDetails(this.cache.publicReceivingDetails()));
   }
 
-  private details(): Array<FfiPublicReceivingDetail & FfiPrivateReceivingDetail> {
-    return receivingDetails(this.addresses).map(({ identifier, payload }) => ({
-      identifier,
-      payload: new FfiPaymentPayload(payload),
-    }));
+  currentPrivateReceivingDetails(counterparty: string): FfiPrivateReceivingDetail[] {
+    return guard('private_details_failed', () => toFfiDetails(this.cache.privateReceivingDetails(counterparty)));
   }
 
-  currentPublicReceivingDetails(): Array<FfiPublicReceivingDetail> {
-    return this.details();
-  }
-
-  currentPrivateReceivingDetails(_counterparty: string): Array<FfiPrivateReceivingDetail> {
-    return this.details();
-  }
-
-  /** No reservations yet: the same details serve every contact. */
   reservePrivateReceivingDetails(_counterparty: string): FfiPrivateReceivingDetailReservationResponse {
     return {
       kind: FfiPrivateReceivingDetailReservationResponseKind.UseCurrentReceivingDetails,
@@ -81,42 +77,59 @@ export class WdkPaymentAdapter implements FfiSdkPaymentAdapter {
     };
   }
 
-  cancelPrivateReceivingDetailReservation(
-    _cancellation: FfiPrivatePaymentEndpointReservationCancellation,
-  ): void {
-    // Nothing reserved, so nothing to cancel.
+  cancelPrivateReceivingDetailReservation(_cancellation: FfiPrivatePaymentEndpointReservationCancellation): void {
+    // Stable per-contact addresses: nothing to release. Idempotent by construction.
   }
 
-  selectPublicPaymentEndpointIds(request: FfiPublicPaymentEndpointSelectionRequest): Array<string> {
-    return preferredCandidateIds(request.candidates);
+  selectPublicPaymentEndpointIds(request: FfiPublicPaymentEndpointSelectionRequest): string[] {
+    return guard('select_failed', () =>
+      payableCandidateIds(
+        request.candidates.map((c) => ({ candidateId: c.candidateId, identifier: c.identifier, payloadText: c.payload.exportText() })),
+      ),
+    );
   }
 
   buildPublicPaymentTarget(endpoint: FfiPublicPaymentEndpointCandidate): FfiPaymentTarget {
-    return buildTarget(endpoint.payload.exportText());
+    return buildTarget(endpoint.identifier, endpoint.payload.exportText());
   }
 
-  selectPrivatePaymentEndpointIds(request: FfiPrivatePaymentEndpointSelectionRequest): Array<string> {
-    return preferredCandidateIds(request.candidates);
+  selectPrivatePaymentEndpointIds(request: FfiPrivatePaymentEndpointSelectionRequest): string[] {
+    return guard('select_failed', () =>
+      payableCandidateIds(
+        request.candidates.map((c) => ({ candidateId: c.candidateId, identifier: c.identifier, payloadText: c.payload.exportText() })),
+      ),
+    );
   }
 
   buildPrivatePaymentTarget(endpoint: FfiPrivatePaymentEndpointCandidate): FfiPaymentTarget {
-    return buildTarget(endpoint.payload.exportText());
+    return buildTarget(endpoint.identifier, endpoint.payload.exportText());
   }
 }
 
-function buildTarget(payloadText: string): FfiPaymentTarget {
-  try {
-    return { payload: new FfiPaymentPayload(payloadText) };
-  } catch {
-    throw new PaykitFfiError.PaymentAdapter({ code: 'invalid_payload', context: 'payload' });
-  }
+function buildTarget(identifier: string, payloadText: string): FfiPaymentTarget {
+  return guard('invalid_payload', () => {
+    const parsed = parseEndpoint(identifier, payloadText);
+    if (!parsed) throw adapterError('invalid_payload', identifier);
+    return { payload: new FfiPaymentPayload(canonicalPayload(parsed)) };
+  });
 }
 
-/** Candidates we can pay, in our preference order. */
-function preferredCandidateIds(
-  candidates: ReadonlyArray<{ candidateId: string; identifier: string }>,
-): string[] {
-  return SUPPORTED_ENDPOINTS.flatMap((identifier) =>
-    candidates.filter((c) => c.identifier === identifier).map((c) => c.candidateId),
-  );
+/**
+ * The explicit-input form of a contact's private details, for
+ * `syncPrivatePaymentListsWithReservationsAndProcessOutbound`. Reservation
+ * ids are stable per identifier and account, so re-sending the same list is
+ * idempotent; the attribution records which BTC account it came from.
+ */
+export function reservationInputsFor(
+  cache: ReceivingAddressCache,
+  counterparty: string,
+): FfiPrivatePaymentEndpointReservationInput[] {
+  const accountIndex = cache.ensureContactAccount(counterparty);
+  return cache.privateReceivingDetails(counterparty).map(({ identifier, payload }) => ({
+    reservationId: `${identifier}:${identifier.startsWith('btc') ? accountIndex : 0}`,
+    identifier,
+    payload,
+    expiresAt: undefined,
+    attribution: new Map([['account_index', String(identifier.startsWith('btc') ? accountIndex : 0)]]),
+  }));
 }
