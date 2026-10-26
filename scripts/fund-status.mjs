@@ -10,8 +10,7 @@
 // come from the keyless Sepolia RPC the app uses.
 import { Contract, JsonRpcProvider, formatEther } from 'ethers';
 
-import { MUTINYNET_API, SEPOLIA_RPC, SEPOLIA_USDT, demoWallets, formatUnits } from './lib/demo-wallets.mjs';
-import { btcAddressForAccount } from './lib/btc-accounts.mjs';
+import { MUTINYNET_API, SEPOLIA_RPC, SEPOLIA_USDT, btcAddressForAccount, demoWallets, formatUnits } from './lib/demo-wallets.mjs';
 
 const contactsArg = process.argv.indexOf('--contacts');
 const contactCount = contactsArg >= 0 ? Number(process.argv[contactsArg + 1] ?? 3) : 0;

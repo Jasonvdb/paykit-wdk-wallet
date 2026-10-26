@@ -24,7 +24,8 @@ export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const ENV_PATH = join(ROOT, '.env.demo');
 
 // Chain constants. They mirror src/config/chains.ts (which is TypeScript and
-// cannot be imported from plain Node without a build step).
+// cannot be imported from plain Node without a build step);
+// src/config/__tests__/chains.test.ts fails if the two drift apart.
 export const SEPOLIA_RPC = 'https://ethereum-sepolia-rpc.publicnode.com';
 export const SEPOLIA_CHAIN_ID = 11155111n;
 export const SEPOLIA_USDT = '0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0';
@@ -35,7 +36,8 @@ export const SEPOLIA_EXPLORER = 'https://sepolia.etherscan.io';
 export const MUTINYNET_EXPLORER = 'https://mutinynet.com';
 
 const EVM_PATH = "m/44'/60'/0'/0/0";
-const BTC_PATH = "m/84'/1'/0'/0/0";
+/** BTC account i (0 = spending, 1, 2, … = contact accounts), as WDK's getAccount(i) on testnet. */
+const btcPath = (accountIndex) => `m/84'/1'/0'/0/${accountIndex}`;
 
 /** Read .env.demo into an object. Values are secrets: never print them. */
 export function readDemoEnv() {
@@ -65,8 +67,16 @@ export function demoWallet(name, env = readDemoEnv()) {
   const phrase = env[key];
   if (!phrase) throw new Error(`${key} is not set in .env.demo`);
   const evm = HDNodeWallet.fromPhrase(phrase, '', EVM_PATH);
-  const btc = HDNodeWallet.fromPhrase(phrase, '', BTC_PATH);
+  const btc = HDNodeWallet.fromPhrase(phrase, '', btcPath(0));
   return { name, evm: evm.address, btc: p2wpkhTestnetAddress(btc.publicKey) };
+}
+
+/** A demo wallet's BTC address for account `accountIndex` (contact accounts are 1, 2, …). Public only. */
+export function btcAddressForAccount(name, accountIndex, env = readDemoEnv()) {
+  const key = `${name.toUpperCase()}_MNEMONIC`;
+  const phrase = env[key];
+  if (!phrase) throw new Error(`${key} is not set in .env.demo`);
+  return p2wpkhTestnetAddress(HDNodeWallet.fromPhrase(phrase, '', btcPath(accountIndex)).publicKey);
 }
 
 /** Both demo wallets' public addresses. */
