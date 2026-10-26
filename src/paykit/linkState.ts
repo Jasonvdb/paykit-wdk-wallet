@@ -1,10 +1,12 @@
-// How a contact's private connection is described to people.
+// A contact's private connection state, in this app's terms.
 //
-// Paykit's FfiLinkedPeerState (NotLinked, Linking, Linked, RecoveryRequired,
-// Blocked) is mapped to this app's LinkState in ./hooks.ts. This file holds
-// the words (docs/DESIGN.md, "Writing") and the seal ring for each state,
-// with no native imports.
-import type { SealRing } from '../ui/seal/types';
+// Paykit reports each peer's Encrypted Link as an FfiLinkedPeerState
+// (NotLinked, Linking, Linked, RecoveryRequired, Blocked). Screens need a
+// little more: whether the peer is a saved contact, and whether a link that
+// keeps failing should count as unreachable. linkStateOf does that mapping.
+// The words and seal ring for each state live in the UI
+// (src/ui/seal/linkStatePresentation.ts).
+import { FfiLinkedPeerState, type FfiLinkedPeerRecord } from '@synonymdev/react-native-paykit';
 
 export type LinkState =
   /** Not a contact. */
@@ -21,37 +23,21 @@ export type LinkState =
   | 'unreachable'
   | 'blocked';
 
-export function linkStateWords(state: LinkState): string {
-  switch (state) {
-    case 'none':
-      return 'Not a contact';
-    case 'waiting':
-      return "They haven't added you yet";
-    case 'connecting':
-      return 'Connecting privately…';
-    case 'linked':
-      return 'Private connection ready';
-    case 'recovery':
-      return 'Reconnecting privately…';
-    case 'unreachable':
-      return "Can't reach them right now";
-    case 'blocked':
-      return 'Blocked';
-  }
-}
+/** Repeated failures before a not-yet-linked peer counts as unreachable. */
+const UNREACHABLE_AFTER_FAILURES = 3;
 
-export function sealRingFor(state: LinkState): SealRing {
-  switch (state) {
-    case 'none':
-      return 'none';
-    case 'waiting':
-    case 'connecting':
-    case 'recovery':
-      return 'linking';
-    case 'linked':
+export function linkStateOf(record: FfiLinkedPeerRecord | undefined, isContact: boolean): LinkState {
+  if (!record) return isContact ? 'waiting' : 'none';
+  switch (record.state) {
+    case FfiLinkedPeerState.Linked:
       return 'linked';
-    case 'unreachable':
-    case 'blocked':
-      return 'unreachable';
+    case FfiLinkedPeerState.Blocked:
+      return 'blocked';
+    case FfiLinkedPeerState.RecoveryRequired:
+      return 'recovery';
+    case FfiLinkedPeerState.Linking:
+      return record.failureCount >= UNREACHABLE_AFTER_FAILURES ? 'unreachable' : 'connecting';
+    default:
+      return isContact ? 'waiting' : 'none';
   }
 }

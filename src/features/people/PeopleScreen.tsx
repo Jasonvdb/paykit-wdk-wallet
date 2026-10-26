@@ -8,8 +8,8 @@
 import { StyleSheet, View } from 'react-native';
 
 import type { MainTabScreenProps } from '../../navigation/types';
-import { linkStateWords, sealRingFor, useContacts, usePaykit } from '../../paykit';
-import { Button, Divider, EmptyState, Row, Screen, Seal, Text, space } from '../../ui';
+import { useContacts, usePaykit } from '../../paykit';
+import { Button, Divider, EmptyState, Row, Screen, Seal, Text, linkStateWords, middleEllipsis, sealRingFor, space } from '../../ui';
 
 export function PeopleScreen({ navigation }: MainTabScreenProps<'People'>) {
   const { service } = usePaykit();
@@ -36,7 +36,7 @@ export function PeopleScreen({ navigation }: MainTabScreenProps<'People'>) {
           <View key={contact.publicKey}>
             {index > 0 ? <Divider inset={56} /> : null}
             <Row
-              title={contact.displayName}
+              title={contact.name ?? middleEllipsis(contact.publicKey)}
               subtitle={linkStateWords(contact.linkState)}
               leading={<Seal pubky={contact.publicKey} size={44} ring={sealRingFor(contact.linkState)} />}
               onPress={() => navigation.navigate('Person', { pubky: contact.publicKey })}

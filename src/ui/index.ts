@@ -15,7 +15,7 @@ export { KeyText, type KeyTextProps } from './KeyText';
 export { QrCode } from './QrCode';
 export { EmptyState, type EmptyStateProps } from './EmptyState';
 export { Seal, type SealProps } from './seal/Seal';
-export { sealPattern } from './seal/sealPattern';
+export { linkStateWords, sealRingFor } from './seal/linkStatePresentation';
 export type { SealRing } from './seal/types';
 export { useReduceMotion } from './motion';
 export { middleEllipsis, relativeTime } from './format';

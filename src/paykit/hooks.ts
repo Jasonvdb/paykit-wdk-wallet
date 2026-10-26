@@ -5,15 +5,10 @@
 // it to decide whether a payment is allowed (the SDK's execution calls
 // re-check current state themselves).
 import { useContext, useMemo, useSyncExternalStore } from 'react';
-import {
-  FfiLinkedPeerState,
-  type FfiLinkedPeerRecord,
-  type FfiPaykitStateObservation,
-} from '@synonymdev/react-native-paykit';
+import type { FfiPaykitStateObservation } from '@synonymdev/react-native-paykit';
 
-import { middleEllipsis } from '../ui/format';
 import type { SyncLogEntry } from './eventLog';
-import type { LinkState } from './linkState';
+import { linkStateOf, type LinkState } from './linkState';
 import { PaykitContext, type PaykitContextValue } from './PaykitProvider';
 import type { PaykitService } from './PaykitService';
 import type { SyncStatus } from './syncLoop';
@@ -58,31 +53,12 @@ export function useSyncLog(): SyncLogEntry[] {
   );
 }
 
-/** Repeated failures before a not-yet-linked peer counts as unreachable. */
-const UNREACHABLE_AFTER_FAILURES = 3;
-
-export function linkStateOf(record: FfiLinkedPeerRecord | undefined, isContact: boolean): LinkState {
-  if (!record) return isContact ? 'waiting' : 'none';
-  switch (record.state) {
-    case FfiLinkedPeerState.Linked:
-      return 'linked';
-    case FfiLinkedPeerState.Blocked:
-      return 'blocked';
-    case FfiLinkedPeerState.RecoveryRequired:
-      return 'recovery';
-    case FfiLinkedPeerState.Linking:
-      return record.failureCount >= UNREACHABLE_AFTER_FAILURES ? 'unreachable' : 'connecting';
-    default:
-      return isContact ? 'waiting' : 'none';
-  }
-}
-
 export type ContactSummary = {
   publicKey: string;
   /** Local label, if the user set one. */
   label?: string;
-  /** Label, else their published name, else a shortened key. */
-  displayName: string;
+  /** Label, else their published name. Undefined if neither: show the key. */
+  name?: string;
   /** pubky:// avatar URI from their profile; load it with PaykitService.fetchImageDataUri. */
   imageUri?: string;
   linkState: LinkState;
@@ -100,7 +76,7 @@ export function useContacts(): ContactSummary[] {
       .map((contact) => ({
         publicKey: contact.publicKey,
         label: contact.label,
-        displayName: contact.label || contact.profile?.displayName || middleEllipsis(contact.publicKey),
+        name: contact.label || contact.profile?.displayName || undefined,
         imageUri: contact.profile?.imageUri,
         linkState: linkStateOf(links.get(contact.publicKey), true),
         createdAt: contact.createdAt,

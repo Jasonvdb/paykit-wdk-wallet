@@ -12,8 +12,8 @@
 import { StyleSheet, View } from 'react-native';
 
 import type { RootScreenProps } from '../../navigation/types';
-import { linkStateWords, sealRingFor, useContacts, useLinkState } from '../../paykit';
-import { Button, KeyText, Screen, Seal, Text, middleEllipsis, space } from '../../ui';
+import { useContacts, useLinkState } from '../../paykit';
+import { Button, KeyText, Screen, Seal, Text, linkStateWords, middleEllipsis, sealRingFor, space } from '../../ui';
 
 export function PersonScreen({ navigation, route }: RootScreenProps<'Person'>) {
   const { pubky } = route.params;
@@ -28,7 +28,7 @@ export function PersonScreen({ navigation, route }: RootScreenProps<'Person'>) {
     >
       <View style={styles.body}>
         <Seal pubky={pubky} size={112} ring={sealRingFor(linkState)} testID="person-seal" />
-        <Text variant="title">{contact?.displayName ?? middleEllipsis(pubky)}</Text>
+        <Text variant="title">{contact?.name ?? middleEllipsis(pubky)}</Text>
         <Text color={linkState === 'linked' ? 'seal' : 'graphite'} testID="person-link-state">
           {linkStateWords(linkState)}
         </Text>

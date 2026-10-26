@@ -6,7 +6,6 @@
 export { PaykitProvider, type PaykitConnection, type PaykitContextValue } from './PaykitProvider';
 export { PaykitService, type PeerOverview, type ProfileInput } from './PaykitService';
 export {
-  linkStateOf,
   useContacts,
   useLinkState,
   usePaykit,
@@ -16,7 +15,7 @@ export {
   useSyncStatus,
   type ContactSummary,
 } from './hooks';
-export { linkStateWords, sealRingFor, type LinkState } from './linkState';
+export type { LinkState } from './linkState';
 export { contactLinkFor, keyFromContactLink, shortKey } from './keys';
 export { describeError, userMessageFor } from './errors';
 export { clearSessionSecret } from './secureStorage';

@@ -154,18 +154,20 @@ class PaykitService {
 usePaykit(): { connection; service?; log; connect(opts?: { signupCode?: string }): Promise<PaykitService> }
 usePaykitService(): PaykitService | undefined
 usePaykitState(): FfiPaykitStateObservation | undefined   // contacts, linkedPeers, paymentRequests, receipts
-useContacts(): ContactSummary[]                            // { publicKey, label?, displayName, imageUri?, linkState, createdAt }
+useContacts(): ContactSummary[]                            // { publicKey, label?, name?, imageUri?, linkState, createdAt }
 useLinkState(pubky?: string): LinkState                    // none | waiting | connecting | linked | recovery | unreachable | blocked
 useSyncStatus(): SyncStatus | undefined
 useSyncLog(): SyncLogEntry[]
-linkStateWords(state), sealRingFor(state), contactLinkFor(pubky), keyFromContactLink(text)
+contactLinkFor(pubky), keyFromContactLink(text)
+// presentation, in src/ui: linkStateWords(state), sealRingFor(state)
 ```
 
 | File | Responsibility |
 |---|---|
 | `PaykitService.ts` | Owns the one SDK handle; wires session, storage, adapter, queue and loop; the facade above. |
 | `PaykitProvider.tsx` | Connects (auto after onboarding), hands WDK addresses to the service, derives contact BTC addresses, drops the service when its wallet goes away. |
-| `hooks.ts` | Screen-facing hooks; maps `FfiLinkedPeerState` to `LinkState`. |
+| `hooks.ts` | Screen-facing hooks over the service. |
+| `linkState.ts` | `LinkState` and `linkStateOf`: Paykit's `FfiLinkedPeerState` in this app's terms. The words and seal ring are in `src/ui/seal/linkStatePresentation.ts`. |
 | `session.ts` | `importSession`, then `signIn` (or `signUp` for an identity known to be new), and the synchronous session provider. |
 | `secureStorage.ts` | Keychain/Keystore: MMKV encryption key and the session secret. |
 | `stateStore.ts` | Synchronous encrypted state blob store with the revision contract. |
@@ -175,7 +177,7 @@ linkStateWords(state), sealRingFor(state), contactLinkFor(pubky), keyFromContact
 | `callQueue.ts` | Serialized SDK call queue: priorities, timeouts with abort, SharedStateBusy retries. |
 | `syncLoop.ts` | The foreground sync loop and its extension hooks. |
 | `eventLog.ts` | Secret-free developer log for You > Sync status. |
-| `errors.ts`, `keys.ts`, `bytes.ts`, `linkState.ts` | Small helpers. |
+| `errors.ts`, `keys.ts`, `bytes.ts` | Small helpers. |
 | `privatePayments.ts`, `requests.ts` | Extension points for Phases 4 and 5. |
 
 ### Why the callbacks are synchronous, and the address cache
