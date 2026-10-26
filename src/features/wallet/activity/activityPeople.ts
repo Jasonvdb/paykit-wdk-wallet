@@ -11,6 +11,9 @@
 //               Payment List: a send to one is "You paid Ben", a USD₮
 //               transfer from one is "Ben paid you".
 //
+// A transaction that paid a payment request names the other person through
+// the request's proof (Phase 5), whichever account or address it used.
+//
 // Bitcoin receives on account 0 carry no sender address, so they stay
 // "Received". Pure; unit tested. The hook that feeds it is
 // ./useActivityPeople.ts.
@@ -26,6 +29,8 @@ export type AddressBook = {
   accountOwner: (accountIndex: number) => string | undefined;
   /** The contact who shared this address privately (any case). */
   addressOwner: (address: string) => string | undefined;
+  /** The other side of the payment request this transaction paid, if any. */
+  requestCounterparty?: (hash: string) => { publicKey: string; role: 'payer' | 'payee' } | undefined;
 };
 
 export function activityPersonFor(item: ActivityItem, book: AddressBook): ActivityPerson | undefined {
@@ -37,6 +42,10 @@ export function activityPersonFor(item: ActivityItem, book: AddressBook): Activi
     const owner = book.accountOwner(item.accountIndex);
     if (!owner) return undefined;
     return { publicKey: owner, role: item.direction === 'in' ? 'paid-you' : 'moved' };
+  }
+  const request = book.requestCounterparty?.(item.hash);
+  if (request && (request.role === 'payer') === (item.direction === 'out')) {
+    return { publicKey: request.publicKey, role: item.direction === 'in' ? 'paid-you' : 'you-paid' };
   }
   if (isFaucetMint(item) || !item.counterpartyAddress) return undefined;
   const owner = book.addressOwner(item.counterpartyAddress);

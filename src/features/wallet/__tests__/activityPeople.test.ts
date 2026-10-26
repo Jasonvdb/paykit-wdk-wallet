@@ -53,3 +53,23 @@ describe('activityPersonFor', () => {
     expect(activityTitleWithPerson(base, undefined)).toBe('Received');
   });
 });
+
+describe('activityPersonFor with payment requests', () => {
+  const ANA = 'pubkyp18qc8hqqs7exqohndch3zmxnzcrh3bfspqaaii8bgq6h46ksa5o';
+  const withRequests: AddressBook = {
+    ...book,
+    requestCounterparty: (hash) => (hash === 'paid-ana' ? { publicKey: ANA, role: 'payer' } : hash === 'ana-paid' ? { publicKey: ANA, role: 'payee' } : undefined),
+  };
+
+  it('names the person whose request a transaction paid, from its proof', () => {
+    expect(activityPersonFor({ ...base, hash: 'paid-ana', direction: 'out', counterpartyAddress: '0xunknown' }, withRequests)).toEqual({
+      publicKey: ANA,
+      role: 'you-paid',
+    });
+    expect(activityPersonFor({ ...base, hash: 'ana-paid', direction: 'in' }, withRequests)).toEqual({ publicKey: ANA, role: 'paid-you' });
+  });
+
+  it('ignores a request link whose direction does not match', () => {
+    expect(activityPersonFor({ ...base, hash: 'paid-ana', direction: 'in' }, withRequests)).toBeUndefined();
+  });
+});

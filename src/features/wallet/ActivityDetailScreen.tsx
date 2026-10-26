@@ -10,15 +10,15 @@
 // title and the From / To row name them, and a receive on their own
 // Bitcoin account says it came to the private address you gave them.
 //
-// TODO(Phase 5 — Requests): link to the payment request and receipt. Put
-// that in its own component (activity/ActivityPaykitLinks.tsx) and render
-// it in the slot below the details.
+// A transaction that paid a payment request links to that request and says
+// where its receipt is (activity/ActivityPaykitLinks.tsx, below the details).
 import { useEffect, useState } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
 
 import type { RootScreenProps } from '../../navigation/types';
 import { AssetAmount, Button, Chip, DetailRow, Divider, EmptyState, KeyText, PushedScreen, Text, formatDateTime, relativeTime, space } from '../../ui';
 import { fetchBtcTransactionStatus, formatFee, transactionUrl, useActivity, type ActivityItem } from '../../wallet';
+import { ActivityPaykitLinks } from './activity/ActivityPaykitLinks';
 import { activityStatusWords, activityTitleWithPerson, isFaucetMint, networkName } from './activity/activityText';
 import { useActivityPeople } from './activity/useActivityPeople';
 import { PersonSeal } from '../people/PersonSeal';
@@ -120,7 +120,10 @@ export function ActivityDetailScreen({ navigation, route }: RootScreenProps<'Act
         <DetailRow label="Transaction" value={<KeyText value={item.hash} small />} />
       </View>
 
-      {/* Phase 5: links to the payment request and receipt render here. */}
+      <ActivityPaykitLinks
+        item={item}
+        onOpenRequest={(link) => navigation.navigate('RequestDetail', { counterparty: link.counterparty, requestId: link.requestId })}
+      />
 
       <Button label="View on explorer" variant="secondary" onPress={() => void Linking.openURL(transactionUrl(item.chain, item.hash))} style={styles.explorer} />
     </PushedScreen>
