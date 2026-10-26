@@ -47,11 +47,12 @@
         }
       ],
       "./plugins/withPaykitSimulatorArchs",
+      "./plugins/withMmkvBackupExclusion",
       "expo-font",
       [
         "expo-camera",
         {
-          "cameraPermission": "Scan a pay-me code or a payment address.",
+          "cameraPermission": "Scan a pay-me code, a contact link or a payment address. The camera only reads QR codes; nothing is recorded.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
@@ -60,7 +61,7 @@
         "expo-image-picker",
         {
           "photosPermission": "Choose a profile photo, or a photo of a pay-me code to scan.",
-          "cameraPermission": "Scan a pay-me code or a payment address.",
+          "cameraPermission": "Scan a pay-me code, a contact link or a payment address. The camera only reads QR codes; nothing is recorded.",
           "microphonePermission": false
         }
       ]
