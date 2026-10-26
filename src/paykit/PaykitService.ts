@@ -13,7 +13,8 @@
 //                        registered (and retried each sync round until
 //                        that works)
 //   resolvePeer()        what another pubky publishes (registry, endpoints, profile)
-//   saveContactAndLink() / setContactLabel() / removeContact() / blockContact()
+//   saveContactAndLink() / setContactLabel() / removeContact()
+//   blockPeer() / unblockPeer() / forgetPeer()
 //   privateLists         what we shared privately with each contact and
 //                        what they shared with us (./privatePayments.ts
 //                        fills it from the sync loop)
@@ -44,6 +45,7 @@ import {
   pubkyPublicKeyFromSecret,
   pubkySecretKeyFromBip39Mnemonic,
   FfiPaymentPayload,
+  PaykitFfiError_Tags,
   type FfiContactRecord,
   type FfiEndpointSyncReport,
   type FfiIdentityStatus,
@@ -58,7 +60,7 @@ import { PAYKIT_APP_ID, PAYKIT_APP_NAME } from '../config/paykit';
 import { PAYKIT_CALL_TIMEOUT_MS, PAYKIT_LINK_ADVANCE_STEPS } from '../config/sync';
 import { ReceivingAddressCache, type PublicEndpointChoice, type StringStore } from './addressCache';
 import { SerialCallQueue, type CallPriority } from './callQueue';
-import { UserFacingError, describeError, isRetryablePaykitError } from './errors';
+import { UserFacingError, describeError, isRetryablePaykitError, paykitErrorTag } from './errors';
 import { SyncEventLog } from './eventLog';
 import { arrayBufferToBase64, isSafeAvatarSize, readImageSize, sniffImageType } from './bytes';
 import { cleanKeyInput, shortKey } from './keys';
@@ -572,17 +574,7 @@ export class PaykitService {
     if (paymentsWithUndeliveredProof(this, publicKey) > 0) {
       throw new UserFacingError("A proof of your payment to them hasn't gone out yet. Try again in a minute, once it has.");
     }
-    const linked = this.state?.linkedPeers.some((p) => p.counterparty === publicKey && p.state === FfiLinkedPeerState.Linked);
-    if (linked) {
-      try {
-        await this.call('clearPrivatePaymentListAndProcessOutbound', (sdk, signal) =>
-          sdk.clearPrivatePaymentListAndProcessOutbound(publicKey, { signal }),
-        );
-        this.log.info(`withdrew private list from ${shortKey(publicKey)}`);
-      } catch (error) {
-        this.log.warn(`withdraw private list from ${shortKey(publicKey)}: ${describeError(error)}`);
-      }
-    }
+    await this.withdrawPrivateList(publicKey);
     const removed = await this.call('removeContactsAndBlockPeers', (sdk, signal) => sdk.removeContactsAndBlockPeers([publicKey], { signal }));
     if (removed.length === 0 && this.state?.contacts.some((c) => c.publicKey === publicKey)) {
       // The SDK skips a peer that is in the middle of another operation.
@@ -600,20 +592,80 @@ export class PaykitService {
     await this.refreshState();
   }
 
-  /** Remove the contact and block the peer: their messages are ignored from now on. */
-  async blockContact(publicKey: string): Promise<void> {
-    await this.call('removeContactsAndBlockPeers', (sdk, signal) => sdk.removeContactsAndBlockPeers([publicKey], { signal }));
+  /**
+   * Block someone: their requests, lists and other private messages are
+   * ignored until you unblock them. The contact record (and your label)
+   * stays, so the Person page can show "Blocked" with Unblock.
+   *
+   * What the SDK's `blockPeer` does: it discards the Encrypted Link (keys
+   * and handshake), marks every message still waiting to go to them as
+   * needing a fresh link, and makes the request, allowance and payment
+   * calls refuse this peer. Payment requests, proofs and receipts already
+   * stored stay. So, like removeContact:
+   *   - refuse while a proof of our payment to them has not left (it
+   *     would never reach them);
+   *   - first withdraw our Private Payment List (best effort), so their
+   *     wallet drops our private addresses.
+   */
+  async blockPeer(publicKey: string): Promise<void> {
+    if (paymentsWithUndeliveredProof(this, publicKey) > 0) {
+      throw new UserFacingError("A proof of your payment to them hasn't gone out yet. Try again in a minute, once it has.");
+    }
+    await this.withdrawPrivateList(publicKey);
+    await this.call('blockPeer', (sdk, signal) => sdk.blockPeer(publicKey, { signal }));
+    this.privateLists.forget(publicKey);
     this.log.info(`blocked ${shortKey(publicKey)}`);
     await this.refreshState();
   }
 
-  async unblockContact(publicKey: string, label?: string): Promise<void> {
-    await this.call('saveContactsAndUnblockPeers', (sdk, signal) =>
-      sdk.saveContactsAndUnblockPeers([{ publicKey, label }], { signal }),
-    );
+  /**
+   * Unblock: `unblockPeer` returns them to NotLinked (the old link is not
+   * restored). If they are still a contact, the sync loop starts a fresh
+   * link on its next round; their wallet sees the new attempt and links
+   * again.
+   */
+  async unblockPeer(publicKey: string): Promise<void> {
+    await this.call('unblockPeer', (sdk, signal) => sdk.unblockPeer(publicKey, { signal }));
     this.syncLoop.resetLinkBackoff(publicKey);
+    this.log.info(`unblocked ${shortKey(publicKey)}`);
     await this.refreshState();
     this.syncLoop.flush();
+  }
+
+  /**
+   * Forget what a blocked person sent (`forgetPeer`): the messages received
+   * from them (requests and allowance offers you never answered, their
+   * Private Payment List, receipt access you never used) are deleted for
+   * good. The SDK refuses unless they are blocked, and refuses when you
+   * have history with them (anything you sent them besides lists and
+   * confirmations, a payment you claimed, the payment ledger, a receipt
+   * you retrieved): those records name only ids, which a forgotten peer
+   * could otherwise reuse with other terms. Nothing is sent to them.
+   */
+  async forgetPeer(publicKey: string): Promise<void> {
+    try {
+      await this.call('forgetPeer', (sdk, signal) => sdk.forgetPeer(publicKey, { signal }));
+    } catch (error) {
+      if (paykitErrorTag(error) === PaykitFfiError_Tags.Policy) {
+        this.log.warn(`forget ${shortKey(publicKey)}: ${describeError(error)}`);
+        throw new UserFacingError('You have answered or paid their requests, so your history with them is kept. They stay blocked.');
+      }
+      throw error;
+    }
+    this.log.info(`forgot what ${shortKey(publicKey)} sent`);
+    await this.refreshState();
+  }
+
+  /** Send an empty Private Payment List to a Linked peer (best effort), so they drop our private addresses. */
+  private async withdrawPrivateList(publicKey: string): Promise<void> {
+    const linked = this.state?.linkedPeers.some((p) => p.counterparty === publicKey && p.state === FfiLinkedPeerState.Linked);
+    if (!linked) return;
+    try {
+      await this.call('clearPrivatePaymentListAndProcessOutbound', (sdk, signal) => sdk.clearPrivatePaymentListAndProcessOutbound(publicKey, { signal }));
+      this.log.info(`withdrew private list from ${shortKey(publicKey)}`);
+    } catch (error) {
+      this.log.warn(`withdraw private list from ${shortKey(publicKey)}: ${describeError(error)}`);
+    }
   }
 
   // Observed state ----------------------------------------------------------------

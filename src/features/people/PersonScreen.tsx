@@ -12,20 +12,25 @@
 //                    (./person/WhatTheyAccept.tsx)
 //   history          payments with them (./person/PersonHistory.tsx)
 //   their Bitcoin    what they paid into your account for them, with Collect
-//   Remove           ends the contact and the private connection, after a
-//                    confirmation (PaykitService.removeContact)
+//   automatic        payments you agreed to make (or receive) without a
+//   payments         tap per request, within limits (./person/AutomaticPayments.tsx)
+//   Block, Unblock,  after a confirmation each (./person/PersonActions.tsx)
+//   Forget, Remove
 //
-// Blocking and forgetting someone come in Phase 6. A key that is not a
-// contact (removed, or opened from a link) offers "Add <name>" instead.
+// A blocked contact keeps their name, history and Bitcoin account here,
+// with Unblock and Forget; Pay, Request and what they accept are hidden
+// (their private connection is gone). A key that is not a contact
+// (removed, or opened from a link) offers "Add <name>" instead.
 import { useState, type ReactNode } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import type { RootScreenProps } from '../../navigation/types';
-import { describeError, useContactAccounts, useContacts, useLinkState, usePaykit, usePersonProfile, userMessageFor } from '../../paykit';
+import { useContactAccounts, useContacts, useLinkState, usePersonProfile } from '../../paykit';
 import { Button, KeyText, PushedScreen, Text, linkStateWords, sealRingFor, space } from '../../ui';
 import { ContactAccountRow } from '../you/ContactAccountsSection';
 import { takeJustAdded } from './justAdded';
 import { LabelEditor } from './person/LabelEditor';
+import { PersonActions } from './person/PersonActions';
 import { PersonHistory } from './person/PersonHistory';
 import { WhatTheyAccept } from './person/WhatTheyAccept';
 import { PersonSeal } from './PersonSeal';
@@ -33,7 +38,6 @@ import { usePersonName } from './usePersonName';
 
 export function PersonScreen({ navigation, route }: RootScreenProps<'Person'>) {
   const { pubky } = route.params;
-  const { service, log } = usePaykit();
   const linkState = useLinkState(pubky);
   const contact = useContacts().find((c) => c.publicKey === pubky);
   const hint = contact ? { displayName: contact.publishedName, imageUri: contact.imageUri } : undefined;
@@ -42,32 +46,7 @@ export function PersonScreen({ navigation, route }: RootScreenProps<'Person'>) {
   const publishedName = usePersonProfile(pubky, hint).displayName;
   const account = useContactAccounts().find((a) => a.pubky === pubky);
   const [justAdded] = useState(() => takeJustAdded(pubky));
-  const [removing, setRemoving] = useState(false);
-  const [error, setError] = useState<string>();
-
-  const remove = async () => {
-    if (!service) return;
-    setRemoving(true);
-    setError(undefined);
-    try {
-      await service.removeContact(pubky);
-      navigation.goBack();
-    } catch (e) {
-      log.warn(`remove contact: ${describeError(e)}`);
-      setError(userMessageFor(e, `Couldn't remove ${name}. Try again.`));
-      setRemoving(false);
-    }
-  };
-
-  const confirmRemove = () =>
-    Alert.alert(
-      `Remove ${name}?`,
-      `${name} leaves your contacts and your private connection ends: they no longer see your private addresses. Money already sent to you still arrives. To pay each other privately again, you both add each other again.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Remove', style: 'destructive', onPress: () => void remove() },
-      ],
-    );
+  const blocked = linkState === 'blocked';
 
   return (
     <PushedScreen onBack={() => navigation.goBack()} testID="person-screen">
@@ -91,10 +70,16 @@ export function PersonScreen({ navigation, route }: RootScreenProps<'Person'>) {
 
       {contact ? (
         <>
-          <View style={styles.actions}>
-            <Button label={`Pay ${name}`} onPress={() => navigation.navigate('Send', { to: pubky })} style={styles.action} testID="person-pay" />
-            <Button label="Request money" variant="secondary" onPress={() => navigation.navigate('RequestMoney', { pubky })} style={styles.action} testID="person-request" />
-          </View>
+          {blocked ? (
+            <Text color="graphite" style={styles.section} testID="person-blocked-note">
+              {`You blocked ${name}. Their payment requests and other messages are ignored, and they don't see your private addresses.`}
+            </Text>
+          ) : (
+            <View style={styles.actions}>
+              <Button label={`Pay ${name}`} onPress={() => navigation.navigate('Send', { to: pubky })} style={styles.action} testID="person-pay" />
+              <Button label="Request money" variant="secondary" onPress={() => navigation.navigate('RequestMoney', { pubky })} style={styles.action} testID="person-request" />
+            </View>
+          )}
           {linkState === 'waiting' ? (
             <Text variant="secondary" color="graphite" style={styles.section}>
               They need to add you too. Until then you can pay them only at the addresses they publish for everyone.
@@ -105,9 +90,11 @@ export function PersonScreen({ navigation, route }: RootScreenProps<'Person'>) {
             <LabelEditor publicKey={pubky} label={contact.label} publishedName={publishedName} />
           </Section>
 
-          <Section title="What they accept">
-            <WhatTheyAccept publicKey={pubky} name={name} linkState={linkState} />
-          </Section>
+          {blocked ? null : (
+            <Section title="What they accept">
+              <WhatTheyAccept publicKey={pubky} name={name} linkState={linkState} />
+            </Section>
+          )}
 
           <Section title={`History with ${name}`}>
             <PersonHistory
@@ -127,14 +114,7 @@ export function PersonScreen({ navigation, route }: RootScreenProps<'Person'>) {
             </Section>
           ) : null}
 
-          <View style={styles.remove}>
-            {error ? (
-              <Text color="alert" testID="person-remove-error">
-                {error}
-              </Text>
-            ) : null}
-            <Button label={`Remove ${name}`} variant="destructive" onPress={confirmRemove} loading={removing} disabled={!service} testID="person-remove" />
-          </View>
+          <PersonActions pubky={pubky} name={name} blocked={blocked} onRemoved={() => navigation.goBack()} />
         </>
       ) : (
         <View style={styles.section}>
@@ -160,5 +140,4 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: space.s, marginTop: space.xl },
   action: { flex: 1, paddingHorizontal: space.s },
   section: { marginTop: space.xxl, gap: space.s },
-  remove: { marginTop: space.xxl, marginBottom: space.xxl, gap: space.s },
 });

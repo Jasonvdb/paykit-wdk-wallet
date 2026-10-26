@@ -5,7 +5,9 @@
 // list puts people you can pay privately first (./contactOrder.ts), then
 // those still connecting, then those who haven't added you yet. Adding is
 // mutual: a private connection forms only after both people add each
-// other, so a short note says so while anyone is waiting.
+// other, so a short note says so while anyone is waiting. People you
+// blocked are listed last, under their own heading, with the Graphite
+// dashed ring (docs/DESIGN.md, "The seal").
 import { StyleSheet, View } from 'react-native';
 
 import type { MainTabScreenProps } from '../../navigation/types';
@@ -18,8 +20,11 @@ import { usePersonName } from './usePersonName';
 
 export function PeopleScreen({ navigation }: MainTabScreenProps<'People'>) {
   const notice = useConnectionNotice();
-  const contacts = sortContacts(useContacts().map((contact) => ({ ...contact, name: personName(contact).name })));
+  const sorted = sortContacts(useContacts().map((contact) => ({ ...contact, name: personName(contact).name })));
+  const contacts = sorted.filter((c) => c.linkState !== 'blocked');
+  const blocked = sorted.filter((c) => c.linkState === 'blocked');
   const someoneWaiting = contacts.some((c) => c.linkState === 'waiting');
+  const open = (contact: ContactSummary) => navigation.navigate('Person', { pubky: contact.publicKey });
 
   return (
     <Screen
@@ -36,7 +41,7 @@ export function PeopleScreen({ navigation }: MainTabScreenProps<'People'>) {
     >
       {notice ? (
         <Text color="graphite">{notice.message}</Text>
-      ) : contacts.length === 0 ? (
+      ) : sorted.length === 0 ? (
         <EmptyState
           title="No one here yet"
           message="Add someone by their pubky or pay-me code. Once you have both added each other, you can pay each other privately."
@@ -46,10 +51,21 @@ export function PeopleScreen({ navigation }: MainTabScreenProps<'People'>) {
         contacts.map((contact, index) => (
           <View key={contact.publicKey}>
             {index > 0 ? <Divider inset={56} /> : null}
-            <ContactRow contact={contact} onPress={() => navigation.navigate('Person', { pubky: contact.publicKey })} />
+            <ContactRow contact={contact} onPress={() => open(contact)} />
           </View>
         ))
       )}
+      {!notice && blocked.length > 0 ? (
+        <View style={styles.blocked} testID="people-blocked">
+          <Text variant="heading">Blocked</Text>
+          {blocked.map((contact, index) => (
+            <View key={contact.publicKey}>
+              {index > 0 ? <Divider inset={56} /> : null}
+              <ContactRow contact={contact} onPress={() => open(contact)} />
+            </View>
+          ))}
+        </View>
+      ) : null}
       {someoneWaiting ? (
         <Text variant="secondary" color="graphite" style={styles.note} testID="people-mutual-note">
           {"“They haven't added you yet” means they need to add you too. Send them your pay-me code from Receive."}
@@ -78,5 +94,6 @@ function ContactRow({ contact, onPress }: { contact: ContactSummary; onPress: ()
 const styles = StyleSheet.create({
   headerActions: { flexDirection: 'row', gap: space.s },
   note: { marginTop: space.l },
+  blocked: { marginTop: space.xl, gap: space.xs },
   spacer: { height: space.xl },
 });
