@@ -172,6 +172,19 @@ Screenshots of each phase on both platforms are in
 [`docs/screenshots/`](docs/screenshots/) (`phase1/`, `phase2/`, `phase3/`); the Phase 0 spike
 screenshots are in [`docs/spike/`](docs/spike/).
 
+Before taking screenshots, hide the dev client's floating tools button so
+it does not cover the Testnet chip (it is a dev-build setting, stored per
+install; quit the app first, then relaunch it cold):
+
+```sh
+# iOS simulator
+xcrun simctl spawn <udid> defaults write com.jasonvdb.paykitwdkwallet EXDevMenuShowFloatingActionButton -bool false
+# Android emulator: add <boolean name="showFab" value="false" /> to
+# shared_prefs/expo.modules.devmenu.sharedpreferences.xml (adb shell run-as com.jasonvdb.paykitwdkwallet)
+```
+
+Never capture a screen that shows the recovery phrase.
+
 ## Paykit package
 
 Paykit's React Native bindings come from the unmerged
