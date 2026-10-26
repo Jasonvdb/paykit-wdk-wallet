@@ -22,7 +22,12 @@ photo, shown in every seal), the pay-me code (your pubky as a QR), public
 payment endpoints you switch on or off per asset, paying anyone by pubky
 through those endpoints, a QR scanner, and a developer "Network details"
 section. Later phases add contacts with private payments and payment
-requests. The plan is in
+requests.
+
+Known gaps left for Phase 6 (polish): the recovery phrase screens do not
+block screenshots yet (Android `FLAG_SECURE` needs a native module and a
+rebuild), sign-up errors share one message instead of one per cause, and
+Welcome has its Phase 2 copy. The plan is in
 [`docs/PLAN.md`](docs/PLAN.md), the design in [`docs/DESIGN.md`](docs/DESIGN.md)
 and the code structure in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
