@@ -58,7 +58,7 @@ This app has two engines and one UI:
 | `src/wallet/` | The wallet service (see below). |
 | `src/paykit/` | The Paykit service (see below). |
 | `src/ui/` | Design system from `docs/DESIGN.md`, including the seal (`src/ui/seal/`). |
-| `src/navigation/` | Route types, root gate, onboarding stack, tabs, deep links (`contact`, `send`, `receive`, `profile`, `scan`, tab names). |
+| `src/navigation/` | Route types, root gate, onboarding stack, tabs, deep links (`contact`, `send`, `receive`, `profile`, `scan`, `request-money?pubky=`, `request?counterparty=&requestId=`, tab names). |
 | `src/features/<feature>/` | Screens, one folder per feature: `onboarding`, `wallet`, `people`, `requests`, `you`. Phase-specific parts of shared screens sit in subfolders, e.g. `wallet/send/`, `wallet/receive/`, `wallet/activity/`, `people/scan/`. |
 | `src/features/people/PersonSeal.tsx` | A seal with the person's profile photo from the profile cache. Every screen that shows a person uses it. |
 | `src/features/people/usePersonName.ts`, `personName.ts` | What to call a person (your label, else their published name, else the short key) and whether that name is a contact's or self-chosen. Every screen that names a person uses it. |
@@ -264,11 +264,12 @@ requestStatusWords(facts) / requestTimeline(facts, payment) / paymentWords(...) 
 | `privatePayments.ts` | Private Payment Lists over the sync loop (share ours, read theirs) and paying a contact privately (`privatePaymentAddressesFor`). See "Private payments". |
 | `privatePaymentLists.ts` | Pure: when to share (`planPrivateListShares`), checking received endpoints, and the `PrivateListStore` screens read. Unit tested. |
 | `requests.ts` | Payment requests: propose, accept, decline, cancel, pay (claim, resolve, ledger, proof), views of the SDK records, and `registerPaymentRequestHooks`. See "Payment requests". |
-| `requestRounds.ts` | The three request round hooks: finish our payments, check arrived proofs and issue receipts, retrieve receipts. |
+| `requestRounds.ts` | The three request round hooks: finish our payments (and find or release ones that lost their hash), check arrived proofs and issue receipts, retrieve receipts. |
+| `requestLinks.ts` | Pure: which transactions Activity links to a request (our own payments, and verified ones only). Unit tested. |
 | `requestTerms.ts` | Pure: build our terms (bound address, schedule, note) within one private message; read anyone's. Unit tested. |
 | `recurrence.ts` | Pure: billing periods from a schedule, what has started, what is due. Unit tested. |
-| `paymentProofs.ts` | Pure: Bitcoin and ERC-20 proof JSON and the payee's on-chain rules. Unit tested. |
-| `requestBook.ts` | The wallet's own persisted notes: payments in flight, proof checks, claimed transfers, deferred periods. Unit tested. |
+| `paymentProofs.ts` | Pure: Bitcoin and ERC-20 proof JSON and the payee's on-chain rules, including the payment-time rule. Unit tested. |
+| `requestBook.ts` | The wallet's own persisted notes: payments in flight, when we asked, proof checks, claimed transfers, deferred periods. Unit tested. |
 | `requestStatus.ts` | Pure: status words and the five-step timeline. Unit tested. |
 
 ### Why the callbacks are synchronous, and the address cache
@@ -531,9 +532,12 @@ to that pubky and parse as one of ours. Notes from the Rust side:
 - `recordPaymentOutcome` belongs to Allowance accounting
   (reserve / begin / record), not to paying a list, so it is not called.
 
-The payee card says "Paying privately: Ben shared Bitcoin and USD₮
-addresses only with you" and shows the address the chosen asset goes to;
-Review says "A private address Ben shared only with you".
+Only Bitcoin is private. The list's USD₮ address is EVM account 0, the
+same address everyone pays, and the words say so: the payee card says
+"Ben shared a Bitcoin address only with you, and their USD₮ address,
+which is the same for everyone"; Review says "A Bitcoin address Ben
+shared only with you" or "Ben's USD₮ address. It is the same one everyone
+pays, so this payment is not private" (`personWords.ts`).
 
 Receiving: BTC a contact pays privately lands in their Bitcoin account on
 our side, which Send does not spend from. The Wallet tab shows "Plus … from
@@ -545,8 +549,12 @@ one watcher per contact account (WDK's account hooks are bound to one
 index each), which merges that account's transfers into `useActivity`;
 `collapseInternalMoves` shows a Collect once. `activityPersonFor` (pure)
 names the contact: a receive on their account ("Ben paid you"), a send to an
-address they shared privately ("You paid Ben"), or USD₮ from their address.
-Bitcoin received on account 0 carries no sender, so it stays "Received".
+address they shared privately ("You paid Ben"), or a transaction linked to
+a payment request (see "Payment requests"). Money arriving *from* an
+address in Ben's list is not labelled as his: the list is only his claim,
+and he could list anyone's address. An address two contacts both list
+names neither. Bitcoin received on account 0 carries no sender, so it
+stays "Received".
 
 ### Payment requests
 
@@ -618,9 +626,13 @@ bytes before `proposePaymentRequest`. Only Linked contacts can be asked.
 3. The Send review shows the amount and that address, locked, with
    WDK's fee. Without the balance (or ETH for gas) the screen stops here
    and says so.
-4. On Pay: `claimAndAcceptPaymentRequest` if still Proposed (claim and
-   queue the acceptance in one transaction, naming the proposal the
-   person saw), so the acceptance precedes the proof in our send order.
+4. On Pay: `claimAndAcceptPaymentRequest` if still Proposed and not yet
+   accepted by us (claim and queue the acceptance in one transaction,
+   naming the proposal the person saw), so the acceptance precedes the
+   proof in our send order. Pay then waits, up to 20 s, until the
+   acceptance has left the outbound queue, and refuses to accept within
+   two minutes of the proposal's expiry. See "Acceptance and expiry"
+   below for why.
 5. The payment ledger: `reconcileAllowanceAccounting` once per install
    (the ledger refuses every payment until the wallet attests its
    history; see below), then `reserveManualPayment` (admits exactly this
@@ -634,7 +646,11 @@ bytes before `proposePaymentRequest`. Only Linked contacts can be asked.
    (`signTypedData`) and submits it.
 8. `recordPaymentOutcome`: Succeeded once the transaction is confirmed,
    Failed when the send never left or reverted (the request can be paid
-   again), Unknown when we cannot tell.
+   again), Unknown when we cannot tell. Failed is recorded before the
+   book entry is forgotten; if that ledger call fails, the entry stays as
+   `not-sent` and the next round (or the next Pay) records it. A
+   `beginPaymentExecution` that throws or is Blocked releases its attempt
+   the same way.
 
 `quotePaymentRequest` is not used: this app requests and pays the same
 asset, so there is no conversion rate to agree on.
@@ -648,6 +664,40 @@ review offers only "Close and check Activity". If the app stops after
 the broadcast, the `payment-request-payments` round hook finds the
 payment in the book and finishes it (proof, outcome) instead of anything
 offering to pay again.
+
+**Payments that lost their hash.** If the app stops between the handoff
+and WDK's answer (book stage `sending`), or the send's outcome was
+unclear (`unknown`), the book has no hash. After two minutes the round
+hook looks for the payment in account 0's history
+(`PaymentChain.findSentPayment`): a transfer of exactly the amount to the
+request's address, after the payment started, that no other payment
+uses. Found, it carries on as broadcast. Bitcoin's history comes from
+Electrum and includes the mempool, so half an hour of empty searches
+means it never left: Failed is recorded and the request can be paid
+again. USD₮'s history comes from Blockscout, which can lag by hours, so a
+missing USD₮ payment stays reserved ("May have been paid. Check
+Activity") and the search goes on every five minutes.
+
+**"Dropped" is not failed.** WDK's EVM `getTransaction` says `dropped`
+when it finds the transaction but no receipt, and the sender's nonce has
+moved past it. The public Sepolia RPC is load balanced, and a node that
+lags on receipts says exactly that about a mined transaction. The payer
+believes it only after an unbroken run of `dropped` answers for ten
+minutes (at least ten checks); any other answer resets the run. The payee
+keeps such a proof pending and checks it once a minute.
+
+**Acceptance and expiry.** The payee's SDK judges an acceptance by when
+it *fetches* it (`record_time` is the receive time), and one fetched
+after `proposal_expires_at` makes the request InvalidConflict on its
+side; later events are ignored, so a proof for it is never checked and no
+receipt comes. The payer's SDK exposes no Delivery Confirmation, so the
+payer can't know when the payee stored the acceptance. This app narrows
+the gap three ways: Pay waits until the acceptance is published, refuses
+to accept-and-pay within two minutes of expiry, and the review warns when
+expiry is within fifteen minutes. Requests keep the expiry the person
+chose (a recurring request's expiry is not cut to its schedule's end).
+What remains: a payee whose app stays closed until after the expiry
+still voids the request, after the payer has paid.
 
 **Proofs and the payee's check** (`paymentProofs.ts`, the
 `payment-request-proofs` round hook). Paykit leaves proof contents to
@@ -670,8 +720,22 @@ the wallets. This app uses:
   binding from the request it knows, never from the proof.
 - Both: a recurring proof's period must be one of the schedule's and must
   have started; one transfer pays one request or period (the book keeps
-  which); a missing or unconfirmed transaction is "pending", rechecked
-  every 10 s, never "rejected".
+  which); a missing, unconfirmed or `dropped` transaction is "pending",
+  never "rejected".
+- Both, the payment-time rule: the payment must be no older than the
+  request (the time we proposed it, saved in the book) or than its
+  billing period's start. Without it, any earlier transfer from the payer
+  to that address that no request had claimed (a plain private Bitcoin
+  send, an old USD₮ transfer to our public address) would pass once.
+  Bitcoin uses the block's timestamp from Mutinynet's esplora (WDK's
+  transfers carry only a height), with ten minutes' allowance for block
+  timestamps and phone clocks. USD₮ uses an upper bound read through WDK:
+  Sepolia makes at most one block per 12 s slot, so a transaction with n
+  confirmations was mined at least (n-1) × 12 s ago; five minutes'
+  allowance covers the phones' clocks. A proof after a cancellation is
+  not rejected: the spec forbids rejecting a proof only because a
+  cancellation came first, and the time bound can't tell "just before"
+  from "just after" anyway.
 
 **Receipts.** Once a payment checks out, the payee issues a receipt
 (`issueReceipt` with a receipt id chosen and saved first, which makes it
@@ -687,10 +751,16 @@ new one with `retrieveReceipt`; retrieved receipts appear in
 scheduler. `recurrence.ts` derives the billing periods from the
 immutable terms (anchor + k × every × unit, inside `starts_at` and
 `ends_at`; this app proposes minute schedules with a number of
-payments). The payer sees started periods without a payment as due and
-pays each with a tap (there are no Allowances for automatic payment
-here); "Not now" records `deferPaymentOccurrence`. Either side can
-cancel to stop future payments.
+payments). Whether a period is on the schedule is worked out from its
+index k, so period 500 of an endless schedule from another wallet is as
+payable and checkable as period 1; only lists stop at 120. The schedule
+starts when the request is sent, not when it is accepted, so a payer who
+accepts late finds the missed periods due at once (the Request money
+screen says so). The payer sees started periods without a payment as
+due and pays each with a tap (there are no Allowances for automatic
+payment here); "Not now" records `deferPaymentOccurrence`, and the row
+then says "put off for now". Either side can cancel to stop future
+payments.
 
 **Round hooks** (`requestRounds.ts`) are cheap and idempotent: they read
 the last observed state and the book, call the SDK or WDK only for work
@@ -698,10 +768,19 @@ that is due, and check what is already done before each step. WDK
 reaches them through a `PaymentChain` that `PaymentChainBridge` attaches
 from React (WDK's API is hooks bound to one account each).
 
-**Activity.** `useRequestLinks` maps transaction hashes to requests
-through the proofs (and our payments in flight). Rows say "Paid Ana's
-request" or "Receipt from Ana" (payee: "Paid your request, receipt
-sent"), and Activity detail links to the request and its receipt.
+**Activity.** `useRequestLinks` (`requestLinks.ts`) maps transaction
+hashes to requests, and the row then names the person. A hash is public,
+so a proof naming one proves nothing: links come only from our own
+payments (proofs we sent, payments in flight) and from payments to us
+whose proof our check verified, and no link replaces another. A proof
+still being checked, or one that didn't check out, shows on the request
+page only. Rows say "Paid Ana's request" or "Receipt from Ana" (payee:
+"Paid your request, receipt sent"), and Activity detail links to the
+request and its receipt.
+
+**Removing a contact** ends the link and drops its queued messages, so
+`removeContact` refuses while a proof of our payment to them has not
+left (`paymentsWithUndeliveredProof`).
 
 **Demo simplifications**, each a decision a production wallet would
 make differently:
@@ -712,9 +791,9 @@ make differently:
   production wallet would attest its complete payment records.
 - One confirmation is enough (Mutinynet blocks come every 30 s, Sepolia
   every 12 s). Reorgs are not handled.
-- A Bitcoin payment made to the contact's address before the request
-  could be claimed as its proof once (it is their money to that address
-  either way).
+- A payment made after the request, to its address, for something else
+  (a plain private send of at least the amount) can still be claimed as
+  its proof once. The time rule only rules out older ones.
 - `signTypedData` is allowed in `wdk.config.js` for the app to call; the
   app only ever signs the proof domain (`isErc20PaymentTypedData`).
 
@@ -767,8 +846,8 @@ another, not in parallel**:
 A phase that adds to one of these screens should put its part in its own
 component file next to the screen (for example
 `src/features/wallet/send/PubkyRecipientField.tsx`) and keep its edit to the screen
-small. Phase 2 left marked slots (`{/* Phase 3: ... */}`, `{/* Phase 5: ... */}`)
-where those parts render. Edits to the barrels (`src/paykit/index.ts`, `src/wallet/index.ts`,
+small. Phase 2 left marked slots for Phases 3 and 5; those parts now render
+there directly (for example `<ActivityPaykitLinks />` in Activity detail). Edits to the barrels (`src/paykit/index.ts`, `src/wallet/index.ts`,
 `src/ui/index.ts`) and to routes (`src/navigation/types.ts`,
 `RootNavigator.tsx`) are append-only: add lines, do not reorder or rewrite
 existing ones, so merges stay trivial.

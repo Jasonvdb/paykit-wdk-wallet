@@ -26,9 +26,10 @@ section. Phase 4 adds contacts: a profile preview before adding someone,
 your own label for them, a People list sorted by link state, a Person page
 (what they accept publicly and privately, history, Bitcoin from them with
 Collect, Remove), Private Payment Lists shared and read over each Encrypted
-Link, paying a linked contact at the private address they shared only with
-you, activity rows that name the contact ("Ben paid you"), and the seal
-closing when a link forms. Phase 5 adds payment requests: Request money
+Link, paying a linked contact at the private Bitcoin address they shared
+only with you (USD₮ goes to their one address for everyone), activity rows
+that name the contact ("Ben paid you"), and the seal closing when a link
+forms. Phase 5 adds payment requests: Request money
 (once, or on a short demo schedule such as every minute for a number of
 payments), a Requests tab with Incoming and Sent, a request page with a
 Requested -> Accepted -> Paid -> Verified -> Receipt timeline, Accept and
@@ -49,6 +50,18 @@ accept, cancel by either side and putting a recurring payment off worked
 end to end; paying stopped at "Not enough …" before the broadcast. The
 payment, proof, on-chain check and receipt steps are covered by unit
 tests only so far.
+
+A review of Phases 4 and 5 hardened the payment side: a USD₮ transaction
+WDK calls "dropped" is no longer taken as failed on one answer, a payment
+that lost its hash mid-send is found in the wallet's history (or released
+when it never left), Pay waits until the acceptance has left and refuses
+to accept a request about to expire, a retry after a failed start works,
+proofs for payments older than the request are rejected, recurring
+periods past the 120th are payable, Activity names a person only on a
+payment we sent or verified, and a USD₮ address is no longer called
+private. See "Payment requests" in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the details and what
+risk remains.
 
 Known gaps left for Phase 6 (polish): the recovery phrase screens do not
 block screenshots yet (Android `FLAG_SECURE` needs a native module and a
