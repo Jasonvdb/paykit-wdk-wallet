@@ -91,6 +91,7 @@ export {
   type AllowanceView,
 } from './allowances';
 export {
+  acceptProblem,
   allowanceCovers,
   allowanceTermsWords,
   allowanceUsage,

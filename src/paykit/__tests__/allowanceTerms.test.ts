@@ -1,4 +1,5 @@
 import {
+  acceptProblem,
   allowanceCovers,
   allowanceTermsWords,
   allowanceUsage,
@@ -66,6 +67,39 @@ describe('readAllowanceTerms and words', () => {
 
   it('treats an amount it cannot parse as unreadable', () => {
     expect(readAllowanceTerms({ ...plain, lifetimeAmountLimit: '1.0000001' }).asset).toBeUndefined();
+  });
+
+  it('says so when limits leave the amount open', () => {
+    const open = readAllowanceTerms({ asset: 'usdt', periodLimits: [], expiresAt: '2026-10-27T12:00:00Z' });
+    expect(allowanceTermsWords(open, date)).toBe('Until 2026-10-27T12:00:00.000Z. No limit for one payment. No limit in all.');
+  });
+});
+
+describe('acceptProblem', () => {
+  const ours = readAllowanceTerms(buildAllowanceTerms({ asset: 'usdt', perPayment: 5_000_000n, duration: 'day', nowMs: NOW }));
+
+  it('accepts readable limits that have not ended', () => {
+    expect(acceptProblem(ours, true, NOW)).toBeUndefined();
+    expect(acceptProblem(ours, false, NOW)).toBeUndefined();
+  });
+
+  it('refuses unreadable or ended limits, whoever pays', () => {
+    expect(acceptProblem(undefined, false, NOW)).toMatch(/can't read/);
+    expect(acceptProblem(readAllowanceTerms({ asset: 'eur', periodLimits: [] }), false, NOW)).toMatch(/can't read/);
+    expect(acceptProblem(ours, false, NOW + 86_400_000)).toBe('These limits have ended.');
+  });
+
+  it('refuses limits that leave the amount open when we would pay', () => {
+    const onlyExpiry = readAllowanceTerms({ asset: 'usdt', periodLimits: [], expiresAt: '2026-10-27T12:00:00Z' });
+    expect(acceptProblem(onlyExpiry, true, NOW)).toMatch(/leave the amount open/);
+    expect(acceptProblem({ ...ours, lifetime: undefined }, true, NOW)).toMatch(/leave the amount open/);
+    // The other way round they pay us: nothing to protect.
+    expect(acceptProblem(onlyExpiry, false, NOW)).toBeUndefined();
+  });
+
+  it('refuses limits above the caps when we would pay', () => {
+    expect(acceptProblem({ ...ours, perPaymentMax: 10_000_001n }, true, NOW)).toBe('This wallet accepts at most 10.00 USD₮ a payment and 100.00 USD₮ in all from an offer like this.');
+    expect(acceptProblem({ ...ours, lifetime: 100_000_001n }, true, NOW)).toMatch(/at most/);
   });
 });
 

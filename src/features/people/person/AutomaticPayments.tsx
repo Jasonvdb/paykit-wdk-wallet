@@ -4,9 +4,16 @@
 //   you pay them     accepted: the limits, what has been used against them
 //                    (from the payment ledger) and "Stop automatic payments";
 //                    offered by you: waiting for them, with "Withdraw offer";
-//                    asked by them: Accept / Decline
-//   they pay you     accepted: the limits and "End"; offered by them:
-//                    Accept / Decline
+//                    asked by them: "Accept automatic payments" (after a
+//                    confirmation that repeats every limit) / "Decline"
+//   they pay you     accepted: the limits and "End automatic payments";
+//                    offered by them: "Accept automatic payments" / "Decline"
+//
+// Accept is not offered for limits this wallet can't read or that have
+// ended, nor, when they ask you to pay, for limits that leave the amount
+// open or go over this wallet's caps (acceptProblem in
+// src/paykit/allowanceTerms.ts): one tap must never let a contact take the
+// whole balance.
 //   none             "Set up automatic payments" (AutomaticPaymentsScreen),
 //                    once the private connection is ready
 //
@@ -18,6 +25,7 @@ import { Alert, StyleSheet, View } from 'react-native';
 
 import {
   acceptAutomaticPayments,
+  acceptProblem,
   allowanceTermsWords,
   allowanceUsage,
   allowanceUsageWords,
@@ -83,19 +91,38 @@ function AllowanceItem({ allowance, name }: { allowance: AllowanceView; name: st
   };
   const stateOf = (action: Action) => ({ loading: running === action, disabled: !service || (running !== undefined && running !== action) });
 
-  const end = () =>
-    Alert.alert(
-      accepted ? (payer ? 'Stop automatic payments?' : `End ${name}'s automatic payments?`) : 'Withdraw your offer?',
-      accepted
-        ? payer
-          ? `${name}'s next requests wait for you again. Payments already made stay made.`
-          : `${name}'s wallet stops paying your requests automatically. Payments already made stay made.`
-        : `${name} can no longer accept it.`,
-      [
-        { text: 'Back', style: 'cancel' },
-        { text: accepted ? 'Stop' : 'Withdraw', style: 'destructive', onPress: () => void run('end', () => endAutomaticPayments(service!, allowance), "Couldn't stop it. Try again.") },
-      ],
-    );
+  const end = () => {
+    const ending = !accepted ? 'withdraw' : payer ? 'stop' : 'end';
+    const words = {
+      withdraw: { title: 'Withdraw your offer?', message: `${name} can no longer accept it.`, action: 'Withdraw', failure: "Couldn't withdraw the offer. Try again." },
+      stop: {
+        title: 'Stop automatic payments?',
+        message: `${name}'s next requests wait for you again. Payments already made stay made.`,
+        action: 'Stop',
+        failure: "Couldn't stop automatic payments. Try again.",
+      },
+      end: {
+        title: `End ${name}'s automatic payments?`,
+        message: `${name}'s wallet stops paying your requests automatically. Payments already made stay made.`,
+        action: 'End',
+        failure: "Couldn't end automatic payments. Try again.",
+      },
+    }[ending];
+    Alert.alert(words.title, words.message, [
+      { text: 'Back', style: 'cancel' },
+      { text: words.action, style: 'destructive', onPress: () => void run('end', () => endAutomaticPayments(service!, allowance), words.failure) },
+    ]);
+  };
+
+  const acceptNow = () => void run('accept', () => acceptAutomaticPayments(service!, allowance), "Couldn't accept automatic payments. Try again.");
+  // Paying someone without a tap is standing authority over your money: repeat every limit first.
+  const accept = () =>
+    payer && terms
+      ? Alert.alert(`Pay ${name}'s requests automatically?`, `${allowanceTermsWords(terms, formatDateTime)} Requests within these limits are paid without asking you. You can stop it at any time.`, [
+          { text: 'Back', style: 'cancel' },
+          { text: 'Accept', onPress: acceptNow },
+        ])
+      : acceptNow();
 
   const title = accepted
     ? payer
@@ -111,6 +138,9 @@ function AllowanceItem({ allowance, name }: { allowance: AllowanceView; name: st
 
   const usage = payer && accepted && terms ? allowanceUsage(terms, ledger?.usage.get(allowance.allowanceId) ?? [], Date.now()) : undefined;
   const expired = terms?.expiresAtMs !== undefined && terms.expiresAtMs <= Date.now();
+  const answerable = !accepted && !allowance.proposedByUs;
+  // Only offers that we would pay under were written by them for us to pay (they asked as the payee).
+  const cannotAccept = answerable ? acceptProblem(terms, payer, Date.now()) : undefined;
 
   return (
     <View style={styles.item} testID={`allowance-${allowance.allowanceId.slice(0, 8)}`}>
@@ -118,7 +148,12 @@ function AllowanceItem({ allowance, name }: { allowance: AllowanceView; name: st
       <Text color="graphite" testID="allowance-terms">
         {terms ? allowanceTermsWords(terms, formatDateTime) : "This wallet can't read these limits."}
       </Text>
-      {expired ? <Text color="graphite">These limits have ended.</Text> : null}
+      {expired && !cannotAccept ? <Text color="graphite">These limits have ended.</Text> : null}
+      {cannotAccept ? (
+        <Text color="graphite" testID="allowance-cannot-accept">
+          {cannotAccept}
+        </Text>
+      ) : null}
       {usage && terms ? (
         <Text variant="secondary" testID="allowance-usage">
           {allowanceUsageWords(terms, usage)}
@@ -137,27 +172,21 @@ function AllowanceItem({ allowance, name }: { allowance: AllowanceView; name: st
       ) : null}
       {error ? <Text color="alert">{error}</Text> : null}
       <View style={styles.buttons}>
-        {!accepted && !allowance.proposedByUs ? (
+        {answerable ? (
           <>
-            <Button
-              label="Accept"
-              compact
-              onPress={() => void run('accept', () => acceptAutomaticPayments(service!, allowance), "Couldn't accept it. Try again.")}
-              {...stateOf('accept')}
-              testID="allowance-accept"
-            />
+            {cannotAccept ? null : <Button label="Accept automatic payments" compact onPress={accept} {...stateOf('accept')} testID="allowance-accept" />}
             <Button
               label="Decline"
               variant="secondary"
               compact
-              onPress={() => void run('decline', () => declineAutomaticPayments(service!, allowance), "Couldn't decline it. Try again.")}
+              onPress={() => void run('decline', () => declineAutomaticPayments(service!, allowance), "Couldn't decline the offer. Try again.")}
               {...stateOf('decline')}
               testID="allowance-decline"
             />
           </>
         ) : (
           <Button
-            label={accepted ? (payer ? 'Stop automatic payments' : 'End') : 'Withdraw offer'}
+            label={accepted ? (payer ? 'Stop automatic payments' : 'End automatic payments') : 'Withdraw offer'}
             variant="destructive"
             compact
             onPress={end}

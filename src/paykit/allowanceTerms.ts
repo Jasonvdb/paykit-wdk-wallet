@@ -176,7 +176,44 @@ export function allowanceTermsWords(view: AllowanceTermsView, formatDate: (ms: n
   }
   if (view.lifetime !== undefined) sentences.push(`${money(view.lifetime)} in all`);
   if (view.expiresAtMs !== undefined) sentences.push(`Until ${formatDate(view.expiresAtMs)}`);
+  // Terms someone else wrote can leave a ceiling out: say so rather than staying silent.
+  if (view.perPaymentMax === undefined) sentences.push('No limit for one payment');
+  if (view.lifetime === undefined) sentences.push('No limit in all');
   return sentences.map((s) => `${s}.`).join(' ');
+}
+
+// Offers someone else wrote ---------------------------------------------------------------
+
+/**
+ * The most this wallet accepts when a contact writes the limits and asks
+ * to be paid automatically (they propose as the Allowee): ten times the
+ * largest per-payment choice it offers itself, per payment and in all.
+ */
+export const PEER_OFFER_CAPS: Record<RequestAsset, { perPayment: bigint; lifetime: bigint }> = {
+  btc: { perPayment: 10_000n, lifetime: 100_000n },
+  usdt: { perPayment: 10_000_000n, lifetime: 100_000_000n },
+};
+
+/**
+ * Why Accept is not offered for an Allowance, or undefined when it can be
+ * accepted. Any offer needs readable limits that haven't ended. When the
+ * other side wrote the limits and we would pay (`weWouldPay`), they must
+ * also set a limit per payment and a limit in all, within PEER_OFFER_CAPS:
+ * otherwise one tap could let them take the whole balance.
+ */
+export function acceptProblem(view: AllowanceTermsView | undefined, weWouldPay: boolean, nowMs: number): string | undefined {
+  if (!view?.asset) return "This wallet can't read these limits, so it can't accept them.";
+  if (view.expiresAtMs !== undefined && view.expiresAtMs <= nowMs) return 'These limits have ended.';
+  if (!weWouldPay) return undefined;
+  const caps = PEER_OFFER_CAPS[view.asset];
+  const money = (value: bigint) => formatAssetAmount(value, view.asset!, { withSymbol: true });
+  if (view.perPaymentMax === undefined || view.lifetime === undefined) {
+    return "These limits leave the amount open, so this wallet won't accept them. Ask for limits per payment and in all.";
+  }
+  if (view.perPaymentMax > caps.perPayment || view.lifetime > caps.lifetime) {
+    return `This wallet accepts at most ${money(caps.perPayment)} a payment and ${money(caps.lifetime)} in all from an offer like this.`;
+  }
+  return undefined;
 }
 
 // Matching (display only) -------------------------------------------------------------
