@@ -62,8 +62,10 @@ This app has two engines and one UI:
 | `src/features/<feature>/` | Screens, one folder per feature: `onboarding`, `wallet`, `people`, `requests`, `you`. Phase-specific parts of shared screens sit in subfolders, e.g. `wallet/send/`, `wallet/receive/`, `wallet/activity/`, `people/scan/`. |
 | `src/features/people/PersonSeal.tsx` | A seal with the person's profile photo from the profile cache. Every screen that shows a person uses it. |
 | `src/features/people/usePersonName.ts`, `personName.ts` | What to call a person (your label, else their published name, else the short key) and whether that name is a contact's or self-chosen. Every screen that names a person uses it. |
+| `src/features/people/person/` | The Person page's parts: `LabelEditor` (your local name for them), `WhatTheyAccept` (public endpoints and private lists both ways), `PersonHistory`, and the pure `personWords.ts`. `contactOrder.ts` sorts the People list; `justAdded.ts` lets the page play the seal closing when the link formed during Add. |
+| `src/features/wallet/activity/` | Activity rows: `activityText.ts` (words), `activityPeople.ts` (which contact a transaction involves, pure), `useActivityPeople.ts`, `ActivityRow.tsx`, and `ContactAccountWatchers.tsx` (feeds contact accounts' history into Activity). |
 | `src/media/pickProfilePhoto.ts` | Pick, crop and shrink a profile photo for upload; `photoDataUri` previews it. |
-| Shared across features | A few feature components are used by other features on purpose: `wallet/receive/PayMeCode.tsx` (Receive, You, onboarding Ready), `you/RecoveryPhraseSection.tsx` (You, and onboarding before replacing a wallet), `people/PersonSeal.tsx` and `people/usePersonName.ts` (every screen that shows a person), `wallet/GetTestUsdtButton.tsx` (Wallet, Receive, You). Import them from their home folder; everything else crosses features only through `src/ui`, `src/wallet` and `src/paykit`. |
+| Shared across features | A few feature components are used by other features on purpose: `wallet/receive/PayMeCode.tsx` (Receive, You, onboarding Ready), `you/RecoveryPhraseSection.tsx` (You, and onboarding before replacing a wallet), `people/PersonSeal.tsx` and `people/usePersonName.ts` (every screen that shows a person), `wallet/GetTestUsdtButton.tsx` (Wallet, Receive, You), `wallet/activity/ActivityRow.tsx` and `useActivityPeople.ts` (Wallet, Person history), `you/ContactAccountsSection.tsx`'s `ContactAccountRow` (You, Person), `wallet/send/PersonRecipient.tsx`'s `PersonHeader` (Send, Request money). Import them from their home folder; everything else crosses features only through `src/ui`, `src/wallet` and `src/paykit`. |
 | `wdk.config.js` | Which WDK wallet modules go into the worklet, and which account methods the app may call. |
 | `plugins/withPaykitSimulatorArchs.js` | Expo config plugin: arm64-only iOS simulator builds (Paykit ships no x86_64 slice). |
 | `scripts/` | Paykit package build, Paykit Android patch (postinstall), demo prefill generator, and the demo funding scripts `fund-*.mjs` (see "Funding the demo"). |
@@ -106,6 +108,8 @@ fetchEvmActivity(address: string): Promise<ActivityItem[]>
 // test funds and per-contact accounts
 useUsdtFaucet(): { mint(amount?: bigint): Promise<{ hash; explorerUrl }>; isReady: boolean }
 useBtcContactAccount(accountIndex: number): { address?; sats?: bigint; transfers; refresh(); collect(): Promise<{ hash; explorerUrl } | undefined> }
+useContactAccountWatcher(accountIndex): void              // polls one contact account's transfers into Activity
+clearContactAccountActivity(): void
 // pure helpers
 formatAssetAmount(value: bigint, asset: AssetId, opts?): string
 parseAssetAmount(text: string, asset: AssetId): ParseResult
@@ -184,8 +188,10 @@ class PaykitService {
   syncPublicEndpoints(priority?): Promise<FfiEndpointSyncReport>;      // the raw publish call
   normalizeKey(text: string): string;
   resolvePeer(text: string): Promise<{ publicKey; registry?; publicPayment; profile? }>;
-  saveContactAndLink(text: string, label?: string): Promise<FfiContactRecord>;
-  removeContact(publicKey: string): Promise<void>;
+  saveContactAndLink(text: string, label?: string): Promise<FfiContactRecord>;  // saveContact + ensureLinkWithPeer
+  setContactLabel(publicKey: string, label: string): Promise<void>;             // local only; '' = their published name
+  removeContact(publicKey: string): Promise<void>;         // withdraws our list and ends the link (see "Contacts")
+  readonly privateLists: PrivateListStore;                 // lists shared and received, for display
   blockContact(publicKey: string): Promise<void>;
   unblockContact(publicKey: string, label?: string): Promise<void>;
   refreshState(priority?): Promise<void>;
@@ -211,7 +217,10 @@ pubkyFromText(text): string | undefined                    // shape check for ty
 resolvePublicPaymentOptions(service, text): Promise<{ options: PublicPaymentOptions; profile? }>
 acceptedAssets(options): ('btc' | 'usdt')[]
 cannotPayReason(options, asset, name): string | undefined  // a sentence with a next step
-privatePaymentAddressesFor(service, pubky)                 // Phase 4 hook; undefined until then
+privatePaymentAddressesFor(service, pubky)                 // a Linked contact's private addresses, else undefined
+loadReceivedPrivateList(service, pubky, priority?)         // currentPrivatePaymentLists, checked
+usePrivateLists(pubky): { incoming?; outgoing? }           // what they shared with you / whether yours reached them
+usePrivateListSummary() / usePrivateAddressOwners() / useContactAccounts()
 loadNetworkDetails(service): Promise<NetworkDetails>       // identityStatus + our own app registry
 // presentation, in src/ui: linkStateWords(state), sealRingFor(state)
 ```
@@ -236,7 +245,9 @@ loadNetworkDetails(service): Promise<NetworkDetails>       // identityStatus + o
 | `publicPaymentOptions.ts` | Pure: turns a public endpoint resolution into checked addresses per asset, and says why someone can't be paid. Unit tested. |
 | `publicPayments.ts` | `resolvePublicPaymentOptions`: SDK lookup (registry, public endpoints, profile) mapped through the pure module. |
 | `networkDetails.ts` | `loadNetworkDetails` for You > Network details. |
-| `privatePayments.ts`, `requests.ts` | Extension points for Phases 4 and 5. `privatePaymentAddressesFor` is the Phase 4 hook the Send screen already calls. |
+| `privatePayments.ts` | Private Payment Lists over the sync loop (share ours, read theirs) and paying a contact privately (`privatePaymentAddressesFor`). See "Private payments". |
+| `privatePaymentLists.ts` | Pure: when to share (`planPrivateListShares`), checking received endpoints, and the `PrivateListStore` screens read. Unit tested. |
+| `requests.ts` | Extension point for Phase 5. |
 
 ### Why the callbacks are synchronous, and the address cache
 
@@ -350,8 +361,8 @@ The Send screen's "A person (pubky)" field (`wallet/send/PubkyRecipientField.tsx
 1. `pubkyFromText` checks the shape (bare key, `pk:` prefix or contact
    link) on every keystroke; after a 300 ms pause `service.normalizeKey`
    validates it with the SDK. Your own key is refused.
-2. `privatePaymentAddressesFor` (Phase 4 hook) is asked first, so a linked
-   contact will be paid at their private address once Phase 4 fills it in.
+2. `privatePaymentAddressesFor` is asked first: a Linked contact is paid at
+   the private address they shared only with you (see "Private payments").
 3. Otherwise `resolvePublicPaymentOptions`: their app registry,
    `resolvePublicContactPayment` and their profile. The payment adapter
    already filters candidates; the pure `publicPaymentOptionsFrom` checks
@@ -400,9 +411,9 @@ every 3 s (paused in the background):
 4. `receivePrivateMessagesFromLinkedPeers()`;
 5. `processPendingPrivateMessages()` again if anything arrived (delivery
    confirmations);
-6. extension hooks (`syncLoop.addRoundHook(name, hook)`), including the
-   service's own retry of a public endpoint publish that has not worked
-   yet;
+6. extension hooks (`syncLoop.addRoundHook(name, hook)`): the service's
+   own retry of a public endpoint publish that has not worked yet, then
+   `private-payment-lists` and `received-private-lists` (Phase 4);
 7. `observeState()`, which feeds the React hooks.
 
 `syncLoop.flush()` runs a round immediately; call it after a user action
@@ -410,17 +421,114 @@ toward a peer. The loop never signs in: a failed round shows its error in
 You > Sync status with a "Reconnect" button, which builds a fresh
 connection (saved session first, then sign-in).
 
+### Contacts
+
+Adding someone (People > Add, a scanned pay-me code or a
+`paykitwdk://contact` link) previews them first: `resolvePublicPaymentOptions`
+reads their registry, public endpoints and profile, so the screen shows the
+seal, published name, photo, short key and what they accept publicly, or
+says their homeserver can't be reached (you can still add them). Your own
+key and existing contacts are caught before saving. "Add Ben" runs
+`saveContactAndLink`: `saveContact` (with your optional label), allocate
+their Bitcoin account, `refreshContactPaykitProfile`, then
+`ensureLinkWithPeer`. That call picks initiator or responder from the two
+keys, so the app never calls `initiateLinkWithPeer`, `acceptLinkWithPeer`
+or `advanceLinkHandshake` itself; the sync loop keeps calling
+`ensureLinkWithPeer` until the link is Linked.
+
+A label is your own name for a contact (`setContactLabel`, a
+`saveContact` with the new label). It stays on this phone and wins over
+their published name everywhere (`personName.ts`).
+
+Removing a contact ends the private connection, not just the record. The
+SDK's `removeContact` deletes only the Contact Record and leaves the
+Encrypted Link (and their messages) running, so `PaykitService.removeContact`
+instead:
+
+1. sends an empty Private Payment List (`clearPrivatePaymentListAndProcessOutbound`,
+   best effort), so their wallet drops our private addresses;
+2. runs `removeContactsAndBlockPeers`, which removes the record and
+   discards the link in one transaction;
+3. runs `unblockPeer`, which returns them to NotLinked and clears our
+   recovery attempt id.
+
+Adding them again then starts a fresh link with a new attempt id; their
+side sees it on its next receive, marks the old link for recovery and links
+again. Their Bitcoin account index is kept (indices are never reused), so
+money they sent stays collectable. Blocking and forgetting are Phase 6.
+
+The seal's closing animation plays when a seal's ring goes from linking to
+linked while it is on screen. The second person to add the other often
+completes the handshake inside the Add call, so Add person marks the key
+(`justAdded.ts`) and the Person page starts that seal from the dashed ring.
+
+### Private payments
+
+`src/paykit/privatePayments.ts` registers two round hooks
+(`registerPrivatePaymentHooks`, called by `PaykitService.connect`):
+
+- **`private-payment-lists`** shares our list with every contact whose link
+  is Linked. The list is that contact's own Bitcoin account address plus the
+  shared USD₮ (EVM account 0) address, built by
+  `reservationInputsFor(addressCache, peer)` and sent with
+  `syncPrivatePaymentListsWithReservationsAndProcessOutbound(updates, false)`.
+  `planPrivateListShares` (pure) skips a contact whose addresses are not
+  all derived yet (never a partial or empty list: a new list replaces the
+  old one), refuses a list that would not fit in one 1000-byte private
+  message, and sends again only when the list or the link changes. "The
+  link changed" is the pair of recovery attempt ids in the link record,
+  which name the link's stream generation, so a re-formed link gets the
+  list again. `clearUnlistedLinkedPeers` is false, so a contact skipped
+  this round keeps the list they have. When a missing address is derived,
+  the address cache change flushes the loop.
+- **`received-private-lists`** reads what each Linked contact shared with
+  `currentPrivatePaymentLists` when they sent us something this round, on
+  first sight, or every five minutes. Payloads go through our own endpoint
+  parser before anything is shown or paid.
+
+Both hooks write to `service.privateLists` (memory only), which the Person
+page ("Private addresses shared with you" / "Your private addresses shared
+with them"), You > Network details and activity attribution read.
+
+Paying: the Send screen's pubky field asks `privatePaymentAddressesFor`
+first. For a Linked contact it calls
+`prepareAndResolvePrivateContactPayment(peer, undefined, undefined, steps)`,
+which advances the link, drains private messages for that one peer and
+resolves only their Private Payment List through the adapter's private
+select/build callbacks. It never falls back to public endpoints; the app
+does, when the result is not Payable (or both the prepare call and the
+local-only `resolvePrivateContactPayment` fail). Each endpoint must belong
+to that pubky and parse as one of ours. Notes from the Rust side:
+
+- resolving makes no reservation or claim, it only reads;
+- `afterPrivatePaymentListVersion` lets a payer refuse a list it already
+  used, for payees with single-use addresses; our addresses are stable and
+  reusable, so the app passes undefined;
+- `recordPaymentOutcome` belongs to Allowance accounting
+  (reserve / begin / record), not to paying a list, so it is not called.
+
+The payee card says "Paying privately: Ben shared Bitcoin and USD₮
+addresses only with you" and shows the address the chosen asset goes to;
+Review says "A private address Ben shared only with you".
+
+Receiving: BTC a contact pays privately lands in their Bitcoin account on
+our side, which Send does not spend from. The Wallet tab shows "Plus … from
+contacts. Collect it to spend it" under the BTC balance (linking to You >
+Bitcoin from contacts), and the Person page has the same Collect row.
+
+Activity with people: `ContactAccountWatchers` (on the Wallet tab) renders
+one watcher per contact account (WDK's account hooks are bound to one
+index each), which merges that account's transfers into `useActivity`;
+`collapseInternalMoves` shows a Collect once. `activityPersonFor` (pure)
+names the contact: a receive on their account ("Ben paid you"), a send to an
+address they shared privately ("You paid Ben"), or USD₮ from their address.
+Bitcoin received on account 0 carries no sender, so it stays "Received".
+
 ### Extension points for later phases
 
-- **Private payments (Phase 4)** go in `src/paykit/privatePayments.ts`. Fill
-  in `privatePaymentAddressesFor(service, pubky)` (the Send screen's pubky
-  field already prefers it over public endpoints), and share
-  private lists with `reservationInputsFor` +
-  `syncPrivatePaymentListsWithReservationsAndProcessOutbound` from a round
-  hook, and pay contacts with `prepareAndResolvePrivateContactPayment` + the
-  wallet's `useSend`.
 - **Payment requests and receipts (Phase 5)** go in `src/paykit/requests.ts`.
-  The inbox is already in `usePaykitState().paymentRequests`.
+  The inbox is already in `usePaykitState().paymentRequests`. The Person
+  page's Request button opens Request money with `pubky` filled in.
 - Round hooks are registered in `registerPrivatePaymentHooks` and
   `registerPaymentRequestHooks`. `PaykitService.connect` calls both once
   per service, before the loop starts, so neither phase edits the service or
@@ -447,8 +555,8 @@ Phase 2 ships `AddressRecipientField`, Phase 3 `PubkyRecipientField`
 (see "Paying a person by pubky"); the compose step switches between them
 with "A person (pubky)" / "An address", opens on Person when the `to`
 param is a pubky, and switches to Person when a pubky is pasted into the
-address field. Phase 4 fills in `privatePaymentAddressesFor`, which the
-pubky field already asks first (`route: 'private'`). Review shows a
+address field. For a Linked contact the pubky field gets
+`privatePaymentAddressesFor` first (`route: 'private'`). Review shows a
 person's seal, name and the address paid (`send/PersonRecipient.tsx`).
 
 ### Files that several phases edit
@@ -484,6 +592,8 @@ existing ones, so merges stay trivial.
 | Contact -> BTC account map | Encrypted MMKV `paykit-app-<id>` | Never reuses an index. |
 | Public endpoint choice (BTC / USD₮ on or off) | Encrypted MMKV `paykit-app-<id>` | Both on by default. |
 | Profiles and avatars of people | Memory only (`ProfileDirectory`) | Public data; reloaded after a restart. |
+| Contacts, labels, links, received Private Payment Lists | Paykit SDK state | Labels never leave the phone. |
+| What we shared / received, for display | Memory only (`service.privateLists`) | Rebuilt by the sync loop within a few rounds after a restart. |
 | Onboarding flag, wallet origin | Plain MMKV `app-settings` | Not secret. The origin ('created' or 'restored') decides sign-up vs sign-in. |
 
 On iOS, Keychain items survive an app uninstall, while MMKV files do not.

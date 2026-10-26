@@ -12,8 +12,8 @@ and [Pubky Paykit](https://github.com/pubky/paykit-rs) work together:
 
 ## Status
 
-Phases 1 (foundation), 2 (wallet) and 3 (identity and public payments)
-are done: the app skeleton, design system, navigation, the wallet and
+Phases 1 (foundation), 2 (wallet), 3 (identity and public payments) and
+4 (contacts and private payments) are done: the app skeleton, design system, navigation, the wallet and
 Paykit service layers, and the WDK side of the app: receive cards with QR
 codes, sending to an address with a fee review, activity with a detail
 screen, the recovery phrase, "Get test USD₮", collecting BTC from contact
@@ -21,8 +21,18 @@ accounts, and demo funding scripts. Phase 3 adds your profile (name and
 photo, shown in every seal), the pay-me code (your pubky as a QR), public
 payment endpoints you switch on or off per asset, paying anyone by pubky
 through those endpoints, a QR scanner, and a developer "Network details"
-section. Later phases add contacts with private payments and payment
-requests.
+section. Phase 4 adds contacts: a profile preview before adding someone,
+your own label for them, a People list sorted by link state, a Person page
+(what they accept publicly and privately, history, Bitcoin from them with
+Collect, Remove), Private Payment Lists shared and read over each Encrypted
+Link, paying a linked contact at the private address they shared only with
+you, activity rows that name the contact ("Ben paid you"), and the seal
+closing when a link forms. Phase 5 adds payment requests and receipts.
+
+Phase 4 was checked on both simulators without money: the demo wallets
+were empty, so private payments were resolved up to Review (iOS resolves
+Ben's private Bitcoin address, his contact account for Ana, not his public
+one, and the other way round) but not broadcast, and Collect was not run.
 
 Known gaps left for Phase 6 (polish): the recovery phrase screens do not
 block screenshots yet (Android `FLAG_SECURE` needs a native module and a
@@ -95,8 +105,13 @@ xcrun simctl openurl booted "paykitwdk://contact?pubky=<their pubky>"
 adb shell am start -a android.intent.action.VIEW -d "paykitwdk://contact?pubky=<their pubky>"
 ```
 
-Both phones must add each other; the seal ring closes when the private link
-is ready. You > Sync status shows the sync loop and its event log.
+Add person shows who the key belongs to before saving. Both phones must
+add each other; the seal ring closes when the private link is ready, and
+each phone then shares a Private Payment List with the other (the Person
+page shows both directions). Removing a contact withdraws your list and
+ends the link; adding each other again forms a new one. You > Sync status
+shows the sync loop and its event log, and You > Network details counts the
+lists shared each way.
 
 Simulators cannot scan each other's QR codes, so the wallet screens also
 open from links:
@@ -174,7 +189,7 @@ npm test
 ```
 
 Screenshots of each phase on both platforms are in
-[`docs/screenshots/`](docs/screenshots/) (`phase1/`, `phase2/`, `phase3/`); the Phase 0 spike
+[`docs/screenshots/`](docs/screenshots/) (`phase1/` to `phase4/`); the Phase 0 spike
 screenshots are in [`docs/spike/`](docs/spike/).
 
 Before taking screenshots, hide the dev client's floating tools button so
