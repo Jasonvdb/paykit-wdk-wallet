@@ -8,11 +8,11 @@
 import { StyleSheet, View } from 'react-native';
 
 import type { MainTabScreenProps } from '../../navigation/types';
-import { useContacts, usePaykit } from '../../paykit';
+import { useConnectionNotice, useContacts } from '../../paykit';
 import { Button, Divider, EmptyState, Row, Screen, Seal, Text, linkStateWords, middleEllipsis, sealRingFor, space } from '../../ui';
 
 export function PeopleScreen({ navigation }: MainTabScreenProps<'People'>) {
-  const { service } = usePaykit();
+  const notice = useConnectionNotice();
   const contacts = useContacts();
 
   return (
@@ -23,8 +23,8 @@ export function PeopleScreen({ navigation }: MainTabScreenProps<'People'>) {
       testID="people-screen"
       headerRight={<Button label="Add" compact variant="secondary" onPress={() => navigation.navigate('AddPerson')} />}
     >
-      {!service ? (
-        <Text color="graphite">Connecting…</Text>
+      {notice ? (
+        <Text color="graphite">{notice.message}</Text>
       ) : contacts.length === 0 ? (
         <EmptyState
           title="No one here yet"

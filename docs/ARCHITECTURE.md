@@ -249,8 +249,9 @@ every 3 s (paused in the background):
 7. `observeState()`, which feeds the React hooks.
 
 `syncLoop.flush()` runs a round immediately; call it after a user action
-toward a peer. The loop never signs in; session failures show in You > Sync
-status with a "Try again" button.
+toward a peer. The loop never signs in: a failed round shows its error in
+You > Sync status with a "Reconnect" button, which builds a fresh
+connection (saved session first, then sign-in).
 
 ### Extension points for later phases
 

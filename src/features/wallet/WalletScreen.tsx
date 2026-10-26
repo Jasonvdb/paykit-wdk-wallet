@@ -10,12 +10,13 @@
 import { StyleSheet, View } from 'react-native';
 
 import type { MainTabScreenProps } from '../../navigation/types';
-import { usePaykit } from '../../paykit';
+import { useConnectionNotice, usePaykitService } from '../../paykit';
 import { AssetAmount, AssetDot, Button, Divider, EmptyState, Row, Screen, Seal, Text, relativeTime, space } from '../../ui';
 import { formatAssetAmount, useActivity, useWalletBalances, type ActivityItem } from '../../wallet';
 
 export function WalletScreen({ navigation }: MainTabScreenProps<'Wallet'>) {
-  const { service, connection } = usePaykit();
+  const service = usePaykitService();
+  const notice = useConnectionNotice();
   const { balances, isRefreshing, refresh, error } = useWalletBalances();
   const activity = useActivity();
 
@@ -35,7 +36,7 @@ export function WalletScreen({ navigation }: MainTabScreenProps<'Wallet'>) {
             <Text variant="bodyStrong">You</Text>
           </View>
         ) : (
-          <Text color="graphite">{connection.status === 'error' ? 'Offline' : 'Connecting…'}</Text>
+          <Text color="graphite">{notice?.label}</Text>
         )
       }
       testID="wallet-screen"

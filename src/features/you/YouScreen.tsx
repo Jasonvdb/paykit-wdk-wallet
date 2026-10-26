@@ -2,7 +2,9 @@
 // phrase, test funds, network details, sync status and log.
 //
 // Phase 1 shows your identity and the Paykit sync status and event log, so
-// developers can watch the loop work.
+// developers can watch the loop work. The loop never signs in by itself
+// (staging rate-limits sign-ins), so when a round fails, "Reconnect" builds
+// a fresh connection: saved session first, then sign-in.
 //
 // TODO(Phase 3 — Identity): profile (name, photo) editing, pay-me QR,
 // public endpoint toggles (BTC / USD₮), network details ("Paykit" and
@@ -13,11 +15,20 @@ import { StyleSheet, View } from 'react-native';
 
 import { STAGING_HOMESERVER } from '../../config/paykit';
 import type { MainTabScreenProps } from '../../navigation/types';
-import { usePaykit, useSyncLog, useSyncStatus } from '../../paykit';
+import { usePaykit, useSyncLog, useSyncStatus, type SyncStatus } from '../../paykit';
 import { Button, Divider, KeyText, Screen, Seal, Text, relativeTime, space } from '../../ui';
+
+/** "Idle. 12 rounds, the last took 340 ms." */
+function describeLoop(status: SyncStatus): string {
+  const phase = status.phase === 'syncing' ? 'Syncing' : status.phase === 'paused' ? 'Paused while the app is in the background' : 'Idle';
+  const rounds = `${status.rounds} ${status.rounds === 1 ? 'round' : 'rounds'}`;
+  const last = status.lastRoundMs !== undefined ? `, the last took ${status.lastRoundMs} ms` : '';
+  return `${phase}. ${rounds}${last}.`;
+}
 
 export function YouScreen(_props: MainTabScreenProps<'You'>) {
   const { service, connection, connect } = usePaykit();
+  const reconnect = () => connect().catch(() => undefined);
   const status = useSyncStatus();
   const log = useSyncLog();
 
@@ -35,25 +46,24 @@ export function YouScreen(_props: MainTabScreenProps<'You'>) {
       </Text>
       {connection.status === 'error' ? (
         <View style={styles.block}>
-          <Text color="alert">Couldn’t connect: {connection.message}</Text>
-          <Button label="Try again" variant="secondary" compact onPress={() => connect().catch(() => undefined)} />
+          <Text color="alert">{connection.message}</Text>
+          <Button label="Reconnect" variant="secondary" compact onPress={reconnect} testID="reconnect" />
         </View>
       ) : !status ? (
         <Text color="graphite">{connection.status === 'connecting' ? 'Connecting…' : 'Not connected'}</Text>
       ) : (
         <View style={styles.block} testID="sync-status">
-          <Text>
-            {status.phase === 'syncing' ? 'Syncing…' : status.phase === 'paused' ? 'Paused (app in background)' : 'Idle'} ·{' '}
-            {status.rounds} rounds
-            {status.lastRoundMs !== undefined ? ` · last ${status.lastRoundMs} ms` : ''}
-          </Text>
+          <Text>{describeLoop(status)}</Text>
           <Text color="graphite" variant="secondary">
-            {status.linkedCount} linked · {status.linkingCount} connecting · {status.pendingOutboundCount} waiting to send
+            {status.linkedCount} linked, {status.linkingCount} connecting, {status.pendingOutboundCount} waiting to send
           </Text>
           {status.lastError ? (
-            <Text color="alert" variant="secondary">
-              {status.lastError}
-            </Text>
+            <>
+              <Text color="alert" variant="secondary">
+                The last round failed: {status.lastError}
+              </Text>
+              <Button label="Reconnect" variant="secondary" compact onPress={reconnect} testID="reconnect" />
+            </>
           ) : null}
           <Button label="Sync now" variant="secondary" compact onPress={() => service?.syncLoop.flush()} />
         </View>
@@ -71,8 +81,11 @@ export function YouScreen(_props: MainTabScreenProps<'You'>) {
         <View key={entry.id}>
           {index > 0 ? <Divider /> : null}
           <View style={styles.logRow}>
+            <Text variant="caption" color="graphite">
+              {relativeTime(entry.at)}
+            </Text>
             <Text variant="caption" color={entry.level === 'error' ? 'alert' : entry.level === 'warn' ? 'ink' : 'graphite'}>
-              {relativeTime(entry.at)} · {entry.message}
+              {entry.message}
             </Text>
           </View>
         </View>

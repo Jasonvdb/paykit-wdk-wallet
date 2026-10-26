@@ -35,6 +35,30 @@ export function usePaykitState(): FfiPaykitStateObservation | undefined {
   );
 }
 
+export type ConnectionNotice = {
+  /** One or two words for tight spots (a header). */
+  label: string;
+  /** A sentence with a next step, for a screen body. */
+  message: string;
+};
+
+/**
+ * The same "not connected" wording on every tab (docs/DESIGN.md, "Writing").
+ * Undefined once connected. A failed connect is not retried automatically
+ * (staging rate-limits sign-ins), so the message points to You > Reconnect.
+ */
+export function useConnectionNotice(): ConnectionNotice | undefined {
+  const { connection } = usePaykit();
+  switch (connection.status) {
+    case 'connected':
+      return undefined;
+    case 'error':
+      return { label: 'Offline', message: `${connection.message} You can reconnect from the You tab.` };
+    default:
+      return { label: 'Connecting…', message: 'Connecting to your identity…' };
+  }
+}
+
 /** Sync loop status for the You tab. */
 export function useSyncStatus(): SyncStatus | undefined {
   const service = usePaykitService();
