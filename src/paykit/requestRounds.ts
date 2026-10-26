@@ -43,7 +43,7 @@ import { erc20ProofJson, btcProofJson, parseProof, transferKey, verifyBtcProof, 
 import { isScheduledPeriod, parseTime, periodKey } from './recurrence';
 import { afterDroppedCheck, DROPPED_RECHECK_MS, paymentKey, type OutgoingPayment } from './requestBook';
 import type { SyncRoundContext } from './syncLoop';
-import { newReceiptId, recordOutcome, requestViewOf, submitProof, type PaymentRequests, type ProofView, type RequestView } from './requests';
+import { newReceiptId, recordOutcome, requestViewOf, settleUnsentPayment, submitProof, type PaymentRequests, type ProofView, type RequestView } from './requests';
 
 /** How often to look again at something still waiting on the chain. */
 const CHAIN_RECHECK_MS = 10_000;
@@ -72,6 +72,13 @@ async function finishOurPayments(service: PaykitService, requests: PaymentReques
   const now = Date.now();
   for (const payment of book.allOutgoing()) {
     const key = paymentKey(payment.counterparty, payment.requestId, payment.period);
+    if (payment.stage === 'not-sent') {
+      // Nothing left the wallet; the ledger still has to hear "Failed".
+      if ((payment.nextCheckAt ?? 0) > now) continue;
+      await settleUnsentPayment(service, key);
+      book.updateOutgoing(key, { nextCheckAt: Date.now() + FAILURE_BACKOFF_MS });
+      continue;
+    }
     const needsProof = payment.stage === 'broadcast';
     const needsOutcome = (payment.stage === 'broadcast' || payment.stage === 'proof-sent') && payment.outcome === undefined;
     if (!payment.txHash || (!needsProof && !needsOutcome) || (payment.nextCheckAt ?? 0) > now) continue;

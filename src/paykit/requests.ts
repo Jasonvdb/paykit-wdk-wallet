@@ -56,6 +56,7 @@ import {
   FfiLinkedPeerState,
   FfiOutboundPrivateMessageStatus,
   FfiPaymentAttemptDecision,
+  FfiPaymentExecutionStatus,
   FfiPaymentOutcome,
   FfiPaymentReference,
   FfiPaymentRequestLifecycleState,
@@ -527,6 +528,7 @@ export async function preparePayment(service: PaykitService, counterparty: strin
     throw new UserFacingError('This request is paid once.');
   }
   const key = paymentKey(counterparty, requestId, terms.recurrence ? period : undefined);
+  await settleUnsentPayment(service, key);
   const paidAlready = view.proofs.some((proof) => (terms.recurrence ? periodKey(proof.period) === periodKey(period) : true));
   if (paidAlready || book.outgoing(key)) throw new UserFacingError('This payment is already on its way. Check the request for its status.');
 
@@ -578,39 +580,14 @@ function executionChecks(prepared: PreparedPayment): FfiPaymentExecutionChecks {
   };
 }
 
-/**
- * Steps 3-5, when the person taps Pay: accept if needed, then let the
- * ledger admit this occurrence and issue a handoff. Returns the attempt id;
- * the caller sends with WDK right after and reports with finishPayment.
- */
-export async function startPayment(service: PaykitService, prepared: PreparedPayment): Promise<string> {
-  const book = paymentRequestsOf(service).book;
-  if (book.outgoing(prepared.key)) throw new UserFacingError('This payment is already on its way. Check the request for its status.');
-  if (prepared.needsAcceptance) {
-    if (prepared.proposalStreamItemId === undefined) throw new UserFacingError("This request can't be accepted. Ask them to send it again.");
-    const streamItemId = prepared.proposalStreamItemId;
-    await service.call('claimAndAcceptPaymentRequest', (sdk, signal) =>
-      sdk.claimAndAcceptPaymentRequest(prepared.counterparty, prepared.requestId, streamItemId, { signal }),
-    );
-    service.log.info(`accepted request ${prepared.requestId.slice(0, 8)} from ${shortKey(prepared.counterparty)}`);
-    service.syncLoop.flush();
-  }
-  await ensureLedgerReady(service);
+/** The SDK record for a request, from the last observed state. */
+function findRequestRecord(service: PaykitService, counterparty: string, requestId: string): FfiPaymentRequestRecord | undefined {
+  return service.getState()?.paymentRequests.find((r) => r.counterparty === counterparty && r.paymentRequestId === requestId);
+}
 
-  const occurrence = { request: { counterparty: prepared.counterparty, paymentRequestId: prepared.requestId }, billingPeriod: prepared.period };
-  const reserved = await service.call('reserveManualPayment', (sdk, signal) => sdk.reserveManualPayment(occurrence, executionChecks(prepared), { signal }));
-  if (!FfiPaymentAttemptDecision.Ready.instanceOf(reserved)) throw new UserFacingError(blockedMessage(reserved.inner.reason));
-  const attemptId = reserved.inner.attempt.attemptId;
-
-  const begun = await service.call('beginPaymentExecution', (sdk, signal) => sdk.beginPaymentExecution(attemptId, executionChecks(prepared), { signal }));
-  if (!FfiPaymentAttemptDecision.Ready.instanceOf(begun)) {
-    // No handoff was issued: release the reservation so the person can try again.
-    await recordOutcome(service, attemptId, FfiPaymentOutcome.Failed);
-    throw new UserFacingError(blockedMessage(begun.inner.reason));
-  }
-  // Written before WDK sends: from here on, a restart finds this payment
-  // and never offers to pay it again.
-  book.setOutgoing(prepared.key, {
+/** What the book remembers for a payment the ledger admitted. */
+function outgoingFor(prepared: PreparedPayment, attemptId: string, stage: OutgoingPayment['stage']): OutgoingPayment {
+  return {
     counterparty: prepared.counterparty,
     requestId: prepared.requestId,
     period: prepared.period,
@@ -620,11 +597,115 @@ export async function startPayment(service: PaykitService, prepared: PreparedPay
     endpointIdentifier: prepared.endpointIdentifier,
     paymentAppId: prepared.paymentAppId,
     attemptId,
-    stage: 'sending',
+    stage,
     updatedAt: Date.now(),
-  });
+  };
+}
+
+/**
+ * Steps 3-5, when the person taps Pay: accept if needed, then let the
+ * ledger admit this occurrence and issue a handoff. Returns the attempt id;
+ * the caller sends with WDK right after and reports with finishPayment.
+ * Safe to call again after it threw: an acceptance already queued is not
+ * sent twice, and an attempt that got no handoff is released.
+ */
+export async function startPayment(service: PaykitService, prepared: PreparedPayment): Promise<string> {
+  const book = paymentRequestsOf(service).book;
+  await settleUnsentPayment(service, prepared.key);
+  if (book.outgoing(prepared.key)) throw new UserFacingError('This payment is already on its way. Check the request for its status.');
+  // Read the record again rather than trusting `prepared`: a first tap may
+  // have accepted already, and the SDK refuses a second acceptance.
+  const acceptedByUs = findRequestRecord(service, prepared.counterparty, prepared.requestId)?.acceptedEventId !== undefined;
+  if (prepared.needsAcceptance && !acceptedByUs) {
+    if (prepared.proposalStreamItemId === undefined) throw new UserFacingError("This request can't be accepted. Ask them to send it again.");
+    const streamItemId = prepared.proposalStreamItemId;
+    await service.call('claimAndAcceptPaymentRequest', (sdk, signal) =>
+      sdk.claimAndAcceptPaymentRequest(prepared.counterparty, prepared.requestId, streamItemId, { signal }),
+    );
+    service.log.info(`accepted request ${prepared.requestId.slice(0, 8)} from ${shortKey(prepared.counterparty)}`);
+    await service.refreshState();
+    service.syncLoop.flush();
+  }
+  await ensureLedgerReady(service);
+
+  const occurrence = { request: { counterparty: prepared.counterparty, paymentRequestId: prepared.requestId }, billingPeriod: prepared.period };
+  const reserved = await service.call('reserveManualPayment', (sdk, signal) => sdk.reserveManualPayment(occurrence, executionChecks(prepared), { signal }));
+  if (!FfiPaymentAttemptDecision.Ready.instanceOf(reserved)) throw new UserFacingError(blockedMessage(reserved.inner.reason));
+  const attemptId = reserved.inner.attempt.attemptId;
+
+  // No handoff (a Blocked decision, or the call itself failed): nothing was
+  // sent, so release the attempt, or the ledger blocks every later try.
+  const release = () =>
+    releaseUnsentPayment(service, prepared.key, outgoingFor(prepared, attemptId, 'not-sent')).catch((e) =>
+      service.log.warn(`release unsent payment: ${describeError(e)} (retrying next round)`),
+    );
+  let begun: Awaited<ReturnType<typeof beginExecution>>;
+  try {
+    begun = await beginExecution(service, attemptId, prepared);
+  } catch (error) {
+    await release();
+    throw error;
+  }
+  if (!FfiPaymentAttemptDecision.Ready.instanceOf(begun)) {
+    await release();
+    throw new UserFacingError(blockedMessage(begun.inner.reason));
+  }
+  // Written before WDK sends: from here on, a restart finds this payment
+  // and never offers to pay it again.
+  book.setOutgoing(prepared.key, outgoingFor(prepared, attemptId, 'sending'));
   service.log.info(`paying request ${prepared.requestId.slice(0, 8)}: handoff issued`);
   return attemptId;
+}
+
+function beginExecution(service: PaykitService, attemptId: string, prepared: PreparedPayment) {
+  return service.call('beginPaymentExecution', (sdk, signal) => sdk.beginPaymentExecution(attemptId, executionChecks(prepared), { signal }));
+}
+
+/**
+ * A payment that never left the wallet: record Failed in the ledger (which
+ * frees the request or period to be paid again), then forget it. Recorded
+ * first, so a failed ledger call leaves a 'not-sent' entry that the next
+ * round or the next Pay retries; forgetting first would leave the ledger
+ * blocking the request with nothing to clear it.
+ */
+async function releaseUnsentPayment(service: PaykitService, key: string, entry: OutgoingPayment): Promise<void> {
+  const book = paymentRequestsOf(service).book;
+  try {
+    await recordOutcome(service, entry.attemptId, FfiPaymentOutcome.Failed);
+  } catch (error) {
+    if ((await attemptStatus(service, entry.attemptId)) !== FfiPaymentExecutionStatus.Failed) {
+      book.setOutgoing(key, { ...entry, stage: 'not-sent', updatedAt: Date.now() });
+      throw error;
+    }
+    // Already Failed (a retry after the first call went through): done.
+  }
+  book.forgetOutgoing(key);
+}
+
+/** Retry a 'not-sent' entry's release, if there is one. Never throws: a failure leaves the entry for later. */
+export async function settleUnsentPayment(service: PaykitService, key: string): Promise<void> {
+  const entry = paymentRequestsOf(service).book.outgoing(key);
+  if (entry?.stage !== 'not-sent') return;
+  try {
+    await releaseUnsentPayment(service, key, entry);
+    service.log.info(`released an unsent payment of ${entry.requestId.slice(0, 8)}`);
+  } catch (error) {
+    service.log.warn(`release unsent payment: ${describeError(error)}`);
+  }
+}
+
+/** The ledger's status for one attempt, or undefined if it can't be read. */
+async function attemptStatus(service: PaykitService, attemptId: string): Promise<FfiPaymentExecutionStatus | undefined> {
+  try {
+    const state = await service.call('allowanceAccountingState', (sdk, signal) => sdk.allowanceAccountingState({ signal }));
+    for (const occurrence of state?.history.occurrences ?? []) {
+      const attempt = occurrence.attempts.find((a) => a.attemptId === attemptId);
+      if (attempt) return attempt.status;
+    }
+  } catch {
+    // Unreadable: the caller treats it as "not known to be Failed".
+  }
+  return undefined;
 }
 
 export async function recordOutcome(service: PaykitService, attemptId: string, outcome: FfiPaymentOutcome): Promise<void> {
@@ -646,8 +727,8 @@ export async function finishPayment(
   const book = paymentRequestsOf(service).book;
   if ('failure' in result) {
     if (result.failure === 'not-sent') {
-      book.forgetOutgoing(prepared.key);
-      await recordOutcome(service, attemptId, FfiPaymentOutcome.Failed).catch((e) => service.log.warn(`record failed payment: ${describeError(e)}`));
+      const entry = book.outgoing(prepared.key) ?? outgoingFor(prepared, attemptId, 'sending');
+      await releaseUnsentPayment(service, prepared.key, entry).catch((e) => service.log.warn(`record failed payment: ${describeError(e)} (retrying next round)`));
     } else {
       book.updateOutgoing(prepared.key, { stage: 'unknown', outcome: 'unknown' });
       await recordOutcome(service, attemptId, FfiPaymentOutcome.Unknown).catch((e) => service.log.warn(`record unknown payment: ${describeError(e)}`));

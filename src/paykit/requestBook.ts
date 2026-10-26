@@ -33,7 +33,10 @@ export function paymentKey(counterparty: string, requestId: string, period?: Bil
  *   broadcast  WDK returned a transaction hash; the proof is not queued yet
  *   proof-sent submitPaymentProof queued the proof
  *   unknown    the send failed in a way that may have reached the network: never retried
- * `settled` is set once the transaction is confirmed and the outcome recorded.
+ *   not-sent   nothing left the wallet, but recording Failed in the ledger
+ *              failed too: the next round (or the next Pay) records it and
+ *              forgets the entry, which frees the request to be paid again
+ * `outcome` is set once the outcome is recorded in the ledger.
  */
 export type OutgoingPayment = {
   counterparty: string;
@@ -46,7 +49,7 @@ export type OutgoingPayment = {
   endpointIdentifier: string;
   paymentAppId: string;
   attemptId: string;
-  stage: 'sending' | 'broadcast' | 'proof-sent' | 'unknown';
+  stage: 'sending' | 'broadcast' | 'proof-sent' | 'unknown' | 'not-sent';
   txHash?: string;
   /** Outcome recorded in the ledger (recordPaymentOutcome). */
   outcome?: 'succeeded' | 'failed' | 'unknown';
