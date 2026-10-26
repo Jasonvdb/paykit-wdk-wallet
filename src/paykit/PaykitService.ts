@@ -281,7 +281,12 @@ export class PaykitService {
         releaseSdk(sdk);
         log.error(`restore backup: ${describeError(error)}`);
         if (paykitErrorTag(error) === PaykitFfiError_Tags.Policy) {
-          throw new UserFacingError('This phone already has contacts or requests for this identity, so the backup was not restored over them.');
+          // The SDK refuses for two reasons (paykit-sdk backup/mod.rs): state already here, or other SDK work holding a lease.
+          throw new UserFacingError(
+            describeError(error).includes('in progress')
+              ? "The wallet was busy, so the backup wasn't restored. Try again in a moment."
+              : 'This phone already has contacts or requests for this identity, so the backup was not restored over them.',
+          );
         }
         throw error;
       }

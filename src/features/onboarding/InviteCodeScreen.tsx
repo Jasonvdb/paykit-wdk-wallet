@@ -20,24 +20,39 @@
 // backup made in You (src/paykit/backup.ts). It is opened with the
 // recovery phrase and restored as part of signing in, before anything
 // else is written, because Paykit restores only into an identity with no
-// state on this phone yet.
+// state on this phone yet. Once signing in has worked, the backup is
+// restored: a retry after a failed publish reuses that connection and
+// only publishes again, never restoring a second time (the SDK would
+// refuse, and the screen would wrongly say nothing was restored).
 import * as Clipboard from 'expo-clipboard';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { demoPrefill } from '../../config/demo';
 import type { OnboardingScreenProps } from '../../navigation/types';
-import { describeError, identityExistsAfter, looksLikeBackup, signUpFailureMessage, signUpFailureOf, usePaykit, userMessageFor } from '../../paykit';
+import {
+  describeError,
+  identityExistsAfter,
+  looksLikeBackup,
+  signUpFailureMessage,
+  signUpFailureOf,
+  usePaykit,
+  userMessageFor,
+  type PaykitService,
+} from '../../paykit';
 import { walletOrigin } from '../../settings/appSettings';
 import { Button, Input, Screen, Text, space } from '../../ui';
 
 export function InviteCodeScreen({ navigation }: OnboardingScreenProps<'InviteCode'>) {
-  const { connect, log } = usePaykit();
+  const { connect, log, service: currentService } = usePaykit();
+  // The connection signing in made (and the backup it restored), kept for a retry of the publish step.
+  const connectedRef = useRef<PaykitService | undefined>(undefined);
   const [isNewIdentity, setIsNewIdentity] = useState(() => walletOrigin() === 'created');
   const [code, setCode] = useState(demoPrefill.signupCode ?? '');
   const [step, setStep] = useState<string>();
   const [error, setError] = useState<string>();
   const [backup, setBackup] = useState<string>();
+  const [backupRestored, setBackupRestored] = useState(false);
   const [backupNote, setBackupNote] = useState<string>();
 
   const pasteBackup = async () => {
@@ -57,7 +72,14 @@ export function InviteCodeScreen({ navigation }: OnboardingScreenProps<'InviteCo
     let connected = false;
     try {
       setStep('Connecting your identity…');
-      const service = await connect({ signupCode, restoreBackup: isNewIdentity ? undefined : backup });
+      let service = connectedRef.current;
+      if (!service || service !== currentService) {
+        service = await connect({ signupCode, restoreBackup: isNewIdentity ? undefined : backup });
+        connectedRef.current = service;
+        // Restored now (if there was one): never paste it over this state again.
+        setBackupRestored(service.restoredFromBackup !== undefined);
+        setBackup(undefined);
+      }
       connected = true;
       setStep('Publishing your payment keys…');
       await service.setUpIdentity();
@@ -122,7 +144,11 @@ export function InviteCodeScreen({ navigation }: OnboardingScreenProps<'InviteCo
             />
             <View style={styles.backup}>
               <Text variant="bodyStrong">Contacts and requests</Text>
-              {backup ? (
+              {backupRestored ? (
+                <Text color="seal" testID="backup-restored">
+                  Backup restored.
+                </Text>
+              ) : backup ? (
                 <>
                   <Text color="seal" testID="backup-pasted">
                     Backup pasted. It is opened with your recovery phrase and restored when you sign in.
