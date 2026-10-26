@@ -1,7 +1,6 @@
 // You tab: profile, your pay-me code, what you publish publicly, test
 // funds, Bitcoin from contacts, recovery phrase, contacts and requests
-// backup, network details, sync
-// status and log.
+// backup, network details, sync status and log.
 //
 // The sync status and event log are here so developers can watch the loop
 // work. The loop never signs in by itself (staging rate-limits sign-ins),
