@@ -230,17 +230,24 @@ export class PrivateListStore {
 
   /**
    * Every address a contact shared with us privately -> their pubky. EVM
-   * addresses are lowercased (they are case-insensitive). Used to put a
-   * name on activity rows.
+   * addresses are lowercased (they are case-insensitive). Used to name the
+   * person on our payments to these addresses. An address two contacts
+   * both claim names neither: nothing proves which one controls it.
    */
   addressOwners(): ReadonlyMap<string, string> {
     if (this.book?.revision === this.revision) return this.book.owners;
     const owners = new Map<string, string>();
+    const disputed = new Set<string>();
     for (const [counterparty, list] of this.incoming) {
       for (const address of Object.values(list.addresses)) {
-        if (address) owners.set(addressKey(address), counterparty);
+        if (!address) continue;
+        const key = addressKey(address);
+        const owner = owners.get(key);
+        if (owner !== undefined && owner !== counterparty) disputed.add(key);
+        else owners.set(key, counterparty);
       }
     }
+    for (const key of disputed) owners.delete(key);
     this.book = { revision: this.revision, owners };
     return owners;
   }

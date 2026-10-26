@@ -8,11 +8,13 @@
 //               so a receive on account k is from the contact who owns k;
 //               a send from account k is a Collect back to account 0.
 //   their side  the addresses a contact shared with us in their Private
-//               Payment List: a send to one is "You paid Ben", a USD₮
-//               transfer from one is "Ben paid you".
-//
-// A transaction that paid a payment request names the other person through
-// the request's proof (Phase 5), whichever account or address it used.
+//               Payment List: a send to one is "You paid Ben". Outgoing
+//               only: we chose to pay that address. Nothing proves Ben
+//               controls it (he could list anyone's address), so money
+//               arriving *from* it is not labelled as his.
+//   requests    a transaction we know paid a payment request: our own
+//               payment, or one our on-chain check verified
+//               (src/paykit/requestLinks.ts), whichever account it used.
 //
 // Bitcoin receives on account 0 carry no sender address, so they stay
 // "Received". Pure; unit tested. The hook that feeds it is
@@ -47,8 +49,7 @@ export function activityPersonFor(item: ActivityItem, book: AddressBook): Activi
   if (request && (request.role === 'payer') === (item.direction === 'out')) {
     return { publicKey: request.publicKey, role: item.direction === 'in' ? 'paid-you' : 'you-paid' };
   }
-  if (isFaucetMint(item) || !item.counterpartyAddress) return undefined;
+  if (item.direction === 'in' || isFaucetMint(item) || !item.counterpartyAddress) return undefined;
   const owner = book.addressOwner(item.counterpartyAddress);
-  if (!owner) return undefined;
-  return { publicKey: owner, role: item.direction === 'in' ? 'paid-you' : 'you-paid' };
+  return owner ? { publicKey: owner, role: 'you-paid' } : undefined;
 }

@@ -34,9 +34,14 @@ describe('activityPersonFor', () => {
     expect(activityPersonFor({ ...base, direction: 'out', counterpartyAddress: BEN_BTC }, book)).toEqual({ publicKey: BEN, role: 'you-paid' });
   });
 
-  it('attributes USD₮ from their address, in any letter case', () => {
-    const usdt: ActivityItem = { ...base, chain: 'ethereum', asset: 'usdt', counterpartyAddress: '0x83A881Ddad0F675A3d57d306F3F4E6b352b95CD0' };
-    expect(activityPersonFor(usdt, book)).toEqual({ publicKey: BEN, role: 'paid-you' });
+  it('attributes USD₮ we sent to their address, in any letter case', () => {
+    const usdt: ActivityItem = { ...base, chain: 'ethereum', asset: 'usdt', direction: 'out', counterpartyAddress: '0x83A881Ddad0F675A3d57d306F3F4E6b352b95CD0' };
+    expect(activityPersonFor(usdt, book)).toEqual({ publicKey: BEN, role: 'you-paid' });
+  });
+
+  it('never names a contact on money arriving from an address they listed (anyone can list any address)', () => {
+    const usdt: ActivityItem = { ...base, chain: 'ethereum', asset: 'usdt', counterpartyAddress: BEN_EVM };
+    expect(activityPersonFor(usdt, book)).toBeUndefined();
   });
 
   it('leaves unknown addresses, account-0 BTC receives and faucet mints alone', () => {

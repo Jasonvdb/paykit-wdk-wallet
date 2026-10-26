@@ -147,4 +147,12 @@ describe('PrivateListStore', () => {
     expect(store.addressOwners().size).toBe(0);
     expect(changes).toBeGreaterThanOrEqual(5);
   });
+
+  it('names nobody on an address two contacts both claim', () => {
+    const store = new PrivateListStore();
+    store.setIncoming(BEN, { addresses: { btc: BTC, usdt: EVM }, loadedAt: 1 });
+    store.setIncoming(CAT, { addresses: { usdt: EVM.toUpperCase().replace('0X', '0x') }, loadedAt: 2 });
+    expect(store.addressOwners().has(addressKey(EVM))).toBe(false);
+    expect(store.addressOwners().get(BTC)).toBe(BEN);
+  });
 });
