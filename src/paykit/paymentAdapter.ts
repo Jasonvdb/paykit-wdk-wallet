@@ -11,6 +11,11 @@
 // Receiving:
 // - Public details: BTC account 0 + EVM account 0.
 // - Private details per contact: that contact's own BTC account + EVM 0.
+//   If either address is not cached yet, the adapter throws
+//   `receiving_details_not_ready` instead of answering with a shorter list:
+//   Paykit treats every Private Payment List as complete, so a shorter list
+//   would remove endpoints the contact already has. The SDK reports that
+//   contact as failed and a later round retries.
 // - Reservations: our per-contact addresses are stable, not one-time, so
 //   `reservePrivateReceivingDetails` answers "use current details" and the
 //   SDK then calls `currentPrivateReceivingDetails`. Cancelling therefore
@@ -39,6 +44,7 @@ import {
   type FfiSdkPaymentAdapter,
 } from '@synonymdev/react-native-paykit';
 
+import { ENDPOINT_BTC } from '../config/paykit';
 import type { ReceivingAddressCache } from './addressCache';
 import { canonicalPayload, parseEndpoint, payableCandidateIds, type ReceivingDetail } from './endpoints';
 
@@ -67,7 +73,11 @@ export class WdkPaymentAdapter implements FfiSdkPaymentAdapter {
   }
 
   currentPrivateReceivingDetails(counterparty: string): FfiPrivateReceivingDetail[] {
-    return guard('private_details_failed', () => toFfiDetails(this.cache.privateReceivingDetails(counterparty)));
+    return guard('private_details_failed', () => {
+      const details = this.cache.privateReceivingDetails(counterparty);
+      if (!details) throw adapterError('receiving_details_not_ready', 'addresses not derived yet');
+      return toFfiDetails(details);
+    });
   }
 
   reservePrivateReceivingDetails(_counterparty: string): FfiPrivateReceivingDetailReservationResponse {
@@ -116,20 +126,30 @@ function buildTarget(identifier: string, payloadText: string): FfiPaymentTarget 
 
 /**
  * The explicit-input form of a contact's private details, for
- * `syncPrivatePaymentListsWithReservationsAndProcessOutbound`. Reservation
- * ids are stable per identifier and account, so re-sending the same list is
- * idempotent; the attribution records which BTC account it came from.
+ * `syncPrivatePaymentListsWithReservationsAndProcessOutbound`, or
+ * `undefined` when the addresses are not cached yet. Skip the contact in
+ * that case: an empty input list would clear their view of our endpoints.
+ *
+ * The one rule here: BTC comes from the contact's own account, USD₮ from
+ * the shared account 0. Reservation ids are stable per identifier and
+ * account, so re-sending the same list is idempotent; the attribution
+ * records which account each address belongs to.
  */
 export function reservationInputsFor(
   cache: ReceivingAddressCache,
   counterparty: string,
-): FfiPrivatePaymentEndpointReservationInput[] {
-  const accountIndex = cache.ensureContactAccount(counterparty);
-  return cache.privateReceivingDetails(counterparty).map(({ identifier, payload }) => ({
-    reservationId: `${identifier}:${identifier.startsWith('btc') ? accountIndex : 0}`,
-    identifier,
-    payload,
-    expiresAt: undefined,
-    attribution: new Map([['account_index', String(identifier.startsWith('btc') ? accountIndex : 0)]]),
-  }));
+): FfiPrivatePaymentEndpointReservationInput[] | undefined {
+  const details = cache.privateReceivingDetails(counterparty);
+  if (!details) return undefined;
+  const contactAccount = cache.ensureContactAccount(counterparty);
+  return details.map(({ identifier, payload }) => {
+    const sourceAccount = identifier === ENDPOINT_BTC ? contactAccount : 0;
+    return {
+      reservationId: `${identifier}:${sourceAccount}`,
+      identifier,
+      payload,
+      expiresAt: undefined,
+      attribution: new Map([['account_index', String(sourceAccount)]]),
+    };
+  });
 }

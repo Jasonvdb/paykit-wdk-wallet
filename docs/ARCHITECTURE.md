@@ -195,9 +195,12 @@ That is why:
 - the payment adapter reads a **ReceivingAddressCache** that the app fills
   ahead of time from WDK. `PaykitProvider` copies account-0 addresses in as
   soon as WDK derives them, and derives contacts' BTC addresses whenever a
-  contact account is allocated. If the adapter is asked for a contact address
-  that is not derived yet, it answers with what it has (USD₮ only) and
-  schedules the derivation on a later tick.
+  contact account is allocated. If the adapter is asked for a contact's
+  private details before both addresses are cached, it throws
+  `receiving_details_not_ready` instead of answering with a shorter list
+  (Paykit treats every Private Payment List as complete, so a shorter list
+  would remove endpoints), and schedules the derivation on a later tick. A
+  later round retries.
 
 Account model: BTC account 0 and EVM account 0 are public and spend
 everything. Each contact gets a stable BTC account index (1, 2, ...) for its

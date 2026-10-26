@@ -52,10 +52,20 @@ describe('ReceivingAddressCache', () => {
     cache.setPublicAddresses({ btc: BTC0, evm: EVM });
     const index = cache.ensureContactAccount(ALICE);
     cache.setBtcAddress(index, 'tb1qalice');
-    const details = cache.privateReceivingDetails(ALICE);
+    const details = cache.privateReceivingDetails(ALICE) ?? [];
     expect(details.map((d) => d.identifier)).toEqual([ENDPOINT_USDT, ENDPOINT_BTC]);
     expect(JSON.parse(details[1]!.payload)).toEqual({ value: 'tb1qalice' });
     expect(cache.contactForBtcAddress('tb1qalice')).toBe(ALICE);
+  });
+
+  it('never returns a partial private list', () => {
+    const cache = new ReceivingAddressCache(memoryStore());
+    const index = cache.ensureContactAccount(ALICE);
+    cache.setBtcAddress(index, 'tb1qalice');
+    // No EVM address yet: a BTC-only list would drop USD₮ for Alice.
+    expect(cache.privateReceivingDetails(ALICE)).toBeUndefined();
+    cache.setPublicAddresses({ btc: BTC0, evm: EVM });
+    expect(cache.privateReceivingDetails(ALICE)).toHaveLength(2);
   });
 
   it('reports a missing contact address asynchronously instead of blocking', async () => {
@@ -63,8 +73,8 @@ describe('ReceivingAddressCache', () => {
     cache.setPublicAddresses({ btc: BTC0, evm: EVM });
     const missing: [string, number][] = [];
     cache.onMissingContactAddress((pubky, index) => missing.push([pubky, index]));
-    const details = cache.privateReceivingDetails(BOB);
-    expect(details.map((d) => d.identifier)).toEqual([ENDPOINT_USDT]);
+    // No BTC address for Bob yet: a USD₮-only list would drop BTC for him.
+    expect(cache.privateReceivingDetails(BOB)).toBeUndefined();
     expect(missing).toEqual([]); // not inside the (synchronous) adapter call
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(missing).toEqual([[BOB, 1]]);

@@ -141,7 +141,7 @@ export class ReceivingAddressCache {
       .sort((a, b) => a.accountIndex - b.accountIndex);
   }
 
-  /** The contact whose BTC account has this address, if any (for activity attribution). */
+  /** The contact whose BTC account has this address, if any. Used in Phase 4 to attribute incoming BTC. */
   contactForBtcAddress(address: string): string | undefined {
     for (const [pubky, index] of Object.entries(this.contactAccounts.accounts)) {
       if (this.btcAddresses.get(index) === address) return pubky;
@@ -161,24 +161,29 @@ export class ReceivingAddressCache {
 
   /**
    * What we share privately with one contact: their own BTC address plus the
-   * shared USD₮ address. Synchronous and side-effect free apart from
-   * allocating the index, so it is safe inside a Paykit callback. If the BTC
-   * address is not derived yet, only USD₮ is returned and the missing-address
-   * listeners are told (on a later tick) so the next sync can include it.
+   * shared USD₮ address, or `undefined` if either is not known yet.
+   *
+   * Never a partial list: Paykit treats every Private Payment List as
+   * complete, so a list without BTC would remove BTC from what the contact
+   * sees, and an empty one would clear it. When something is missing, the
+   * caller fails this round and a later round retries; a missing contact
+   * address is also reported to the missing-address listeners (on a later
+   * tick) so the provider derives it.
+   *
+   * Synchronous and side-effect free apart from allocating the index, so it
+   * is safe inside a Paykit callback.
    */
-  privateReceivingDetails(pubky: string): ReceivingDetail[] {
-    const details: ReceivingDetail[] = [];
-    if (this.publicAddresses.evm) details.push(usdtReceivingDetail(this.publicAddresses.evm));
+  privateReceivingDetails(pubky: string): ReceivingDetail[] | undefined {
     const accountIndex = this.ensureContactAccount(pubky);
     const btc = this.btcAddresses.get(accountIndex);
-    if (btc) {
-      details.push(btcReceivingDetail(btc));
-    } else {
+    if (!btc) {
       // Never call back into Paykit or WDK from here; just schedule the work.
       setTimeout(() => {
         for (const listener of this.missingListeners) listener(pubky, accountIndex);
       }, 0);
     }
-    return details;
+    const evm = this.publicAddresses.evm;
+    if (!btc || !evm) return undefined;
+    return [usdtReceivingDetail(evm), btcReceivingDetail(btc)];
   }
 }

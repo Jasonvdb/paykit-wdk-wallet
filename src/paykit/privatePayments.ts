@@ -4,8 +4,9 @@
 // - Share our private payment list with each Linked contact: their own BTC
 //   account address + the shared USD₮ address. Use
 //   `reservationInputsFor(service.addressCache, peer)` (./paymentAdapter.ts)
-//   with `syncPrivatePaymentListsWithReservationsAndProcessOutbound`, and
-//   re-share when a contact's BTC address is first derived or a link
+//   with `syncPrivatePaymentListsWithReservationsAndProcessOutbound`
+//   (it returns undefined until both addresses are cached: skip that
+//   contact this round, never send an empty list), and re-share when a contact's BTC address is first derived or a link
 //   becomes Linked. Register that as a sync loop hook inside
 //   registerPrivatePaymentHooks below (PaykitService.connect calls it once
 //   per service, before the loop starts):
