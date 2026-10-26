@@ -2,3 +2,4 @@
 vendor/*.tgz
 node_modules/
 .paykit-build.log
+.env.demo
