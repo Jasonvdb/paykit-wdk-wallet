@@ -53,12 +53,14 @@ This app has two engines and one UI:
 | `src/config/paykit.ts` | Frozen identifiers: staging homeserver, Pubky client id, Paykit app id, endpoint identifiers. |
 | `src/config/sync.ts` | Poll intervals, call timeout, link retry backoff. |
 | `src/config/demo.ts` | Dev-only prefill from the git-ignored `demo.local.ts`. |
+| `src/config/versions.ts` | WDK and Paykit package versions for You > Network details; a unit test keeps them in step with `package.json`. |
 | `src/settings/appSettings.ts` | Non-secret flags in plain MMKV (onboarding complete). |
 | `src/wallet/` | The wallet service (see below). |
 | `src/paykit/` | The Paykit service (see below). |
 | `src/ui/` | Design system from `docs/DESIGN.md`, including the seal (`src/ui/seal/`). |
-| `src/navigation/` | Route types, root gate, onboarding stack, tabs, deep links (`contact`, `send`, `receive`, tab names). |
-| `src/features/<feature>/` | Screens, one folder per feature: `onboarding`, `wallet`, `people`, `requests`, `you`. Phase-specific parts of shared screens sit in subfolders, e.g. `wallet/send/`, `wallet/receive/`, `wallet/activity/`. |
+| `src/navigation/` | Route types, root gate, onboarding stack, tabs, deep links (`contact`, `send`, `receive`, `profile`, `scan`, tab names). |
+| `src/features/<feature>/` | Screens, one folder per feature: `onboarding`, `wallet`, `people`, `requests`, `you`. Phase-specific parts of shared screens sit in subfolders, e.g. `wallet/send/`, `wallet/receive/`, `wallet/activity/`, `people/scan/`. |
+| `src/features/people/PersonSeal.tsx` | A seal with the person's profile photo from the profile cache. Every screen that shows a person uses it. |
 | `src/media/pickProfilePhoto.ts` | Pick, crop and shrink a profile photo for upload. |
 | `wdk.config.js` | Which WDK wallet modules go into the worklet, and which account methods the app may call. |
 | `plugins/withPaykitSimulatorArchs.js` | Expo config plugin: arm64-only iOS simulator builds (Paykit ships no x86_64 slice). |
@@ -147,12 +149,19 @@ class PaykitService {
   call<T>(label: string, task: (sdk, signal: AbortSignal) => Promise<T>, priority?: 'user' | 'background'): Promise<T>;
   dispose(): void;                                         // stops the loop, cancels queued calls, frees the SDK handle
 
+  readonly profiles: ProfileDirectory;                     // cached names + avatars (see "Profiles and avatars")
+
   setUpIdentity(): Promise<FfiPaykitAppRegistry>;          // Noise key authorization + app registry, then public endpoints
-  publishProfile(input: { displayName?: string; avatar?: { bytes: ArrayBuffer; contentType } }): Promise<void>;
+  publishProfile(input: { displayName?: string; avatar?: { bytes; contentType } | null }): Promise<void>;
+                                                           // left out = keep, '' = remove name, null = remove photo
   currentProfile(): Promise<FfiProfileResolution | undefined>;
   resolveProfile(publicKey: string): Promise<FfiProfileResolution | undefined>;
-  fetchImageDataUri(pubkyUri: string): Promise<string | undefined>;
+  fetchImageDataUri(pubkyUri: string, priority?): Promise<string | undefined>;  // size-capped, type from magic bytes
   setPublicAddresses(addresses: { btc: string; evm: string }): void;  // cache + publish once the app is registered
+  publicEndpointChoice(): { btc: boolean; usdt: boolean };
+  setPublicEndpointChoice(choice): Promise<void>;          // persist, then publish / remove to match
+  publicEndpointStatus(): PublicEndpointStatus;            // { state: waiting | publishing | published | failed, published[], failed[], at? }
+  subscribePublicEndpointStatus(listener): () => void;
   syncPublicEndpoints(priority?): Promise<FfiEndpointSyncReport>;      // the raw publish call
   normalizeKey(text: string): string;
   resolvePeer(text: string): Promise<{ publicKey; registry?; publicPayment; profile? }>;
@@ -174,7 +183,17 @@ useContacts(): ContactSummary[]                            // { publicKey, label
 useLinkState(pubky?: string): LinkState                    // none | waiting | connecting | linked | recovery | unreachable | blocked
 useSyncStatus(): SyncStatus | undefined
 useSyncLog(): SyncLogEntry[]
+usePersonProfile(pubky?, hint?): { displayName?: string; image?: string /* data: URI */ }
+useOwnProfile(): { displayName?; image? }
+usePublicEndpointStatus(): PublicEndpointStatus | undefined
 contactLinkFor(pubky), keyFromContactLink(text)
+pubkyFromText(text): string | undefined                    // shape check for typed / scanned text; normalizeKey validates
+// public payments (pay anyone by pubky)
+resolvePublicPaymentOptions(service, text): Promise<{ options: PublicPaymentOptions; profile? }>
+acceptedAssets(options): ('btc' | 'usdt')[]
+cannotPayReason(options, asset, name): string | undefined  // a sentence with a next step
+privatePaymentAddressesFor(service, pubky)                 // Phase 4 hook; undefined until then
+loadNetworkDetails(service): Promise<NetworkDetails>       // identityStatus + our own app registry
 // presentation, in src/ui: linkStateWords(state), sealRingFor(state)
 ```
 
@@ -194,7 +213,11 @@ contactLinkFor(pubky), keyFromContactLink(text)
 | `syncLoop.ts` | The foreground sync loop and its extension hooks. |
 | `eventLog.ts` | Secret-free developer log for You > Sync status. |
 | `errors.ts`, `keys.ts`, `bytes.ts` | Small helpers. |
-| `privatePayments.ts`, `requests.ts` | Extension points for Phases 4 and 5. |
+| `profiles.ts` | `ProfileDirectory`: names and avatars per pubky, cached 10 minutes, deduplicated loads, retry pause. No native imports, unit tested. |
+| `publicPaymentOptions.ts` | Pure: turns a public endpoint resolution into checked addresses per asset, and says why someone can't be paid. Unit tested. |
+| `publicPayments.ts` | `resolvePublicPaymentOptions`: SDK lookup (registry, public endpoints, profile) mapped through the pure module. |
+| `networkDetails.ts` | `loadNetworkDetails` for You > Network details. |
+| `privatePayments.ts`, `requests.ts` | Extension points for Phases 4 and 5. `privatePaymentAddressesFor` is the Phase 4 hook the Send screen already calls. |
 
 ### Why the callbacks are synchronous, and the address cache
 
@@ -247,6 +270,84 @@ state"). So the service publishes them only after `setUpIdentity()` (or,
 after onboarding, straight away), and only counts a publish with no failed
 endpoint as done. Anything else is retried from the next sync round.
 
+What gets published is the account-0 address of each asset switched on in
+You > What you publish (`publicEndpointChoice`, persisted per identity in
+the encrypted `paykit-app-<id>` MMKV file, both on by default).
+`syncPublicEndpointsWithReceivingDetails` publishes the list it is given
+and removes our other SDK-managed endpoints, so switching an asset off
+removes its endpoint from the homeserver, and an empty list (both off)
+removes all of them. Because an empty list is destructive, the service
+sends one only when both addresses are known and both switches are off,
+never because addresses are still loading. If the choice changes while a
+publish runs, the service publishes again for the new choice. Private
+payment lists are not affected: contacts always get both private
+addresses.
+
+"Check what others see" resolves your own pubky with
+`resolvePublicContactPayment`, which reads the published data the way a
+payer would.
+
+### Profiles and avatars
+
+`service.profiles` (`ProfileDirectory`, `profiles.ts`) caches each
+person's published name and avatar: the profile (from `resolveProfile`
+with the pubky.app fallback) for 10 minutes, the avatar by its URI (avatar
+URIs contain a content hash, so they never go stale). Loads run at
+background priority, are shared between callers, and a failure waits a
+minute before the next try. Screens read it with `usePersonProfile(pubky,
+hint)` (the hint is a contact record's profile from `observeState`) and
+`useOwnProfile()`; `PersonSeal` puts the photo in the seal.
+
+Profiles are someone else's data. Only `pubky://` images are fetched,
+through the SDK with a 512 KB cap (an `https` URL could be used to see who
+views a profile), the image type comes from the file's magic bytes rather
+than its name, and names lose control characters and are cut at 128
+characters. Display order for a contact's name: your local label, then
+their published name, then the shortened key.
+
+Publishing (`publishProfile`) uploads a new photo first, reads the current
+profile, and publishes with that revision as `expectedRevision`, so a
+change made elsewhere in between fails with ConcurrentUpdate instead of
+being overwritten. The new profile goes straight into the cache.
+
+### Paying a person by pubky (public endpoints)
+
+The Send screen's "A person (pubky)" field (`wallet/send/PubkyRecipientField.tsx`):
+
+1. `pubkyFromText` checks the shape (bare key, `pk:` prefix or contact
+   link) on every keystroke; after a 300 ms pause `service.normalizeKey`
+   validates it with the SDK. Your own key is refused.
+2. `privatePaymentAddressesFor` (Phase 4 hook) is asked first, so a linked
+   contact will be paid at their private address once Phase 4 fills it in.
+3. Otherwise `resolvePublicPaymentOptions`: their app registry,
+   `resolvePublicContactPayment` and their profile. The payment adapter
+   already filters candidates; the pure `publicPaymentOptionsFrom` checks
+   again that each endpoint belongs to that pubky and that its payload
+   parses as one of ours (`parseEndpoint`), then keeps one address per
+   asset.
+4. The field reports `{ kind: 'pubky', publicKey, route, addresses }`.
+   If the chosen asset is missing, `cannotPayReason` says why ("Ben
+   doesn't accept USD₮ by pubky. Choose Bitcoin instead.", no wallet that
+   takes payments by pubky, homeserver unreachable, nothing published) and
+   Review stays disabled. The review shows the person and the exact address.
+
+The wallet then sends on chain with `useSend`, exactly like an address
+send. A pubky that nobody uses fails the registry lookup with a Transport
+error, the same as a network problem, so the message covers both.
+
+### Scanning codes
+
+`people/ScanQrScreen.tsx` reads a QR code from the camera (expo-camera,
+QR only, with its own permission step), from a photo in the library
+(`scanFromURLAsync`, the way to test on simulators) or from pasted text.
+`people/scan/parseScannedCode.ts` (pure, unit tested) decides where it
+goes: a pubky or contact link to Add person (after `normalizeKey`), a
+`tb1…`/`0x…` address, BIP-21, EIP-681 or `paykitwdk://send` link to Send
+with the recipient filled in. It caps the length, strips control
+characters, refuses mainnet and other EVM chains, and for an EIP-681 token
+transfer pays the `address=` payee, never the token contract. Amounts in
+codes are ignored: the payer types the amount and reviews the fee.
+
 ### The sync loop
 
 Paykit has no push. While the app is active, `PaykitSyncLoop` runs a round
@@ -271,7 +372,9 @@ connection (saved session first, then sign-in).
 
 ### Extension points for later phases
 
-- **Private payments (Phase 4)** go in `src/paykit/privatePayments.ts`: share
+- **Private payments (Phase 4)** go in `src/paykit/privatePayments.ts`. Fill
+  in `privatePaymentAddressesFor(service, pubky)` (the Send screen's pubky
+  field already prefers it over public endpoints), and share
   private lists with `reservationInputsFor` +
   `syncPrivatePaymentListsWithReservationsAndProcessOutbound` from a round
   hook, and pay contacts with `prepareAndResolvePrivateContactPayment` + the
@@ -294,13 +397,19 @@ haptic). Who receives the money is decoupled from how the person chose
 them, in `src/features/wallet/send/recipient.ts`:
 
 ```ts
-type SendRecipient = { kind: 'address'; label: string; addresses: Partial<Record<AssetId, string>> };
+type SendRecipient =
+  | { kind: 'address'; label: string; addresses: Partial<Record<AssetId, string>> }
+  | { kind: 'pubky'; label: string; publicKey: string; route: 'public' | 'private'; addresses: Partial<Record<AssetId, string>> };
 type RecipientFieldProps = { asset: AssetId; initialText?: string; onChange(recipient?: SendRecipient): void };
 ```
 
-Phase 2 ships `AddressRecipientField`. Phase 3 adds `kind: 'pubky'` and a
-pubky field that resolves public endpoints into `addresses`; Phase 4 adds a
-contact field for private endpoints. Review, send and success do not change.
+Phase 2 ships `AddressRecipientField`, Phase 3 `PubkyRecipientField`
+(see "Paying a person by pubky"); the compose step switches between them
+with "A person (pubky)" / "An address", opens on Person when the `to`
+param is a pubky, and switches to Person when a pubky is pasted into the
+address field. Phase 4 fills in `privatePaymentAddressesFor`, which the
+pubky field already asks first (`route: 'private'`). Review shows a
+person's seal, name and the address paid (`send/PersonRecipient.tsx`).
 
 ### Files that several phases edit
 
@@ -317,7 +426,7 @@ another, not in parallel**:
 
 A phase that adds to one of these screens should put its part in its own
 component file next to the screen (for example
-`src/features/wallet/send/PubkySend.tsx`) and keep its edit to the screen
+`src/features/wallet/send/PubkyRecipientField.tsx`) and keep its edit to the screen
 small. Phase 2 left marked slots (`{/* Phase 3: ... */}`, `{/* Phase 5: ... */}`)
 where those parts render. Edits to the barrels (`src/paykit/index.ts`, `src/wallet/index.ts`,
 `src/ui/index.ts`) and to routes (`src/navigation/types.ts`,
@@ -333,6 +442,8 @@ existing ones, so merges stay trivial.
 | MMKV encryption key | Keychain/Keystore (`paykit-state-encryption-key`) | A 32-byte AES-256 key carrying 192 random bits (24 random bytes as base64, because MMKV takes the key as a string). |
 | Paykit SDK state | Encrypted MMKV `paykit-state-<id>` | One snapshot value (blob + revision). |
 | Contact -> BTC account map | Encrypted MMKV `paykit-app-<id>` | Never reuses an index. |
+| Public endpoint choice (BTC / USD₮ on or off) | Encrypted MMKV `paykit-app-<id>` | Both on by default. |
+| Profiles and avatars of people | Memory only (`ProfileDirectory`) | Public data; reloaded after a restart. |
 | Onboarding flag, wallet origin | Plain MMKV `app-settings` | Not secret. The origin ('created' or 'restored') decides sign-up vs sign-in. |
 
 On iOS, Keychain items survive an app uninstall, while MMKV files do not.
@@ -372,5 +483,8 @@ use `ethers` and `@scure/base` (pinned devDependencies); the app does not.
 
 - Never reload JS with Cmd-R or the dev menu after Paykit has loaded; cold
   relaunch instead (see README). The WDK worklet does not hot reload either.
+  Fast Refresh counts too: saving a file while an app is open can leave its
+  Paykit handle disposed ("Paykit is disconnected" in the log), so relaunch
+  both apps cold after editing code.
 - One SDK handle per identity: always go through `usePaykit()`.
 - Amounts are `bigint` until they are formatted for display.

@@ -12,12 +12,17 @@ and [Pubky Paykit](https://github.com/pubky/paykit-rs) work together:
 
 ## Status
 
-Phases 1 (foundation) and 2 (wallet) are done: the app skeleton, design
-system, navigation, the wallet and Paykit service layers, and the WDK side
-of the app: receive cards with QR codes, sending to an address with a fee
-review, activity with a detail screen, the recovery phrase, "Get test
-USD₮", collecting BTC from contact accounts, and demo funding scripts.
-Later phases add identity, contacts and payment requests. The plan is in
+Phases 1 (foundation), 2 (wallet) and 3 (identity and public payments)
+are done: the app skeleton, design system, navigation, the wallet and
+Paykit service layers, and the WDK side of the app: receive cards with QR
+codes, sending to an address with a fee review, activity with a detail
+screen, the recovery phrase, "Get test USD₮", collecting BTC from contact
+accounts, and demo funding scripts. Phase 3 adds your profile (name and
+photo, shown in every seal), the pay-me code (your pubky as a QR), public
+payment endpoints you switch on or off per asset, paying anyone by pubky
+through those endpoints, a QR scanner, and a developer "Network details"
+section. Later phases add contacts with private payments and payment
+requests. The plan is in
 [`docs/PLAN.md`](docs/PLAN.md), the design in [`docs/DESIGN.md`](docs/DESIGN.md)
 and the code structure in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
@@ -93,9 +98,27 @@ open from links:
 
 ```sh
 xcrun simctl openurl booted "paykitwdk://receive?asset=usdt"
+xcrun simctl openurl booted "paykitwdk://receive?code=pubky"           # your pay-me code
 xcrun simctl openurl booted "paykitwdk://send?to=<address>&asset=btc"   # fills the form; nothing is sent
+xcrun simctl openurl booted "paykitwdk://send?to=<pubky>&asset=usdt"    # pay a person by their public endpoints
+xcrun simctl openurl booted "paykitwdk://profile"                      # edit your name and photo
+xcrun simctl openurl booted "paykitwdk://scan"                         # scan a code (camera, photo or paste)
 xcrun simctl openurl booted "paykitwdk://you"                          # also wallet, people, requests
 ```
+
+To test the scanner on a simulator, put a screenshot of the other phone's
+pay-me code into the photo library and use "Choose a photo of a code":
+
+```sh
+xcrun simctl addmedia booted pay-me-code.png
+adb push pay-me-code.png /sdcard/Pictures/ && \
+  adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Pictures/pay-me-code.png
+```
+
+Public endpoints (You > What you publish) let anyone pay you by your
+pubky; switching an asset off removes its endpoint from your homeserver,
+and payers are told you don't accept it. Contacts get private addresses
+either way.
 
 `.env.demo` (git-ignored, mode 600) can hold `IOS_MNEMONIC`, `ANDROID_MNEMONIC`,
 one single-use staging signup code per platform, and the two public keys.
@@ -146,7 +169,7 @@ npm test
 ```
 
 Screenshots of each phase on both platforms are in
-[`docs/screenshots/`](docs/screenshots/) (`phase1/`, `phase2/`); the Phase 0 spike
+[`docs/screenshots/`](docs/screenshots/) (`phase1/`, `phase2/`, `phase3/`); the Phase 0 spike
 screenshots are in [`docs/spike/`](docs/spike/).
 
 ## Paykit package
