@@ -105,6 +105,10 @@ describe('readRequestTerms', () => {
 
   it('says why it cannot pay other assets, rails and addresses', () => {
     expect(readRequestTerms(plain({ amountAsset: 'eur', amountValue: '5' })).cannotPay).toMatch(/5 eur/);
+    // A peer's asset text is cleaned like names: no bidi overrides or invisible characters, and capped.
+    const spoof = readRequestTerms(plain({ amountAsset: 'usd\u202Etb', amountValue: '5\u200B0' }));
+    expect(spoof.rawAmount).toBe('50 usdtb');
+    expect(readRequestTerms(plain({ amountAsset: 'x'.repeat(300) })).rawAmount).toMatch(/^\S+ x{32}…$/);
     expect(readRequestTerms(plain({ amountValue: '1.123456789' })).cannotPay).toBeDefined();
     expect(readRequestTerms(plain({ acceptedIdentifiers: ['btc-lightning-bolt11'] })).cannotPay).toBeDefined();
     expect(readRequestTerms(plain({ paymentEndpoints: [[ENDPOINT_BTC, '{"value":"bc1qmainnet"}']] })).cannotPay).toBeDefined();

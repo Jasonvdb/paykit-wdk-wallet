@@ -186,7 +186,7 @@ export type RequestTermsView = {
   asset?: RequestAsset;
   /** Base units, when the asset is known and the decimal parses. */
   amount?: bigint;
-  /** The raw amount and asset, for a request this wallet cannot pay. */
+  /** The raw amount and asset, for a request this wallet cannot pay: cleaned and capped (cleanAmountPart). */
   rawAmount: string;
   note?: string;
   reference: string;
@@ -210,13 +210,27 @@ function noteFrom(metadataJson: string): string | undefined {
   return undefined;
 }
 
+/** A peer's amount or asset text, shown as is: cleaned like names, and short. */
+export const RAW_AMOUNT_PART_MAX_CHARS = 32;
+
+/**
+ * Paykit only forbids control characters in an asset, so a peer can send
+ * bidi overrides or invisible characters to make an amount read as
+ * something else, or a very long string. Strip those like names and notes,
+ * and cap the length.
+ */
+function cleanAmountPart(text: string): string {
+  const cleaned = cleanDisplayName(text) ?? '?';
+  return cleaned.length > RAW_AMOUNT_PART_MAX_CHARS ? `${cleaned.slice(0, RAW_AMOUNT_PART_MAX_CHARS)}…` : cleaned;
+}
+
 export function readRequestTerms(terms: PlainTerms): RequestTermsView {
   const asset = terms.amountAsset === 'btc' || terms.amountAsset === 'usdt' ? terms.amountAsset : undefined;
   const parsed = asset ? fromPaykitDecimal(terms.amountValue, asset) : undefined;
   const view: RequestTermsView = {
     asset,
     amount: parsed?.ok ? parsed.value : undefined,
-    rawAmount: `${terms.amountValue} ${terms.amountAsset}`,
+    rawAmount: `${cleanAmountPart(terms.amountValue)} ${cleanAmountPart(terms.amountAsset)}`,
     note: noteFrom(terms.metadataJson),
     reference: terms.reference,
     expiresAtMs: parseTime(terms.proposalExpiresAt),
