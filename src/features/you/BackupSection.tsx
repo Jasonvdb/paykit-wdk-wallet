@@ -100,13 +100,16 @@ export function BackupSection() {
   const last = status?.lastBackup;
   return (
     <View style={styles.root} testID="backup-section">
-      <Text color="graphite" variant="secondary">
-        Your recovery phrase brings back your money and your identity. Your contacts, private connections, requests and receipts live on this
-        phone: back them up here.
-      </Text>
-      <Text color="graphite" variant="secondary">
-        The backup is encrypted with a key from your recovery phrase, so only your phrase opens it.
-      </Text>
+      {/* In their own View: as direct siblings of the status line, whose height changes once it loads, iOS kept their old frames and cut off the last line. */}
+      <View style={styles.intro}>
+        <Text color="graphite" variant="secondary">
+          Your recovery phrase brings back your money and your identity. Your contacts, private connections, requests and receipts live on this
+          phone: back them up here.
+        </Text>
+        <Text color="graphite" variant="secondary">
+          The backup is encrypted with a key from your recovery phrase, so only your phrase opens it.
+        </Text>
+      </View>
       <Text testID="backup-status">
         {!status
           ? 'Checking…'
@@ -155,4 +158,5 @@ export function BackupSection() {
 const styles = StyleSheet.create({
   root: { gap: space.s, alignItems: 'stretch' },
   buttons: { gap: space.s },
+  intro: { gap: space.s },
 });
