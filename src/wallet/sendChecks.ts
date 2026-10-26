@@ -55,7 +55,7 @@ export function checkAffordable(input: { asset: AssetId; amount: bigint; balance
       fee !== undefined
         ? `The network fee is ${formatFee(fee, feeAsset)} and you have ${formatFee(gas, feeAsset)}.`
         : `You have ${formatFee(gas, feeAsset)}.`;
-    return { kind: 'gas', message: `Not enough ETH for gas. ${detail} Send a little Sepolia ETH to your USD₮ address.` };
+    return { kind: 'gas', message: `Not enough ETH for gas. ${detail} Get a little Sepolia ETH for your Ethereum address in You > Test funds.` };
   }
   return undefined;
 }

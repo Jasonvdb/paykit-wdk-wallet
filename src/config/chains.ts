@@ -40,6 +40,14 @@ export const AAVE_SEPOLIA_FAUCET = '0xC959483DBa39aa9E78757139af0e9a2EDEb3f42D';
 export const AAVE_FAUCET_MINT_SELECTOR = '0xc6c3bbe6';
 export const AAVE_FAUCET_MAX_MINT_UNITS = 10_000n * 10n ** 6n;
 
+/**
+ * Public faucets, opened from You > Test funds. Both need a person (a login
+ * or a captcha), which is why the app links to them instead of calling them.
+ * Sepolia ETH pays gas for USD₮ transfers and the "Get test USD₮" mint.
+ */
+export const SEPOLIA_ETH_FAUCET_URL = 'https://cloud.google.com/application/web3/faucet/ethereum/sepolia';
+export const MUTINYNET_FAUCET_URL = 'https://faucet.mutinynet.com';
+
 /** Block explorers, for links the user can open. */
 export const MUTINYNET_EXPLORER = 'https://mutinynet.com';
 export const SEPOLIA_EXPLORER = 'https://sepolia.etherscan.io';
