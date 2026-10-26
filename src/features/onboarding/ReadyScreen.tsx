@@ -5,12 +5,12 @@
 // onboarding stack for the tabs and Paykit reconnects automatically on
 // later launches. Adding someone happens from People (its empty state
 // offers "Add person"), because the tab routes only exist after the
-// switch.
+// switch. After a restore from a backup it says what came back.
 import { StyleSheet, View } from 'react-native';
 
 import { useOnboardingComplete } from '../../settings/appSettings';
 import type { OnboardingScreenProps } from '../../navigation/types';
-import { usePaykitService } from '../../paykit';
+import { backupSummaryWords, usePaykitService } from '../../paykit';
 import { Button, Screen, Text, space } from '../../ui';
 import { PersonSeal } from '../people/PersonSeal';
 import { PayMeCode } from '../wallet/receive/PayMeCode';
@@ -25,6 +25,11 @@ export function ReadyScreen(_props: OnboardingScreenProps<'Ready'>) {
         {service ? <PersonSeal pubky={service.publicKey} size={120} /> : null}
         <Text variant="title">You’re ready.</Text>
         <Text color="graphite">This is your seal. It is drawn from your public key, so it looks the same on every phone.</Text>
+        {service?.restoredFromBackup ? (
+          <Text color="seal" testID="ready-restored">
+            {`Restored from your backup: ${backupSummaryWords(service.restoredFromBackup)}. Private connections form again once your contacts' phones are online.`}
+          </Text>
+        ) : null}
         <Text color="graphite">Share your pay-me code so people can pay you or add you.</Text>
         {service ? <PayMeCode qrSize={168} showHeading={false} /> : null}
       </View>

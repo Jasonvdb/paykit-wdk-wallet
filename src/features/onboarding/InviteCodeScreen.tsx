@@ -14,14 +14,21 @@
 // usual cause (a used or mistyped invite code); telling "used" from
 // "invalid" needs the homeserver's error codes, which the SDK does not
 // expose as tags yet.
+//
+// A restored wallet can also bring back its contacts and requests: paste a
+// backup made in You (src/paykit/backup.ts). It is opened with the
+// recovery phrase and restored as part of signing in, before anything
+// else is written, because Paykit restores only into an identity with no
+// state on this phone yet.
 // TODO(Phase 6 — Polish): distinct messages per sign-up error once the SDK
 // reports them, and an optional Homegate self-serve invite.
+import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { demoPrefill } from '../../config/demo';
 import type { OnboardingScreenProps } from '../../navigation/types';
-import { describeError, usePaykit, userMessageFor } from '../../paykit';
+import { describeError, looksLikeBackup, usePaykit, userMessageFor } from '../../paykit';
 import { walletOrigin } from '../../settings/appSettings';
 import { Button, Input, Screen, Text, space } from '../../ui';
 
@@ -31,6 +38,18 @@ export function InviteCodeScreen({ navigation }: OnboardingScreenProps<'InviteCo
   const [code, setCode] = useState(demoPrefill.signupCode ?? '');
   const [step, setStep] = useState<string>();
   const [error, setError] = useState<string>();
+  const [backup, setBackup] = useState<string>();
+  const [backupNote, setBackupNote] = useState<string>();
+
+  const pasteBackup = async () => {
+    const text = await Clipboard.getStringAsync();
+    if (!looksLikeBackup(text)) {
+      setBackupNote("The clipboard doesn't hold a backup. Copy the whole backup text, then paste again.");
+      return;
+    }
+    setBackup(text);
+    setBackupNote(undefined);
+  };
 
   const signupCode = isNewIdentity ? code.trim() : undefined;
 
@@ -39,7 +58,7 @@ export function InviteCodeScreen({ navigation }: OnboardingScreenProps<'InviteCo
     let connected = false;
     try {
       setStep('Connecting your identity…');
-      const service = await connect({ signupCode });
+      const service = await connect({ signupCode, restoreBackup: isNewIdentity ? undefined : backup });
       connected = true;
       setStep('Publishing your payment keys…');
       await service.setUpIdentity();
@@ -103,6 +122,25 @@ export function InviteCodeScreen({ navigation }: OnboardingScreenProps<'InviteCo
               onPress={() => setIsNewIdentity(true)}
               testID="use-invite-code"
             />
+            <View style={styles.backup}>
+              <Text variant="bodyStrong">Contacts and requests</Text>
+              {backup ? (
+                <>
+                  <Text color="seal" testID="backup-pasted">
+                    Backup pasted. It is opened with your recovery phrase and restored when you sign in.
+                  </Text>
+                  <Button label="Don't restore it" variant="secondary" compact onPress={() => setBackup(undefined)} testID="backup-remove" />
+                </>
+              ) : (
+                <>
+                  <Text color="graphite">
+                    If you backed them up in the You tab, paste that backup to bring them back. Without it you start with no contacts.
+                  </Text>
+                  <Button label="Paste a backup" variant="secondary" compact onPress={() => void pasteBackup()} testID="backup-paste" />
+                </>
+              )}
+              {backupNote ? <Text color="alert">{backupNote}</Text> : null}
+            </View>
           </>
         )}
         {step ? <Text color="seal">{step}</Text> : null}
@@ -114,4 +152,5 @@ export function InviteCodeScreen({ navigation }: OnboardingScreenProps<'InviteCo
 
 const styles = StyleSheet.create({
   body: { gap: space.xl },
+  backup: { gap: space.s, alignItems: 'flex-start' },
 });

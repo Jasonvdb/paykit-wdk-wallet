@@ -38,8 +38,12 @@ export type PaykitContextValue = {
   service: PaykitService | undefined;
   /** The developer event log (You > Sync status). Lives across reconnects. */
   log: SyncEventLog;
-  /** Connect (or reconnect). Pass a signup code only for a wallet created on this device, during onboarding. */
-  connect: (options?: { signupCode?: string }) => Promise<PaykitService>;
+  /**
+   * Connect (or reconnect). Pass a signup code only for a wallet created on
+   * this device, and a sealed backup only for a restored one, both during
+   * onboarding (see PaykitService.connect).
+   */
+  connect: (options?: { signupCode?: string; restoreBackup?: string }) => Promise<PaykitService>;
 };
 
 export const PaykitContext = createContext<PaykitContextValue | null>(null);
@@ -59,7 +63,7 @@ export function PaykitProvider({ autoConnect, children }: { autoConnect: boolean
   const { status: walletStatus, getMnemonic } = wallet;
 
   const connect = useCallback(
-    (options: { signupCode?: string } = {}) => {
+    (options: { signupCode?: string; restoreBackup?: string } = {}) => {
       if (connecting.current) return connecting.current;
       const attempt = (async () => {
         if (walletStatus !== 'ready') throw new UserFacingError('The wallet is still starting. Try again in a moment.');
@@ -69,6 +73,7 @@ export function PaykitProvider({ autoConnect, children }: { autoConnect: boolean
           const next = await PaykitService.connect({
             mnemonic: await getMnemonic(),
             signupCode: options.signupCode,
+            restoreBackup: options.restoreBackup,
             // Onboarding only finishes after setUpIdentity has registered the app.
             appPublished: autoConnect,
             log,
