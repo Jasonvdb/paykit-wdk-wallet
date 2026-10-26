@@ -24,10 +24,14 @@
 // payer's wallet picks it).
 //
 // This app proposes as the payer (Allower) and picks conservative demo
-// defaults: an amount per payment, at most 10 payments and 4 payments'
-// worth an hour (rolling), 10 payments' worth in all, our one payment
-// method for the asset, and an end date. The checks here are for display
-// only ("this request is covered"); the SDK decides every payment.
+// defaults: an amount per payment with a floor of a tenth of it, at most
+// 10 payments and 4 payments' worth an hour (rolling), 10 payments' worth
+// in all, our one payment method for the asset, and an end date. The floor
+// and the total bound how many payments can ever be made (at most 100),
+// and so how many network fees: no limit counts fees, which the payer pays
+// on top. automaticFeeProblem also leaves a payment whose fee is out of
+// proportion for the person. The coverage check here is for display only
+// ("this request is covered"); the SDK decides every payment.
 import { formatAssetAmount, fromPaykitDecimal, toPaykitDecimal } from '../wallet/amounts';
 import { parseTime } from './recurrence';
 import { ENDPOINT_FOR_ASSET, type RequestAsset, type RequestTermsView } from './requestTerms';
@@ -123,6 +127,8 @@ export const PAYMENTS_PER_HOUR = 10;
 export const HOURLY_AMOUNT_IN_PAYMENTS = 4n;
 /** ...and this many payments' worth in all. */
 export const LIFETIME_IN_PAYMENTS = 10n;
+/** The smallest payment is this fraction of the largest (1/10), so tiny requests can't each cost a full network fee. */
+export const MINIMUM_DIVISOR = 10n;
 
 export type AllowanceDraft = { asset: RequestAsset; perPayment: bigint; duration: DurationChoice; nowMs: number };
 
@@ -133,7 +139,7 @@ export function buildAllowanceTerms(draft: AllowanceDraft): PlainAllowanceTerms 
   const decimal = (value: bigint) => toPaykitDecimal(value, draft.asset);
   return {
     asset: draft.asset,
-    perPayment: { minimum: '0', maximum: decimal(draft.perPayment) },
+    perPayment: { minimum: decimal(draft.perPayment / MINIMUM_DIVISOR), maximum: decimal(draft.perPayment) },
     periodLimits: [
       {
         amountLimit: decimal(draft.perPayment * HOURLY_AMOUNT_IN_PAYMENTS),
@@ -233,6 +239,29 @@ export function allowanceCovers(view: AllowanceTermsView, request: Pick<RequestT
   return true;
 }
 
+// Network fees -------------------------------------------------------------------------
+
+/**
+ * The most an automatic payment may pay in network fees, per fee asset
+ * (base units): 5,000 sats for Bitcoin, 0.0005 ETH of gas for a USD₮
+ * transfer (Sepolia gas usually costs well under a tenth of that).
+ */
+export const AUTOMATIC_FEE_CAPS = { btc: 5_000n, eth: 500_000_000_000_000n } as const;
+
+/**
+ * Why an automatic payment should wait for the person because of its
+ * network fee, or undefined. No Allowance limit counts fees, so the wallet
+ * draws the line: above the cap for the fee's asset, or (Bitcoin, where fee
+ * and amount are the same asset) more than half the amount.
+ */
+export function automaticFeeProblem(quote: { asset: RequestAsset; amount: bigint; fee: bigint; feeAsset: 'btc' | 'usdt' | 'eth' }): string | undefined {
+  const cap = quote.feeAsset === 'btc' ? AUTOMATIC_FEE_CAPS.btc : quote.feeAsset === 'eth' ? AUTOMATIC_FEE_CAPS.eth : undefined;
+  const tooHigh = (cap !== undefined && quote.fee > cap) || (quote.feeAsset === quote.asset && quote.fee * 2n > quote.amount);
+  if (!tooHigh) return undefined;
+  const feeText = quote.feeAsset === 'eth' ? `${formatAssetAmount(quote.fee, 'eth', { withSymbol: true })} of gas` : formatAssetAmount(quote.fee, quote.feeAsset, { withSymbol: true });
+  return `The network fee (${feeText}) is too high to pay automatically. You can pay it yourself.`;
+}
+
 // Usage -------------------------------------------------------------------------------
 
 /** One automatic payment counted against an Allowance: committed or still reserved (never a failed one). */
@@ -304,7 +333,7 @@ export function automaticBlockWords(tag: string, code?: string): string {
       case 'lifetime_amount_limit':
         return 'It would go over the total you allowed for automatic payments.';
       case 'amount_outside_range':
-        return 'It is more than you allowed for one automatic payment.';
+        return 'It is outside the amount you allowed for one automatic payment.';
       case 'expired':
         return 'Your automatic payments to them have ended.';
       case 'not_active':

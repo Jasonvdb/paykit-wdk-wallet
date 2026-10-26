@@ -1,5 +1,6 @@
 import {
   acceptProblem,
+  automaticFeeProblem,
   allowanceCovers,
   allowanceTermsWords,
   allowanceUsage,
@@ -18,7 +19,7 @@ describe('buildAllowanceTerms', () => {
     const terms = buildAllowanceTerms({ asset: 'usdt', perPayment: 5_000_000n, duration: 'day', nowMs: NOW + 123 });
     expect(terms).toEqual({
       asset: 'usdt',
-      perPayment: { minimum: '0', maximum: '5' },
+      perPayment: { minimum: '0.5', maximum: '5' },
       periodLimits: [{ amountLimit: '20', paymentCountLimit: 10, period: { kind: 'rolling', every: 1, unit: 'hour' } }],
       lifetimeAmountLimit: '50',
       activeFrom: undefined,
@@ -54,7 +55,7 @@ describe('readAllowanceTerms and words', () => {
 
   it('words the limits as sentences', () => {
     expect(allowanceTermsWords(view, date)).toBe(
-      'Up to 5.00 USD₮ a payment. At most 10 payments and 20.00 USD₮ an hour. 50.00 USD₮ in all. Until 2026-10-27T12:00:00.000Z.',
+      'From 0.50 USD₮ to 5.00 USD₮ a payment. At most 10 payments and 20.00 USD₮ an hour. 50.00 USD₮ in all. Until 2026-10-27T12:00:00.000Z.',
     );
   });
 
@@ -106,20 +107,21 @@ describe('acceptProblem', () => {
 describe('allowanceCovers', () => {
   const view = readAllowanceTerms(buildAllowanceTerms({ asset: 'usdt', perPayment: 5_000_000n, duration: 'day', nowMs: NOW }));
 
-  it('covers a request in the same asset up to the per-payment limit', () => {
+  it('covers a request in the same asset within the per-payment range', () => {
     expect(allowanceCovers(view, { asset: 'usdt', amount: 5_000_000n }, NOW)).toBe(true);
-    expect(allowanceCovers(view, { asset: 'usdt', amount: 1n }, NOW)).toBe(true);
+    expect(allowanceCovers(view, { asset: 'usdt', amount: 500_000n }, NOW)).toBe(true);
   });
 
-  it('does not cover more, another asset, an unpayable request or after expiry', () => {
+  it('does not cover more, less, another asset, an unpayable request or after expiry', () => {
     expect(allowanceCovers(view, { asset: 'usdt', amount: 5_000_001n }, NOW)).toBe(false);
-    expect(allowanceCovers(view, { asset: 'btc', amount: 1n }, NOW)).toBe(false);
-    expect(allowanceCovers(view, { asset: 'usdt', amount: 1n, cannotPay: 'no' }, NOW)).toBe(false);
-    expect(allowanceCovers(view, { asset: 'usdt', amount: 1n }, NOW + 86_400_000)).toBe(false);
+    expect(allowanceCovers(view, { asset: 'usdt', amount: 499_999n }, NOW)).toBe(false);
+    expect(allowanceCovers(view, { asset: 'btc', amount: 1_000n }, NOW)).toBe(false);
+    expect(allowanceCovers(view, { asset: 'usdt', amount: 1_000_000n, cannotPay: 'no' }, NOW)).toBe(false);
+    expect(allowanceCovers(view, { asset: 'usdt', amount: 1_000_000n }, NOW + 86_400_000)).toBe(false);
   });
 
   it('respects the allowed payment methods', () => {
-    expect(allowanceCovers({ ...view, endpoints: ['btc-mutinynet-p2wpkh'] }, { asset: 'usdt', amount: 1n }, NOW)).toBe(false);
+    expect(allowanceCovers({ ...view, endpoints: ['btc-mutinynet-p2wpkh'] }, { asset: 'usdt', amount: 1_000_000n }, NOW)).toBe(false);
   });
 });
 
@@ -153,5 +155,21 @@ describe('automaticBlockWords', () => {
     expect(automaticBlockWords('SharedRule', 'lifetime_amount_limit')).toMatch(/total/);
     expect(automaticBlockWords('ManualOnly')).toMatch(/yourself/);
     expect(automaticBlockWords('Something')).toBeTruthy();
+  });
+});
+
+describe('automaticFeeProblem', () => {
+  it('lets a Bitcoin payment through when the fee is small next to it', () => {
+    expect(automaticFeeProblem({ asset: 'btc', amount: 2_000n, fee: 282n, feeAsset: 'btc' })).toBeUndefined();
+  });
+
+  it('leaves a Bitcoin payment for the person when the fee is over half the amount or over the cap', () => {
+    expect(automaticFeeProblem({ asset: 'btc', amount: 500n, fee: 251n, feeAsset: 'btc' })).toMatch(/too high to pay automatically/);
+    expect(automaticFeeProblem({ asset: 'btc', amount: 100_000n, fee: 5_001n, feeAsset: 'btc' })).toMatch(/too high/);
+  });
+
+  it('caps the gas of a USD₮ transfer, whatever its amount', () => {
+    expect(automaticFeeProblem({ asset: 'usdt', amount: 1n, fee: 65_000_000_000_000n, feeAsset: 'eth' })).toBeUndefined();
+    expect(automaticFeeProblem({ asset: 'usdt', amount: 5_000_000n, fee: 500_000_000_000_001n, feeAsset: 'eth' })).toMatch(/ETH of gas\) is too high/);
   });
 });

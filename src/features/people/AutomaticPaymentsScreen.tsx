@@ -2,7 +2,8 @@
 // requests without a tap each time, within limits.
 //
 //   asset        Bitcoin or USD₮ (one Allowance covers one asset)
-//   per payment  the most one request may ask for
+//   per payment  the most one request may ask for (the least is a tenth
+//                of it, so tiny requests can't each cost a network fee)
 //   ends after   1 hour, 1 day or 1 week
 //   summary      every limit in words (src/paykit/allowanceTerms.ts): the
 //                demo also caps 10 payments and 4 payments' worth an hour,

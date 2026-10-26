@@ -121,10 +121,15 @@ export type PaymentChain = {
   signErc20Payment(typedData: Erc20PaymentTypedData): Promise<string>;
   /**
    * Automatic payments (./automaticPayments.ts): WDK's fee quote for a send
-   * from account 0, checked against the balance (and ETH for gas). A
-   * problem is a sentence for the request page.
+   * from account 0, checked against the balance (and ETH for gas). The fee
+   * is in base units of `feeAsset`. A problem is a sentence for the
+   * request page.
    */
-  quoteSend(asset: RequestAsset, to: string, amount: bigint): Promise<{ ok: true; feeRate?: bigint } | { ok: false; problem: string }>;
+  quoteSend(
+    asset: RequestAsset,
+    to: string,
+    amount: bigint,
+  ): Promise<{ ok: true; fee: bigint; feeAsset: 'btc' | 'usdt' | 'eth'; feeRate?: bigint } | { ok: false; problem: string }>;
   /** Send from account 0 with WDK. A failure says whether it may have left (sendFailureFor). */
   send(asset: RequestAsset, to: string, amount: bigint, feeRate?: bigint): Promise<{ hash: string } | { failure: 'not-sent' | 'unknown'; message: string }>;
 };

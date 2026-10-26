@@ -55,7 +55,7 @@ export function PaymentChainBridge() {
         try {
           const quote = await wallet.quote({ asset, to, amount });
           const problem = checkAffordable({ asset, amount, balances: latestBalances.current, fee: quote.fee });
-          return problem ? { ok: false, problem: problem.message } : { ok: true, feeRate: quote.feeRate };
+          return problem ? { ok: false, problem: problem.message } : { ok: true, fee: quote.fee, feeAsset: quote.feeAsset, feeRate: quote.feeRate };
         } catch (error) {
           return { ok: false, problem: sendErrorMessage(error, asset) };
         }

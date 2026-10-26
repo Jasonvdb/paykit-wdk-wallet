@@ -49,7 +49,7 @@
 // limit, the request waits for the person, as before.
 import { FfiLinkedPeerState, FfiOutboundPrivateMessageStatus, FfiPaymentAttemptDecision, FfiPaymentOutcome } from '@synonymdev/react-native-paykit';
 
-import { allowanceCovers, automaticBlockWords } from './allowanceTerms';
+import { allowanceCovers, automaticBlockWords, automaticFeeProblem } from './allowanceTerms';
 import { allowancesOf, requestKey, type AllowanceLedger, type AllowanceView, type Allowances } from './allowances';
 import { describeError, paykitErrorTag } from './errors';
 import { shortKey } from './keys';
@@ -220,7 +220,13 @@ async function preparePayable(service: PaykitService, requests: PaymentRequests,
   const endpoint = await resolveRequestAddress(service, view.counterparty, view.requestId, { ...terms, asset: terms.asset });
   const quote = await chain.quoteSend(terms.asset, endpoint.address, terms.amount);
   if (!quote.ok) {
-    notes.set(noteKey, `Couldn't pay it automatically: ${quote.problem}`, RETRY_WALLET_MS);
+    notes.set(noteKey, `Couldn't pay it automatically. ${quote.problem}`, RETRY_WALLET_MS);
+    return undefined;
+  }
+  // No Allowance limit counts network fees: an out-of-proportion fee waits for the person.
+  const feeProblem = automaticFeeProblem({ asset: terms.asset, amount: terms.amount, fee: quote.fee, feeAsset: quote.feeAsset });
+  if (feeProblem) {
+    notes.set(noteKey, `Not paid automatically. ${feeProblem}`, RETRY_BLOCKED_MS);
     return undefined;
   }
   return { address: endpoint.address, appId: endpoint.appId, feeRate: quote.feeRate };
