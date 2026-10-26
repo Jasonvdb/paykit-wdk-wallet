@@ -29,7 +29,12 @@ export type Recurrence = {
 
 export type BillingPeriod = { startsAt: string; endsAt: string };
 
-/** At most this many periods are listed or searched; a schedule longer than that is shown in part. */
+/**
+ * At most this many periods are listed. Lists only: whether a period is on
+ * the schedule, and which ones have started, is worked out from its index
+ * (periodIndexAtOrBefore), so period 500 of an endless schedule is as
+ * payable and checkable as period 1.
+ */
 export const MAX_LISTED_PERIODS = 120;
 
 const FIXED_MS: Partial<Record<RecurrenceUnit, number>> = {
@@ -99,6 +104,31 @@ function periodAt(schedule: Schedule, k: number): { startMs: number; endMs: numb
   };
 }
 
+/**
+ * The largest k whose period starts at or before `ms` (it may be below
+ * firstIndex, or negative). Fixed units divide; months and years step from
+ * an estimate, since they clamp to short months.
+ */
+function periodIndexAtOrBefore(schedule: Schedule, ms: number): number {
+  const fixed = FIXED_MS[schedule.unit];
+  if (fixed !== undefined) return Math.floor((ms - schedule.anchorMs) / (fixed * schedule.every));
+  const anchor = new Date(schedule.anchorMs);
+  const at = new Date(ms);
+  const months = (at.getUTCFullYear() - anchor.getUTCFullYear()) * 12 + (at.getUTCMonth() - anchor.getUTCMonth());
+  const monthsPerPeriod = (schedule.unit === 'year' ? 12 : 1) * schedule.every;
+  let k = Math.floor(months / monthsPerPeriod) + 1;
+  while (periodAt(schedule, k).startMs > ms) k -= 1;
+  return k;
+}
+
+/** The last k whose period ends by ends_at, or undefined for an endless schedule. */
+function lastIndex(schedule: Schedule): number | undefined {
+  if (schedule.endsMs === undefined) return undefined;
+  let k = periodIndexAtOrBefore(schedule, schedule.endsMs);
+  while (periodAt(schedule, k).endMs > schedule.endsMs) k -= 1;
+  return k;
+}
+
 function toPeriod(period: { startMs: number; endMs: number }): BillingPeriod {
   return { startsAt: toRfc3339(period.startMs), endsAt: toRfc3339(period.endMs) };
 }
@@ -121,18 +151,32 @@ export function schedulePeriods(recurrence: Recurrence, limit = MAX_LISTED_PERIO
 
 /** How many payments the schedule has in total, or undefined when it has no end. */
 export function paymentCount(recurrence: Recurrence): number | undefined {
-  if (!recurrence.endsAt) return undefined;
-  return schedulePeriods(recurrence, MAX_LISTED_PERIODS).length;
+  const schedule = scheduleOf(recurrence);
+  if (!recurrence.endsAt || !schedule) return undefined;
+  return Math.max(0, (lastIndex(schedule) ?? 0) - firstIndex(schedule) + 1);
 }
 
-/** Periods that have started by `nowMs`, oldest first. */
+/**
+ * Periods that have started by `nowMs`, oldest first: the newest
+ * MAX_LISTED_PERIODS of them, for an old, long schedule.
+ */
 export function startedPeriods(recurrence: Recurrence, nowMs: number): BillingPeriod[] {
-  return schedulePeriods(recurrence).filter((period) => (parseTime(period.startsAt) ?? Infinity) <= nowMs);
+  const schedule = scheduleOf(recurrence);
+  if (!schedule) return [];
+  const first = firstIndex(schedule);
+  const last = Math.min(periodIndexAtOrBefore(schedule, nowMs), lastIndex(schedule) ?? Infinity);
+  const periods: BillingPeriod[] = [];
+  for (let k = Math.max(first, last - MAX_LISTED_PERIODS + 1); k <= last; k++) periods.push(toPeriod(periodAt(schedule, k)));
+  return periods;
 }
 
 /** The next period that has not started yet, if the schedule has one. */
 export function nextPeriodAfter(recurrence: Recurrence, nowMs: number): BillingPeriod | undefined {
-  return schedulePeriods(recurrence).find((period) => (parseTime(period.startsAt) ?? -Infinity) > nowMs);
+  const schedule = scheduleOf(recurrence);
+  if (!schedule) return undefined;
+  const k = Math.max(firstIndex(schedule), periodIndexAtOrBefore(schedule, nowMs) + 1);
+  const end = lastIndex(schedule);
+  return end === undefined || k <= end ? toPeriod(periodAt(schedule, k)) : undefined;
 }
 
 /** Started periods without a payment, oldest first. `paid` holds period start times (see periodKey). */
@@ -140,12 +184,19 @@ export function unpaidPeriods(recurrence: Recurrence, paid: ReadonlySet<string>,
   return startedPeriods(recurrence, nowMs).filter((period) => !paid.has(periodKey(period)));
 }
 
-/** True when `period` is exactly one of the schedule's periods (compared as instants). */
+/**
+ * True when `period` is exactly one of the schedule's periods (compared as
+ * instants), however far into the schedule it is.
+ */
 export function isScheduledPeriod(recurrence: Recurrence, period: BillingPeriod): boolean {
+  const schedule = scheduleOf(recurrence);
   const start = parseTime(period.startsAt);
   const end = parseTime(period.endsAt);
-  if (start === undefined || end === undefined) return false;
-  return schedulePeriods(recurrence).some((p) => parseTime(p.startsAt) === start && parseTime(p.endsAt) === end);
+  if (!schedule || start === undefined || end === undefined) return false;
+  const k = periodIndexAtOrBefore(schedule, start);
+  const expected = periodAt(schedule, k);
+  const last = lastIndex(schedule);
+  return k >= firstIndex(schedule) && (last === undefined || k <= last) && expected.startMs === start && expected.endMs === end;
 }
 
 /** A stable key for a period (its start instant), or '' for a one-time request. */

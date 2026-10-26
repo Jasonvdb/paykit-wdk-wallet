@@ -89,6 +89,38 @@ describe('isScheduledPeriod', () => {
     expect(isScheduledPeriod(rec, { startsAt: '2026-10-26T12:00:00Z', endsAt: '2026-10-26T12:02:00Z' })).toBe(false);
     expect(isScheduledPeriod(rec, { startsAt: '2026-10-26T12:03:00Z', endsAt: '2026-10-26T12:04:00Z' })).toBe(false);
     expect(isScheduledPeriod(rec, { startsAt: 'yesterday', endsAt: 'today' })).toBe(false);
+    expect(isScheduledPeriod(rec, { startsAt: '2026-10-26T11:59:00Z', endsAt: '2026-10-26T12:00:00Z' })).toBe(false);
+  });
+});
+
+describe('long schedules (past the listing cap)', () => {
+  const endless: Recurrence = { every: 1, unit: 'minute', startsAt: START, anchor: START };
+  const period = (k: number) => ({ startsAt: toRfc3339(startMs + k * 60_000), endsAt: toRfc3339(startMs + (k + 1) * 60_000) });
+
+  it('accepts period 500 of an endless schedule', () => {
+    expect(isScheduledPeriod(endless, period(500))).toBe(true);
+    expect(isScheduledPeriod(endless, { ...period(500), endsAt: period(501).endsAt })).toBe(false);
+  });
+
+  it('keeps finding due and next periods long after the start', () => {
+    const now = startMs + 500 * 60_000 + 30_000;
+    const started = startedPeriods(endless, now);
+    expect(started).toHaveLength(120);
+    expect(started[started.length - 1]).toEqual(period(500));
+    expect(nextPeriodAfter(endless, now)).toEqual(period(501));
+  });
+
+  it('counts a long counted schedule exactly', () => {
+    expect(paymentCount(everyMinute(1_000))).toBe(1_000);
+    expect(isScheduledPeriod(everyMinute(1_000), period(999))).toBe(true);
+    expect(isScheduledPeriod(everyMinute(1_000), period(1_000))).toBe(false);
+  });
+
+  it('finds a monthly period years in, with short-month clamping', () => {
+    const monthly: Recurrence = { every: 1, unit: 'month', startsAt: '2026-01-31T00:00:00Z', anchor: '2026-01-31T00:00:00Z' };
+    expect(isScheduledPeriod(monthly, { startsAt: '2036-02-29T00:00:00Z', endsAt: '2036-03-31T00:00:00Z' })).toBe(true);
+    expect(isScheduledPeriod(monthly, { startsAt: '2036-03-01T00:00:00Z', endsAt: '2036-03-31T00:00:00Z' })).toBe(false);
+    expect(nextPeriodAfter(monthly, Date.parse('2036-02-15T00:00:00Z'))?.startsAt).toBe('2036-02-29T00:00:00Z');
   });
 });
 
