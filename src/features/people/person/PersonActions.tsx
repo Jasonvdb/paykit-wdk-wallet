@@ -1,10 +1,10 @@
 // The Person page's actions on the contact itself, each after a
 // confirmation that says what happens:
 //
-//   Block     their requests and messages are ignored; the private
-//             connection ends and your private list is withdrawn
-//             (PaykitService.blockPeer). They stay in your contacts as
-//             "Blocked".
+//   Block     their requests and messages are ignored; automatic payments
+//             between you end, the private connection ends and your
+//             private list is withdrawn (PaykitService.blockPeer). They
+//             stay in your contacts as "Blocked".
 //   Unblock   back to a contact; a fresh private connection forms on the
 //             next sync round (PaykitService.unblockPeer).
 //   Forget    blocked only: delete what they sent that you never answered
@@ -57,7 +57,7 @@ export function PersonActions({ pubky, name, blocked, onRemoved }: { pubky: stri
   const block = () =>
     confirm(
       `Block ${name}?`,
-      `Their payment requests and other messages are ignored until you unblock them. Your private connection ends and they no longer see your private addresses. Requests and receipts you already have stay.`,
+      `Their payment requests and other messages are ignored until you unblock them. Automatic payments between you end. Your private connection ends and they no longer see your private addresses. Requests and receipts you already have stay.`,
       'Block',
       () => void run('block', () => service!.blockPeer(pubky), `Couldn't block ${name}. Try again.`),
     );
@@ -89,8 +89,8 @@ export function PersonActions({ pubky, name, blocked, onRemoved }: { pubky: stri
     confirm(
       `Remove ${name}?`,
       blocked
-        ? `${name} leaves your contacts and stays blocked: their requests and messages are still ignored. Money already sent to you still arrives.`
-        : `${name} leaves your contacts and your private connection ends: they no longer see your private addresses. Money already sent to you still arrives. To pay each other privately again, you both add each other again.`,
+        ? `${name} leaves your contacts and stays blocked: their requests and messages are still ignored. Automatic payments between you end. Money already sent to you still arrives.`
+        : `${name} leaves your contacts and your private connection ends: they no longer see your private addresses, and automatic payments between you end. Money already sent to you still arrives. To pay each other privately again, you both add each other again.`,
       'Remove',
       () =>
         void run(

@@ -79,6 +79,7 @@ import { loadOrCreateStorageKey } from './secureStorage';
 import { registerPrivatePaymentHooks } from './privatePayments';
 import { PrivateListStore } from './privatePaymentLists';
 import { paymentRequestsOf, paymentsWithUndeliveredProof, registerPaymentRequestHooks } from './requests';
+import { endAutomaticPaymentsWith } from './allowances';
 import { registerAllowanceHooks } from './automaticPayments';
 import { ProfileDirectory, cleanDisplayName } from './profiles';
 import { MemoryStateBlobStore, openPaykitAppStore, openStateStore } from './stateStore';
@@ -660,6 +661,9 @@ export class PaykitService {
    * `removeContact` deletes only the record and leaves the link (and their
    * messages) running. Removing someone here means "stop paying each other
    * privately", so:
+   *   0. end automatic payments with them (./allowances.ts,
+   *      endAutomaticPaymentsWith: stopped on this phone first, then ended
+   *      with them while the link can still carry it);
    *   1. queue an empty Private Payment List for them and send it (best
    *      effort): their wallet drops our private addresses;
    *   2. `removeContactsAndBlockPeers` removes the record and discards the
@@ -675,6 +679,7 @@ export class PaykitService {
   async removeContact(publicKey: string): Promise<void> {
     this.refuseWhileProofPending(publicKey);
     const wasBlocked = this.isBlocked(publicKey);
+    await endAutomaticPaymentsWith(this, publicKey);
     await this.withdrawPrivateList(publicKey);
     const removed = await this.call('removeContactsAndBlockPeers', (sdk, signal) => sdk.removeContactsAndBlockPeers([publicKey], { signal }));
     if (removed.length === 0 && this.state?.contacts.some((c) => c.publicKey === publicKey)) {
@@ -704,14 +709,17 @@ export class PaykitService {
    * and handshake), marks every message still waiting to go to them as
    * needing a fresh link, and makes the request, allowance and payment
    * calls refuse this peer. Payment requests, proofs and receipts already
-   * stored stay. So, like removeContact:
+   * stored stay. Accepted Allowances would stay too, and pay again after
+   * an Unblock, so, like removeContact:
    *   - refuse while a proof of our payment to them has not left (it
    *     would never reach them);
+   *   - end automatic payments with them (stopped on this phone first);
    *   - first withdraw our Private Payment List (best effort), so their
    *     wallet drops our private addresses.
    */
   async blockPeer(publicKey: string): Promise<void> {
     this.refuseWhileProofPending(publicKey);
+    await endAutomaticPaymentsWith(this, publicKey);
     await this.withdrawPrivateList(publicKey);
     await this.call('blockPeer', (sdk, signal) => sdk.blockPeer(publicKey, { signal }));
     this.privateLists.forget(publicKey);

@@ -19,8 +19,16 @@
 // Acceptance names the proposal's stream item, so terms that changed after
 // the person read them are refused.
 //
+// Blocking or removing someone ends automatic payments with them
+// (endAutomaticPaymentsWith). Ending needs a ready private connection,
+// which a contact who is unreachable or already blocked doesn't have, so
+// the Allowances we pay under are first stopped on this phone: a
+// persisted list of ids (STOPPED_ALLOWANCES_KEY) that usableAsPayer()
+// leaves out for good. After an Unblock the Person page shows such an
+// Allowance as stopped, with End to tell them.
+//
 // What is cached here (memory only, rebuilt from the SDK):
-//   views    listAllowances() for every contact that isn't blocked, as
+//   views    listAllowances() for every contact (blocked ones too), as
 //            plain data: the terms through their getters (the FFI objects
 //            are sensitive and never logged)
 //   ledger   allowanceAccountingState(): which request uses which
@@ -51,6 +59,7 @@ import { fromPaykitDecimal } from '../wallet/amounts';
 import { readAllowanceTerms, type AllowanceTermsView, type PlainAllowanceTerms, type UsageEntry } from './allowanceTerms';
 import { describeError, UserFacingError } from './errors';
 import { shortKey } from './keys';
+import type { StringStore } from './addressCache';
 import type { PaykitService } from './PaykitService';
 import { parseTime } from './recurrence';
 import { paymentKey } from './requestBook';
@@ -76,7 +85,27 @@ export type AllowanceView = {
   /** Our last message about it (proposal, answer or end) has left, or not. */
   ourDelivery?: Delivery;
   lastEventAtMs?: number;
+  /** Stopped on this phone when the person blocked or removed them: never paid under, whatever its state. */
+  stoppedHere: boolean;
 };
+
+/** App store key: ids of Allowances this phone never pays under again (blocked or removed peers). Travels with backups. */
+export const STOPPED_ALLOWANCES_KEY = 'stopped-allowances-v1';
+
+export function stoppedAllowanceIds(store: StringStore): Set<string> {
+  try {
+    const ids = JSON.parse(store.getString(STOPPED_ALLOWANCES_KEY) ?? '[]') as unknown;
+    return new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function stopAllowancesHere(store: StringStore, ids: readonly string[]): void {
+  const stopped = stoppedAllowanceIds(store);
+  for (const id of ids) stopped.add(id);
+  store.set(STOPPED_ALLOWANCES_KEY, JSON.stringify([...stopped]));
+}
 
 /** The payment ledger, read for display and for the automatic payment hook. */
 export type AllowanceLedger = {
@@ -164,6 +193,7 @@ export function allowanceViewOf(record: FfiAllowanceRecord): AllowanceView {
     proposalStreamItemId: record.proposalStreamItemId,
     ourDelivery: deliveryOf(record.lastOutboundStatus),
     lastEventAtMs: parseTime(record.lastEventAt),
+    stoppedHere: false,
   };
 }
 
@@ -216,9 +246,9 @@ export class Allowances {
     return this.views.filter((v) => v.counterparty === counterparty);
   }
 
-  /** Accepted Allowances we pay under (we are the Allower), healthy only. */
+  /** Accepted Allowances we pay under (we are the Allower), healthy and not stopped on this phone. */
   usableAsPayer(counterparty?: string): AllowanceView[] {
-    return this.views.filter((v) => v.role === 'allower' && v.state === 'accepted' && v.healthy && (!counterparty || v.counterparty === counterparty));
+    return this.views.filter((v) => v.role === 'allower' && v.state === 'accepted' && v.healthy && !v.stoppedHere && (!counterparty || v.counterparty === counterparty));
   }
 
   getLedger(): AllowanceLedger {
@@ -249,7 +279,8 @@ export class Allowances {
     this.lastRefreshAt = Date.now();
     try {
       const records = await this.service.call('listAllowances', (sdk, signal) => sdk.listAllowances({ counterparty: undefined, localRole: undefined, states: [] }, { signal }), priority);
-      this.views = records.map(allowanceViewOf);
+      const stopped = stoppedAllowanceIds(this.service.appStore);
+      this.views = records.map((record) => ({ ...allowanceViewOf(record), stoppedHere: stopped.has(record.allowanceId) }));
       const accounting = await this.service.call('allowanceAccountingState', (sdk, signal) => sdk.allowanceAccountingState({ signal }), priority);
       this.ledger = ledgerOf(accounting);
     } catch (error) {
@@ -331,4 +362,32 @@ export async function endAutomaticPayments(service: PaykitService, view: Allowan
   await service.call('endAllowance', (sdk, signal) => sdk.endAllowance(view.counterparty, view.allowanceId, { signal }));
   service.log.info(`ended automatic payments with ${shortKey(view.counterparty)}: ${view.allowanceId.slice(0, 8)}`);
   await afterAction(service);
+}
+
+/**
+ * Before blocking or removing someone: stop every Allowance we pay them
+ * under (accepted, or offered by us and still open) on this phone, then
+ * end each live one with them, best effort. Ending queues an End message
+ * and needs a ready private connection; the local stop doesn't, so the
+ * hook never pays them automatically again either way.
+ */
+export async function endAutomaticPaymentsWith(service: PaykitService, counterparty: string): Promise<void> {
+  const allowances = allowancesOf(service);
+  await allowances.refresh();
+  const live = allowances.withPerson(counterparty).filter((a) => a.state === 'accepted' || (a.state === 'proposed' && a.proposedByUs));
+  const ours = live.filter((a) => a.role === 'allower').map((a) => a.allowanceId);
+  if (ours.length > 0) {
+    stopAllowancesHere(service.appStore, ours);
+    service.log.info(`stopped ${ours.length} automatic payment allowance(s) to ${shortKey(counterparty)} on this phone`);
+  }
+  for (const allowance of live) {
+    try {
+      await service.call('endAllowance', (sdk, signal) => sdk.endAllowance(counterparty, allowance.allowanceId, { signal }));
+      service.log.info(`ended automatic payments with ${shortKey(counterparty)}: ${allowance.allowanceId.slice(0, 8)}`);
+    } catch (error) {
+      service.log.warn(`end automatic payments with ${shortKey(counterparty)}: ${describeError(error)}`);
+    }
+  }
+  allowances.markDirty();
+  await allowances.refresh();
 }

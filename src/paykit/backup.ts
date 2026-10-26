@@ -42,12 +42,13 @@ import * as Crypto from 'expo-crypto';
 import { FfiRestoredLinkPolicy, type FfiPaykitSdkInterface } from '@synonymdev/react-native-paykit';
 
 import { CONTACT_ACCOUNTS_KEY, PUBLIC_ENDPOINT_CHOICE_KEY, type StringStore } from './addressCache';
+import { STOPPED_ALLOWANCES_KEY } from './allowances';
 import { asciiJson, buildEnvelope, readEnvelope, type BackupEnvelope } from './backupCrypto';
 import type { PaykitService } from './PaykitService';
 import { BOOK_KEY } from './requestBook';
 
 /** App store keys that travel with the backup. Nothing else is read from or written by one. */
-export const BACKUP_APP_KEYS = [CONTACT_ACCOUNTS_KEY, PUBLIC_ENDPOINT_CHOICE_KEY, BOOK_KEY] as const;
+export const BACKUP_APP_KEYS = [CONTACT_ACCOUNTS_KEY, PUBLIC_ENDPOINT_CHOICE_KEY, BOOK_KEY, STOPPED_ALLOWANCES_KEY] as const;
 const META_KEY = 'backup-meta-v1';
 
 /** The last backup made on this phone. */

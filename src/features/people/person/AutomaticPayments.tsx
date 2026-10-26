@@ -35,7 +35,8 @@ import { Button, Divider, Text, formatDateTime, space } from '../../../ui';
 
 export function AutomaticPayments({ pubky, name, linkState, onSetUp }: { pubky: string; name: string; linkState: LinkState; onSetUp: () => void }) {
   const allowances = useAllowancesWith(pubky).filter((a) => a.state === 'proposed' || a.state === 'accepted');
-  const youPay = allowances.some((a) => a.role === 'allower' && a.state === 'accepted');
+  // A stopped one (you blocked or removed them) no longer pays, so a new offer is allowed.
+  const youPay = allowances.some((a) => a.role === 'allower' && a.state === 'accepted' && !a.stoppedHere);
 
   return (
     <View style={styles.root} testID="automatic-payments">
@@ -49,7 +50,7 @@ export function AutomaticPayments({ pubky, name, linkState, onSetUp }: { pubky: 
           </View>
         ))
       )}
-      {!youPay && linkState === 'linked' && !allowances.some((a) => a.role === 'allower' && a.proposedByUs) ? (
+      {!youPay && linkState === 'linked' && !allowances.some((a) => a.role === 'allower' && a.proposedByUs && !a.stoppedHere) ? (
         <Button label="Set up automatic payments" variant="secondary" compact onPress={onSetUp} testID="automatic-payments-set-up" />
       ) : null}
     </View>
@@ -124,6 +125,11 @@ function AllowanceItem({ allowance, name }: { allowance: AllowanceView; name: st
         </Text>
       ) : null}
       {!allowance.healthy ? <Text color="graphite">{"Something in their history doesn't add up, so nothing is paid automatically."}</Text> : null}
+      {allowance.stoppedHere ? (
+        <Text color="graphite" testID="allowance-stopped">
+          {`Stopped on this phone when you blocked or removed ${name}: nothing is paid under it. End it to tell them.`}
+        </Text>
+      ) : null}
       {allowance.ourDelivery === 'queued' ? (
         <Text variant="caption" color="graphite">
           Sending to them…
