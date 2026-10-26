@@ -17,6 +17,7 @@ import { STAGING_HOMESERVER } from '../../config/paykit';
 import type { MainTabScreenProps } from '../../navigation/types';
 import { usePaykit, useSyncLog, useSyncStatus, type SyncStatus } from '../../paykit';
 import { Button, Divider, KeyText, Screen, Text, relativeTime, space } from '../../ui';
+import { PayMeCode } from '../wallet/receive/PayMeCode';
 import { ContactAccountsSection } from './ContactAccountsSection';
 import { ProfileSection } from './ProfileSection';
 import { PublicEndpointsSection } from './PublicEndpointsSection';
@@ -40,6 +41,11 @@ export function YouScreen({ navigation }: MainTabScreenProps<'You'>) {
   return (
     <Screen scroll title="You" edges={['top']} testID="you-screen">
       <ProfileSection onEdit={() => navigation.navigate('EditProfile')} />
+
+      <Text variant="heading" style={styles.section}>
+        Your pay-me code
+      </Text>
+      <PayMeCode qrSize={168} />
 
       <Text variant="heading" style={styles.section}>
         What you publish

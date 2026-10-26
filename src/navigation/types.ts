@@ -37,7 +37,8 @@ export type RootStackParamList = {
   Main: NavigatorScreenParams<MainTabParamList> | undefined;
   /** `to` is a pubky (pay a person) or an address. */
   Send: { to?: string; asset?: AssetId } | undefined;
-  Receive: { asset?: AssetId } | undefined;
+  /** `code: 'pubky'` opens on your pay-me code instead of an asset. */
+  Receive: { asset?: AssetId; code?: 'pubky' } | undefined;
   /** Ask a contact for money. */
   RequestMoney: { pubky?: string } | undefined;
   /** Opened by the People tab, a scanned QR or paykitwdk://contact?pubky=<key>. */
