@@ -621,6 +621,10 @@ export async function startPayment(service: PaykitService, prepared: PreparedPay
   const acceptedByUs = findRequestRecord(service, prepared.counterparty, prepared.requestId)?.acceptedEventId !== undefined;
   if (prepared.needsAcceptance && !acceptedByUs) {
     if (prepared.proposalStreamItemId === undefined) throw new UserFacingError("This request can't be accepted. Ask them to send it again.");
+    const expiresAtMs = prepared.terms.expiresAtMs;
+    if (expiresAtMs !== undefined && expiresAtMs - Date.now() < ACCEPT_AND_PAY_MARGIN_MS) {
+      throw new UserFacingError('This request expires in under 2 minutes, too soon for your answer to reach them. Ask them to send it again.');
+    }
     const streamItemId = prepared.proposalStreamItemId;
     await service.call('claimAndAcceptPaymentRequest', (sdk, signal) =>
       sdk.claimAndAcceptPaymentRequest(prepared.counterparty, prepared.requestId, streamItemId, { signal }),
@@ -629,6 +633,7 @@ export async function startPayment(service: PaykitService, prepared: PreparedPay
     await service.refreshState();
     service.syncLoop.flush();
   }
+  await waitForOurAcceptance(service, prepared);
   await ensureLedgerReady(service);
 
   const occurrence = { request: { counterparty: prepared.counterparty, paymentRequestId: prepared.requestId }, billingPeriod: prepared.period };
@@ -658,6 +663,38 @@ export async function startPayment(service: PaykitService, prepared: PreparedPay
   book.setOutgoing(prepared.key, outgoingFor(prepared, attemptId, 'sending'));
   service.log.info(`paying request ${prepared.requestId.slice(0, 8)}: handoff issued`);
   return attemptId;
+}
+
+/** Paying a request we accept now needs at least this long before it expires. */
+export const ACCEPT_AND_PAY_MARGIN_MS = 2 * 60_000;
+/** How long Pay waits for our acceptance to leave before giving up (nothing is paid then). */
+const ACCEPTANCE_SEND_WAIT_MS = 20_000;
+
+/**
+ * Pay only once our acceptance has left. The payee's SDK judges an
+ * acceptance by when it *fetches* it: one fetched after the proposal's
+ * expiry makes the request invalid on its side, and a proof for it is then
+ * ignored, so money paid for it is never checked or receipted. Waiting
+ * until the acceptance is published narrows that window to the payee's own
+ * fetch delay. The Paykit SDK gives the payer no signal that the payee has
+ * stored it (Delivery Confirmations are not exposed), so the rest of the
+ * risk stays; docs/ARCHITECTURE.md ("Payment requests") describes it.
+ */
+async function waitForOurAcceptance(service: PaykitService, prepared: PreparedPayment): Promise<void> {
+  const statusNow = () => findRequestRecord(service, prepared.counterparty, prepared.requestId)?.acceptedOutboundStatus;
+  // Undefined: accepted before this app saw it, or not ours to send.
+  if (statusNow() === undefined || deliveryOf(statusNow()) === 'sent') return;
+  const expiresAtMs = prepared.terms.expiresAtMs;
+  if (expiresAtMs !== undefined && expiresAtMs <= Date.now()) {
+    throw new UserFacingError('This request expired before your answer reached them. Ask them to send it again.');
+  }
+  const deadline = Date.now() + ACCEPTANCE_SEND_WAIT_MS;
+  while (Date.now() < deadline) {
+    service.syncLoop.flush();
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    if (deliveryOf(statusNow()) === 'sent') return;
+  }
+  throw new UserFacingError("Your answer to the request hasn't gone out yet, so nothing was paid. Try again in a moment.");
 }
 
 function beginExecution(service: PaykitService, attemptId: string, prepared: PreparedPayment) {

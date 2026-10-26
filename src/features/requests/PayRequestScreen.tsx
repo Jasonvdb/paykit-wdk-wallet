@@ -9,7 +9,8 @@
 //   review     the existing Send review (wallet/send/SendReview.tsx), with
 //              "Pay 12 USD₮" and the request it pays; no way to change the
 //              amount or address
-//   sending    startPayment (accept if needed, ledger reserve + begin),
+//   sending    startPayment (accept if needed and wait until the acceptance
+//              has left, then ledger reserve + begin),
 //              then WDK sends, then finishPayment (the hash goes into the
 //              request book; Bitcoin's proof goes out right away, USD₮'s
 //              after its block, signed by WDK)
@@ -44,6 +45,9 @@ import { PersonRecipient } from '../wallet/send/PersonRecipient';
 import { SendReview } from '../wallet/send/SendReview';
 import { SendSuccess } from '../wallet/send/SendSuccess';
 import { scheduleStatus } from './requestSchedule';
+
+/** Warn on the review when the request we are about to accept expires within this time. */
+const EXPIRES_SOON_MS = 15 * 60_000;
 
 type Step =
   | { name: 'preparing' }
@@ -165,6 +169,8 @@ export function PayRequestScreen({ navigation, route }: RootScreenProps<'PayRequ
   if (step.name === 'review') {
     const { prepared, quote } = step;
     const amountText = formatAssetAmount(prepared.amount, prepared.asset, { withSymbol: true });
+    const expiresAtMs = prepared.terms.expiresAtMs;
+    const expiresSoon = prepared.needsAcceptance && expiresAtMs !== undefined && expiresAtMs - Date.now() < EXPIRES_SOON_MS;
     return (
       <SheetScreen title="Pay request" onClose={close} testID="pay-request-screen">
         <SendReview
@@ -185,6 +191,9 @@ export function PayRequestScreen({ navigation, route }: RootScreenProps<'PayRequ
               {prepared.needsAcceptance ? `Paying accepts ${name}'s request` : `For ${name}'s request`}
               {prepared.terms.note ? `: “${prepared.terms.note}”` : ''}
               {prepared.period ? `. The payment due ${formatDateTime(Date.parse(prepared.period.startsAt))}` : ''}.
+              {expiresSoon && expiresAtMs !== undefined
+                ? ` It expires at ${formatDateTime(expiresAtMs)}. If ${name}'s wallet only gets your answer after that, it can't match your payment to the request.`
+                : ''}
             </Text>
           }
         />

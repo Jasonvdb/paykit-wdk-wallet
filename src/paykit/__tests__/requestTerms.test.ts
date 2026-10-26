@@ -10,6 +10,7 @@ import {
   readRequestTerms,
   type PlainTerms,
   type RequestDraft,
+  recurringScheduleWords,
 } from '../requestTerms';
 
 const BTC = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx';
@@ -43,11 +44,13 @@ describe('buildRequestTerms', () => {
     });
   });
 
-  it('builds a counted recurring USD₮ request, expiring no later than its last period', () => {
+  it('builds a counted recurring USD₮ request that keeps the expiry the person chose', () => {
     const terms = buildRequestTerms(draft({ asset: 'usdt', amount: 5_000_000n, repeat: '1m', count: 3, expiry: '1d', receivingDetail: usdtReceivingDetail(EVM) }), 'pkw-2');
     expect(terms.amount).toEqual({ value: '5', asset: 'usdt' });
     expect(terms.recurrence).toEqual({ every: 1, unit: 'minute', startsAt: '2026-10-26T12:00:00Z', anchor: '2026-10-26T12:00:00Z', endsAt: '2026-10-26T12:03:00Z' });
-    expect(terms.proposalExpiresAt).toBe('2026-10-26T12:03:00Z');
+    // Not cut to the schedule's end: the payee's wallet must get the
+    // acceptance before this time, and a late payer pays the missed periods.
+    expect(terms.proposalExpiresAt).toBe('2026-10-27T12:00:00Z');
     expect(terms.acceptedPaymentEndpointIdentifiers).toEqual([ENDPOINT_USDT]);
   });
 
@@ -116,5 +119,15 @@ describe('readRequestTerms', () => {
   it('ignores unreadable metadata', () => {
     expect(readRequestTerms(plain({ metadataJson: 'nope' })).note).toBeUndefined();
     expect(readRequestTerms(plain({ metadataJson: '{"note":7}' })).note).toBeUndefined();
+  });
+});
+
+describe('recurringScheduleWords', () => {
+  it('says the schedule starts when the request is sent, and what a late accept means', () => {
+    expect(recurringScheduleWords('1m', 3, 'Ben')).toBe(
+      'A payment is due now and then every minute, 3 in all, counted from when you send this. If Ben accepts late, the missed ones are due at once. Ben pays each one with a tap.',
+    );
+    expect(recurringScheduleWords('5m', 2, 'Ben')).toContain('then every 5 minutes, 2 in all');
+    expect(recurringScheduleWords('once', 2, 'Ben')).toBe('');
   });
 });

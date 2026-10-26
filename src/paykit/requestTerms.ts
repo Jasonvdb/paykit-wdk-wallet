@@ -25,7 +25,7 @@ import { ENDPOINT_BTC, ENDPOINT_USDT, PAYKIT_APP_ID } from '../config/paykit';
 import { fromPaykitDecimal, toPaykitDecimal } from '../wallet/amounts';
 import { parseEndpoint, PRIVATE_MESSAGE_LIMIT_BYTES, utf8ByteLength, type ParsedEndpoint, type ReceivingDetail } from './endpoints';
 import { cleanDisplayName } from './profiles';
-import { endsAtForCount, parseTime, toRfc3339, type Recurrence } from './recurrence';
+import { endsAtForCount, intervalWords, parseTime, toRfc3339, type Recurrence } from './recurrence';
 
 export type RequestAsset = 'btc' | 'usdt';
 
@@ -53,6 +53,18 @@ export const REPEAT_CHOICES = [
 ] as const;
 export type RepeatChoice = (typeof REPEAT_CHOICES)[number]['id'];
 export const PAYMENT_COUNT_CHOICES = [2, 3, 5, 10] as const;
+
+/**
+ * What a recurring request means for the payer, for the Request money
+ * screen. The schedule starts when the request is sent, not when it is
+ * accepted (buildRequestTerms), so a late accept makes several payments
+ * due at once; the words say so.
+ */
+export function recurringScheduleWords(repeat: RepeatChoice, count: number, name: string): string {
+  const choice = REPEAT_CHOICES.find((c) => c.id === repeat);
+  if (!choice || !('every' in choice)) return '';
+  return `A payment is due now and then ${intervalWords({ every: choice.every, unit: 'minute' })}, ${count} in all, counted from when you send this. If ${name} accepts late, the missed ones are due at once. ${name} pays each one with a tap.`;
+}
 
 /** The terms as plain data. ./requests.ts turns them into the SDK's FfiPaymentRequestTerms. */
 export type RequestTermsInput = {
@@ -97,14 +109,17 @@ export function buildRequestTerms(draft: RequestDraft, reference: string): Reque
   if (draft.receivingDetail.identifier !== identifier) throw new Error('The receiving address is for another asset');
   const startsAt = toRfc3339(draft.nowMs);
   const expiryMs = EXPIRY_CHOICES.find((c) => c.id === draft.expiry)?.ms ?? EXPIRY_CHOICES[1].ms;
-  let proposalExpiresAt = toRfc3339(draft.nowMs + expiryMs);
+  // The expiry the person chose, even past a recurring schedule's end. The
+  // payee's SDK checks it when the acceptance *arrives* (an acceptance it
+  // fetches after this time makes the request invalid on its side, and a
+  // payment for it is never checked), so a tight expiry is a trap. A payer
+  // who accepts late simply pays the periods that are already due.
+  const proposalExpiresAt = toRfc3339(draft.nowMs + expiryMs);
   let recurrence: Recurrence | undefined;
   const repeat = REPEAT_CHOICES.find((c) => c.id === draft.repeat);
   if (repeat && 'every' in repeat) {
     const endsAt = endsAtForCount(startsAt, 'minute', repeat.every, draft.count);
     recurrence = { every: repeat.every, unit: 'minute', startsAt, anchor: startsAt, endsAt };
-    // Accepting after the last period ended would leave nothing to pay.
-    if ((parseTime(proposalExpiresAt) ?? 0) > (parseTime(endsAt) ?? 0)) proposalExpiresAt = endsAt;
   }
   const note = cleanNote(draft.note);
   return {

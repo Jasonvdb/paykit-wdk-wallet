@@ -26,6 +26,7 @@ import {
   PAYMENT_COUNT_CHOICES,
   REPEAT_CHOICES,
   describeError,
+  recurringScheduleWords,
   requestMoney,
   useConnectionNotice,
   useContacts,
@@ -172,9 +173,8 @@ export function RequestMoneyScreen({ navigation, route }: RootScreenProps<'Reque
                 onChange={(value) => setCount(Number(value))}
                 options={PAYMENT_COUNT_CHOICES.map((n) => ({ value: String(n), label: String(n), testID: `request-count-${n}` }))}
               />
-              <Text variant="caption" color="graphite">
-                The first payment is due as soon as {name} accepts, then one {repeat === '1m' ? 'every minute' : 'every 5 minutes'}. {name} pays
-                each one with a tap.
+              <Text variant="caption" color="graphite" testID="request-money-schedule">
+                {recurringScheduleWords(repeat, count, name)}
               </Text>
             </View>
           ) : null}

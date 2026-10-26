@@ -67,6 +67,7 @@ export {
   NOTE_MAX_CHARS,
   PAYMENT_COUNT_CHOICES,
   REPEAT_CHOICES,
+  recurringScheduleWords,
   type ExpiryChoice,
   type RepeatChoice,
   type RequestAsset,
