@@ -25,3 +25,4 @@ export { DetailRow, type DetailRowProps } from './DetailRow';
 export { formatDateTime } from './format';
 export { RecoveryWords } from './RecoveryWords';
 export { useForegroundSecret } from './useForegroundSecret';
+export { useScreenCaptureBlock } from './useScreenCaptureBlock';

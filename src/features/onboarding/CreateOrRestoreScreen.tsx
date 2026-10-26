@@ -15,7 +15,9 @@
 //
 // Paste reads the phrase from the clipboard and then empties the clipboard
 // (the app's rule: a phrase never stays where other apps, or clipboard
-// sync, can read it), and says so under the field.
+// sync, can read it), and says so under the field. While the field holds
+// any words, screenshots and the app-switcher snapshot are blocked
+// (useScreenCaptureBlock).
 //
 // "Create" continues to BackupPhrase (write the new phrase down). A wallet
 // that is about to be replaced can show its phrase first, so its funds are
@@ -28,7 +30,7 @@ import { demoPrefill } from '../../config/demo';
 import type { OnboardingScreenProps } from '../../navigation/types';
 import { clearSessionSecret } from '../../paykit';
 import { setWalletOrigin } from '../../settings/appSettings';
-import { Button, Divider, Input, Screen, Text, space } from '../../ui';
+import { Button, Divider, Input, Screen, Text, space, useScreenCaptureBlock } from '../../ui';
 import { normalizeMnemonic, useWalletLifecycle } from '../../wallet';
 import { RecoveryPhraseSection } from '../you/RecoveryPhraseSection';
 
@@ -63,6 +65,7 @@ export function CreateOrRestoreScreen({ navigation }: OnboardingScreenProps<'Cre
   const [useDemoPhrase, setUseDemoPhrase] = useState(demoPrefill.mnemonic !== undefined);
   const [typedPhrase, setTypedPhrase] = useState('');
   const [clipboardCleared, setClipboardCleared] = useState(false);
+  useScreenCaptureBlock(typedPhrase.trim().length > 0);
 
   const pastePhrase = async () => {
     const pasted = (await Clipboard.getStringAsync()) ?? '';
