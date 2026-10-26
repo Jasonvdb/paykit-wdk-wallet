@@ -11,15 +11,22 @@
 // says so under the balances, and failed history replaces the "No activity
 // yet" empty state (with "Try again") or sits above the cached rows.
 //
-// TODO(Phase 4 — Contacts): activity rows with people (seal + name) once
-// Paykit attribution exists.
+// People: contacts pay us privately at their own Bitcoin accounts, which
+// Send does not spend from. The BTC row therefore shows the spendable
+// balance, and a line under it says how much came from contacts, with the
+// way to Collect it (You > Bitcoin from contacts). Activity merges those
+// accounts' history, and rows that involve a contact lead with their seal
+// and name ("Ben paid you", ./activity/activityPeople.ts).
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import type { MainTabScreenProps } from '../../navigation/types';
-import { useConnectionNotice, useOwnProfile, usePaykitService } from '../../paykit';
-import { ASSET_DOT_SIZE, AssetAmount, AssetDot, Button, Divider, EmptyState, Row, Screen, Text, relativeTime, space } from '../../ui';
-import { ASSETS, formatAssetAmount, useActivity, useWalletBalances, type ActivityItem } from '../../wallet';
-import { activityStatusWords, activityTitle } from './activity/activityText';
+import { useConnectionNotice, useContactAccounts, useOwnProfile, usePaykitService } from '../../paykit';
+import { ASSET_DOT_SIZE, AssetAmount, AssetDot, Button, Divider, EmptyState, Row, Screen, Text, space } from '../../ui';
+import { ASSETS, formatAssetAmount, useActivity, useContactBtcBalances, useWalletBalances } from '../../wallet';
+import { ActivityRow } from './activity/ActivityRow';
+import { ContactAccountWatchers } from './activity/ContactAccountWatchers';
+import { useActivityPeople } from './activity/useActivityPeople';
 import { PersonSeal } from '../people/PersonSeal';
 import { GetTestUsdtButton } from './GetTestUsdtButton';
 
@@ -29,6 +36,10 @@ export function WalletScreen({ navigation }: MainTabScreenProps<'Wallet'>) {
   const notice = useConnectionNotice();
   const { balances, isRefreshing, refresh, error } = useWalletBalances();
   const activity = useActivity();
+  const personFor = useActivityPeople();
+  const contactAccounts = useContactAccounts();
+  const contactIndices = useMemo(() => contactAccounts.map((a) => a.accountIndex), [contactAccounts]);
+  const fromContacts = useContactBtcBalances(contactIndices);
 
   return (
     <Screen
@@ -61,6 +72,22 @@ export function WalletScreen({ navigation }: MainTabScreenProps<'Wallet'>) {
     >
       <View style={styles.balances}>
         <Row title={ASSETS.btc.displayName} leading={<AssetDot asset="btc" />} trailing={<AssetAmount value={balances.btc} asset="btc" />} testID="balance-btc" />
+        {fromContacts.total > 0n ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityHint="Opens You, where you collect it"
+            onPress={() => navigation.navigate('Main', { screen: 'You' })}
+            style={styles.fromContacts}
+            testID="balance-btc-contacts"
+          >
+            <Text variant="caption" color="graphite">
+              Plus {formatAssetAmount(fromContacts.total, 'btc', { withSymbol: true })} from contacts.{' '}
+              <Text variant="caption" color="seal">
+                Collect it to spend it
+              </Text>
+            </Text>
+          </Pressable>
+        ) : null}
         <Divider />
         <Row title={ASSETS.usdt.displayName} leading={<AssetDot asset="usdt" />} trailing={<AssetAmount value={balances.usdt} asset="usdt" />} testID="balance-usdt" />
         <Text variant="caption" color="graphite" style={styles.gas} testID="balance-eth">
@@ -108,25 +135,12 @@ export function WalletScreen({ navigation }: MainTabScreenProps<'Wallet'>) {
         activity.items.slice(0, 20).map((item, index) => (
           <View key={item.id}>
             {index > 0 ? <Divider /> : null}
-            <ActivityRow item={item} onPress={() => navigation.navigate('ActivityDetail', { activityId: item.id })} />
+            <ActivityRow item={item} person={personFor(item)} onPress={() => navigation.navigate('ActivityDetail', { activityId: item.id })} />
           </View>
         ))
       )}
+      <ContactAccountWatchers />
     </Screen>
-  );
-}
-
-function ActivityRow({ item, onPress }: { item: ActivityItem; onPress: () => void }) {
-  const when = item.status !== 'pending' && item.timestamp ? relativeTime(item.timestamp) : activityStatusWords(item);
-  const asset = ASSETS[item.asset].displayName;
-  return (
-    <Row
-      title={activityTitle(item)}
-      subtitle={`${asset}, ${when.charAt(0).toLowerCase()}${when.slice(1)}`}
-      testID={`activity-${item.hash.slice(0, 10)}`}
-      onPress={onPress}
-      trailing={<AssetAmount value={item.direction === 'in' ? item.amount : -item.amount} asset={item.asset} size="small" signed />}
-    />
   );
 }
 
@@ -136,6 +150,7 @@ const styles = StyleSheet.create({
   balances: { gap: 0 },
   // Line up with the asset names: dot width plus the Row's gap.
   gas: { marginLeft: ASSET_DOT_SIZE + space.m, marginTop: -space.s },
+  fromContacts: { marginLeft: ASSET_DOT_SIZE + space.m, marginTop: -space.s, marginBottom: space.s },
   faucet: { marginLeft: ASSET_DOT_SIZE + space.m, marginTop: space.m },
   actions: { flexDirection: 'row', gap: space.s, marginTop: space.xl },
   action: { flex: 1, paddingHorizontal: space.s },

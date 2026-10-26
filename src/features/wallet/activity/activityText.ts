@@ -1,9 +1,11 @@
 // Words for an on-chain activity item, shared by the Wallet tab's rows and
 // Activity detail. Pure, unit tested.
 //
-// Phase 4 adds people: an item whose address belongs to a contact reads
-// "Ben paid you" instead of "Received". That attribution comes from Paykit
-// (the contact's private BTC account, or a receipt), not from here.
+// People: an item that involves a contact reads "Ben paid you" or "You
+// paid Ben" instead of "Received" / "Sent". Who it involves is worked out
+// in ./activityPeople.ts from Paykit data (the contact's own BTC account on
+// our side, the private addresses they shared with us); this file only
+// words it.
 import type { ActivityItem } from '../../../wallet';
 
 const ZERO_ADDRESS = /^0x0{40}$/i;
@@ -20,8 +22,20 @@ export function isFaucetMint(item: ActivityItem): boolean {
 /** "Sent", "Received", "Moved to main account", "Test USD₮ minted". */
 export function activityTitle(item: ActivityItem): string {
   if (isFaucetMint(item)) return 'Test USD₮ minted';
-  if (item.direction === 'out' && item.accountIndex > 0) return 'Moved to main account';
+  if ((item.direction === 'out' && item.accountIndex > 0) || item.movedFromAccount !== undefined) return 'Moved to main account';
   return item.direction === 'in' ? 'Received' : 'Sent';
+}
+
+/** The title with the person in it, when there is one: "Ben paid you", "You paid Ben". */
+export function activityTitleWithPerson(item: ActivityItem, person: { role: 'paid-you' | 'you-paid' | 'moved'; name: string } | undefined): string {
+  switch (person?.role) {
+    case 'paid-you':
+      return `${person.name} paid you`;
+    case 'you-paid':
+      return `You paid ${person.name}`;
+    default:
+      return activityTitle(item);
+  }
 }
 
 /** "Pending", "Confirmed", "Failed". */

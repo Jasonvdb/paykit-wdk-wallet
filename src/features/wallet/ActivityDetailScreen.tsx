@@ -6,6 +6,10 @@
 // records). BTC transfers from WDK carry only a block height, so for a
 // confirmed BTC item the block time is read from Mutinynet's API.
 //
+// When the transaction involves a contact (activity/activityPeople.ts), the
+// title and the From / To row name them, and a receive on their own
+// Bitcoin account says it came to the private address you gave them.
+//
 // TODO(Phase 5 — Requests): link to the payment request and receipt. Put
 // that in its own component (activity/ActivityPaykitLinks.tsx) and render
 // it in the slot below the details.
@@ -15,7 +19,10 @@ import { Linking, StyleSheet, View } from 'react-native';
 import type { RootScreenProps } from '../../navigation/types';
 import { AssetAmount, Button, Chip, DetailRow, Divider, EmptyState, KeyText, PushedScreen, Text, formatDateTime, relativeTime, space } from '../../ui';
 import { fetchBtcTransactionStatus, formatFee, transactionUrl, useActivity, type ActivityItem } from '../../wallet';
-import { activityStatusWords, activityTitle, isFaucetMint, networkName } from './activity/activityText';
+import { activityStatusWords, activityTitleWithPerson, isFaucetMint, networkName } from './activity/activityText';
+import { useActivityPeople } from './activity/useActivityPeople';
+import { PersonSeal } from '../people/PersonSeal';
+import { usePersonName } from '../people/usePersonName';
 
 /** Block time for a confirmed BTC item (WDK only reports the height). */
 function useBtcBlockTime(item: ActivityItem | undefined): number | undefined {
@@ -38,6 +45,8 @@ export function ActivityDetailScreen({ navigation, route }: RootScreenProps<'Act
   const activity = useActivity();
   const item = activity.items.find((candidate) => candidate.id === route.params.activityId);
   const blockTime = useBtcBlockTime(item);
+  const person = useActivityPeople()(item ?? EMPTY_ITEM);
+  const { name } = usePersonName(person?.publicKey);
   const back = () => navigation.goBack();
 
   if (!item) {
@@ -57,13 +66,35 @@ export function ActivityDetailScreen({ navigation, route }: RootScreenProps<'Act
   const feeAsset = item.chain === 'bitcoin' ? 'btc' : 'eth';
 
   return (
-    <PushedScreen title={activityTitle(item)} onBack={back} testID="activity-detail">
+    <PushedScreen title={activityTitleWithPerson(item, person ? { role: person.role, name } : undefined)} onBack={back} testID="activity-detail">
       <View style={styles.headline}>
         <AssetAmount value={item.direction === 'in' ? item.amount : -item.amount} asset={item.asset} size="hero" signed />
         <Chip label={activityStatusWords(item)} tone={item.status === 'failed' ? 'alert' : 'neutral'} />
       </View>
 
       <View style={styles.details}>
+        {person ? (
+          <>
+            <DetailRow
+              label={person.role === 'you-paid' ? 'To' : person.role === 'moved' ? 'From the account of' : 'From'}
+              value={
+                <View style={styles.person}>
+                  <PersonSeal pubky={person.publicKey} size={28} />
+                  <Text variant="bodyStrong">{name}</Text>
+                </View>
+              }
+              hint={
+                item.accountIndex > 0 && item.direction === 'in'
+                  ? 'Paid to the private address you gave them'
+                  : person.role === 'you-paid'
+                    ? 'Paid to an address they shared only with you'
+                    : undefined
+              }
+              testID="activity-person"
+            />
+            <Divider />
+          </>
+        ) : null}
         {isFaucetMint(item) ? (
           <DetailRow label="From" value="Aave’s Sepolia test-token faucet" />
         ) : item.counterpartyAddress ? (
@@ -96,7 +127,11 @@ export function ActivityDetailScreen({ navigation, route }: RootScreenProps<'Act
   );
 }
 
+/** Hooks run before the "not found" early return; this stands in for a missing item. */
+const EMPTY_ITEM: ActivityItem = { id: '', chain: 'bitcoin', asset: 'btc', direction: 'in', amount: 0n, hash: '', status: 'pending', accountIndex: 0 };
+
 const styles = StyleSheet.create({
+  person: { flexDirection: 'row', alignItems: 'center', gap: space.s },
   headline: { gap: space.m, alignItems: 'flex-start', marginBottom: space.xl },
   details: { marginBottom: space.xl },
   explorer: { marginBottom: space.xl },
