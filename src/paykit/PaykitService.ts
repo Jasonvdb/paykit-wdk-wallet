@@ -52,7 +52,7 @@ import { PAYKIT_APP_ID, PAYKIT_APP_NAME } from '../config/paykit';
 import { PAYKIT_CALL_TIMEOUT_MS, PAYKIT_LINK_ADVANCE_STEPS } from '../config/sync';
 import { ReceivingAddressCache } from './addressCache';
 import { SerialCallQueue, type CallPriority } from './callQueue';
-import { describeError, isRetryablePaykitError } from './errors';
+import { UserFacingError, describeError, isRetryablePaykitError } from './errors';
 import { SyncEventLog } from './eventLog';
 import { arrayBufferToBase64 } from './bytes';
 import { cleanKeyInput, shortKey } from './keys';
@@ -380,7 +380,7 @@ export class PaykitService {
    */
   async saveContactAndLink(text: string, label?: string): Promise<FfiContactRecord> {
     const publicKey = this.normalizeKey(text);
-    if (publicKey === this.publicKey) throw new Error("That's your own key.");
+    if (publicKey === this.publicKey) throw new UserFacingError("That's your own key.");
     const record = await this.call('saveContact', (sdk, signal) => sdk.saveContact({ publicKey, label }, { signal }));
     this.addressCache.ensureContactAccount(publicKey);
     this.log.info(`saved contact ${shortKey(publicKey)}`);

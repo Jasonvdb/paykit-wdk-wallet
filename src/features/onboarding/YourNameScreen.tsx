@@ -10,11 +10,11 @@ import { Image, StyleSheet, View } from 'react-native';
 
 import { pickProfilePhoto, type ProfilePhoto } from '../../media/pickProfilePhoto';
 import type { OnboardingScreenProps } from '../../navigation/types';
-import { describeError, usePaykitService } from '../../paykit';
+import { describeError, usePaykit, userMessageFor } from '../../paykit';
 import { Button, Input, Screen, Text, space } from '../../ui';
 
 export function YourNameScreen({ navigation }: OnboardingScreenProps<'YourName'>) {
-  const service = usePaykitService();
+  const { service, log } = usePaykit();
   const [name, setName] = useState('');
   const [photo, setPhoto] = useState<ProfilePhoto>();
   const [publishing, setPublishing] = useState(false);
@@ -31,7 +31,8 @@ export function YourNameScreen({ navigation }: OnboardingScreenProps<'YourName'>
       });
       navigation.navigate('Ready');
     } catch (e) {
-      setError(describeError(e));
+      log.error(`publish profile: ${describeError(e)}`);
+      setError(userMessageFor(e, "Couldn't publish your profile. Try again, or skip for now."));
     } finally {
       setPublishing(false);
     }
@@ -41,8 +42,8 @@ export function YourNameScreen({ navigation }: OnboardingScreenProps<'YourName'>
     try {
       const picked = await pickProfilePhoto();
       if (picked) setPhoto(picked);
-    } catch (e) {
-      setError(describeError(e));
+    } catch {
+      setError("Couldn't use that photo. Try another one.");
     }
   };
 

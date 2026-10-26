@@ -21,7 +21,7 @@
 import { createContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { useBtcAddressLoader, useWalletAddresses, useWalletLifecycle } from '../wallet';
-import { describeError } from './errors';
+import { UserFacingError, describeError, userMessageFor } from './errors';
 import { SyncEventLog } from './eventLog';
 import { PaykitService } from './PaykitService';
 
@@ -29,6 +29,7 @@ export type PaykitConnection =
   | { status: 'disconnected' }
   | { status: 'connecting' }
   | { status: 'connected'; service: PaykitService }
+  /** `message` is written for people; the raw error is in the event log. */
   | { status: 'error'; message: string };
 
 export type PaykitContextValue = {
@@ -61,7 +62,7 @@ export function PaykitProvider({ autoConnect, children }: { autoConnect: boolean
     (options: { signupCode?: string } = {}) => {
       if (connecting.current) return connecting.current;
       const attempt = (async () => {
-        if (walletStatus !== 'ready') throw new Error('The wallet is not unlocked yet.');
+        if (walletStatus !== 'ready') throw new UserFacingError('The wallet is still starting. Try again in a moment.');
         const generation = walletGeneration.current;
         setConnection({ status: 'connecting' });
         try {
@@ -74,16 +75,15 @@ export function PaykitProvider({ autoConnect, children }: { autoConnect: boolean
           });
           if (generation !== walletGeneration.current) {
             next.dispose();
-            throw new Error('The wallet changed while connecting.');
+            throw new UserFacingError('The wallet changed while connecting. Try again.');
           }
           next.syncLoop.start();
           void next.refreshState('background');
           setConnection({ status: 'connected', service: next });
           return next;
         } catch (error) {
-          const message = describeError(error);
-          log.error(`connect failed: ${message}`);
-          setConnection({ status: 'error', message });
+          log.error(`connect failed: ${describeError(error)}`);
+          setConnection({ status: 'error', message: userMessageFor(error, "Couldn't connect your identity. Try again.") });
           throw error;
         }
       })();

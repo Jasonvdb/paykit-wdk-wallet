@@ -1,4 +1,5 @@
-// Onboarding 1/5: what this app is.
+// Onboarding 1/5: what this app is. The only main-UI screen that names
+// the SDKs (docs/DESIGN.md, "Writing"): this app exists to show them.
 //
 // TODO(Phase 2 — Wallet): final copy and illustration (e.g. a large seal
 // built from a sample key). Navigation is already wired.

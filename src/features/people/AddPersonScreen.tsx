@@ -13,11 +13,11 @@ import { StyleSheet, View } from 'react-native';
 
 import { demoPrefill } from '../../config/demo';
 import type { RootScreenProps } from '../../navigation/types';
-import { describeError, keyFromContactLink, usePaykitService } from '../../paykit';
+import { describeError, keyFromContactLink, usePaykit, userMessageFor } from '../../paykit';
 import { Button, Input, SheetScreen, Text, space } from '../../ui';
 
 export function AddPersonScreen({ navigation, route }: RootScreenProps<'AddPerson'>) {
-  const service = usePaykitService();
+  const { service, log } = usePaykit();
   const [text, setText] = useState(route.params?.pubky ?? demoPrefill.peerPubky ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
@@ -30,7 +30,8 @@ export function AddPersonScreen({ navigation, route }: RootScreenProps<'AddPerso
       const record = await service.saveContactAndLink(keyFromContactLink(text) ?? '');
       navigation.replace('Person', { pubky: record.publicKey });
     } catch (e) {
-      setError(describeError(e));
+      log.warn(`add contact: ${describeError(e)}`);
+      setError(userMessageFor(e, "Couldn't add that key. Check that it is a full pubky and try again."));
     } finally {
       setSaving(false);
     }

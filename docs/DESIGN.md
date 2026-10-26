@@ -143,7 +143,11 @@ Wireframe of the wallet tab:
 
 - Name things the way a user would. "Link" means the private connection with a
   contact. "Paykit" and "Noise" never appear in the main UI; they appear in
-  You > Network details, because this is a developer reference.
+  You > Network details, because this is a developer reference. The one
+  exception is the Welcome screen, which names the two SDKs once to say what
+  this reference app shows.
+- Error text never shows SDK tags or codes. Screens use `userMessageFor`
+  (src/paykit/errors.ts); the raw error goes to the event log.
 - Link states in words: "Connecting privately…", "Private connection ready",
   "They haven't added you yet", "Can't reach them right now".
 - Buttons say what happens: "Send 12 USD₮", "Pay request", "Add Ana",
