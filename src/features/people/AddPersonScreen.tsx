@@ -7,7 +7,8 @@
 //
 // TODO(Phase 4 — Contacts): profile preview before saving ("Retrieving
 // contact info…" via PaykitService.resolvePeer), reject duplicates, label
-// field, "Scan QR" button (ScanQr), paste button, mutual-add explainer.
+// field, paste button, mutual-add explainer. ("Scan their pay-me code"
+// opens ScanQr, Phase 3.)
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -49,6 +50,7 @@ export function AddPersonScreen({ navigation, route }: RootScreenProps<'AddPerso
         <Text variant="secondary" color="graphite">
           You and they must add each other to pay each other privately.
         </Text>
+        <Button label="Scan their pay-me code" variant="secondary" compact onPress={() => navigation.replace('ScanQr')} testID="add-person-scan" />
       </View>
     </SheetScreen>
   );

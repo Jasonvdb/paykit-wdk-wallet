@@ -22,7 +22,12 @@ export function PeopleScreen({ navigation }: MainTabScreenProps<'People'>) {
       title="People"
       edges={['top']}
       testID="people-screen"
-      headerRight={<Button label="Add" compact variant="secondary" onPress={() => navigation.navigate('AddPerson')} />}
+      headerRight={
+        <View style={styles.headerActions}>
+          <Button label="Scan" compact variant="secondary" onPress={() => navigation.navigate('ScanQr')} testID="people-scan" />
+          <Button label="Add" compact variant="secondary" onPress={() => navigation.navigate('AddPerson')} />
+        </View>
+      }
     >
       {notice ? (
         <Text color="graphite">{notice.message}</Text>
@@ -61,5 +66,6 @@ function ContactRow({ contact, onPress }: { contact: ContactSummary; onPress: ()
 }
 
 const styles = StyleSheet.create({
+  headerActions: { flexDirection: 'row', gap: space.s },
   spacer: { height: space.xl },
 });

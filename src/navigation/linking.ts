@@ -13,6 +13,7 @@
 //   paykitwdk://send?to=<address>&asset=btc  Send, with the recipient filled in
 //   paykitwdk://receive?code=pubky           Receive, showing your pay-me code
 //   paykitwdk://profile                      Edit your name and photo
+//   paykitwdk://scan                         Scan a code (paste or a photo on simulators)
 // A send link only fills in the form: nothing moves until the person
 // reviews the fee and taps Send.
 import type { LinkingOptions } from '@react-navigation/native';
@@ -27,6 +28,7 @@ export const linking: LinkingOptions<RootStackParamList> = {
       Send: 'send',
       Receive: 'receive',
       EditProfile: 'profile',
+      ScanQr: 'scan',
       Main: {
         screens: {
           Wallet: 'wallet',

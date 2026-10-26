@@ -51,7 +51,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Scan a pay-me code to add a person.",
+          "cameraPermission": "Scan a pay-me code or a payment address.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
@@ -59,8 +59,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Choose a profile photo that your contacts will see.",
-          "cameraPermission": false,
+          "photosPermission": "Choose a profile photo, or a photo of a pay-me code to scan.",
+          "cameraPermission": "Scan a pay-me code or a payment address.",
           "microphonePermission": false
         }
       ]
