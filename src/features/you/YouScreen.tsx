@@ -14,12 +14,14 @@
 //            pay-me code, what you publish (public endpoint switches) and
 //            network details ("Paykit" and "Noise" may appear there,
 //            nowhere else in the main UI)
+//   Phase 6  contacts and requests backup (make, copy or share, check)
 import { StyleSheet, View } from 'react-native';
 
 import type { MainTabScreenProps } from '../../navigation/types';
 import { usePaykit, useSyncLog, useSyncStatus, type SyncStatus } from '../../paykit';
 import { Button, Divider, Screen, Text, relativeTime, space } from '../../ui';
 import { PayMeCode } from '../wallet/receive/PayMeCode';
+import { BackupSection } from './BackupSection';
 import { ContactAccountsSection } from './ContactAccountsSection';
 import { NetworkDetailsSection } from './NetworkDetailsSection';
 import { ProfileSection } from './ProfileSection';
@@ -69,6 +71,11 @@ export function YouScreen({ navigation }: MainTabScreenProps<'You'>) {
         Recovery phrase
       </Text>
       <RecoveryPhraseSection />
+
+      <Text variant="heading" style={styles.section}>
+        Contacts and requests backup
+      </Text>
+      <BackupSection />
 
       <Text variant="heading" style={styles.section}>
         Network details

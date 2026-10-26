@@ -27,8 +27,8 @@ export interface StringStore {
   set(key: string, value: string): void;
 }
 
-const CONTACT_ACCOUNTS_KEY = 'contact-btc-accounts-v1';
-const PUBLIC_ENDPOINT_CHOICE_KEY = 'public-endpoints-v1';
+export const CONTACT_ACCOUNTS_KEY = 'contact-btc-accounts-v1';
+export const PUBLIC_ENDPOINT_CHOICE_KEY = 'public-endpoints-v1';
 
 /**
  * Which assets are published as public endpoints (You > What you publish).
@@ -89,6 +89,19 @@ export class ReceivingAddressCache {
       // second contact an address the first one already knows.
       throw new Error('Contact account map is unreadable');
     }
+  }
+
+  /**
+   * Read the persisted contact accounts and endpoint switches again, after a
+   * backup restore wrote them into the store (src/paykit/backup.ts).
+   * Derived addresses are dropped: an index may now belong to another
+   * contact, so the provider derives them again.
+   */
+  reloadFromStore(): void {
+    this.contactAccounts = this.load();
+    this.endpointChoice = this.loadEndpointChoice();
+    for (const index of [...this.btcAddresses.keys()]) if (index !== 0) this.btcAddresses.delete(index);
+    this.emitChange();
   }
 
   private persist(): void {

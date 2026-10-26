@@ -103,3 +103,27 @@ export function openPaykitAppStore(publicKey: string, encryptionKey: string): MM
     encryptionType: 'AES-256',
   });
 }
+
+/**
+ * A state store that lives in memory only, with the same contract as the
+ * MMKV one. Used for a throwaway SDK handle that checks a backup restores
+ * (src/paykit/backup.ts) without touching this phone's real state.
+ */
+export class MemoryStateBlobStore implements FfiSdkStateBlobStore {
+  private snapshot: { blob: FfiSdkStateBlobInterface; revision: string } | undefined;
+  private counter = 0;
+  private readonly launchId = Crypto.randomUUID();
+
+  loadStateBlob(): FfiSdkStateBlobSnapshot | undefined {
+    return this.snapshot;
+  }
+
+  saveStateBlobAtomically(blob: FfiSdkStateBlobInterface, expectedRevision: string | undefined): string {
+    if (this.snapshot?.revision !== expectedRevision) {
+      throw new PaykitFfiError.ConcurrentUpdate({ code: 'state_revision_mismatch', context: 'stored SDK state revision changed' });
+    }
+    const revision = `memory-${this.launchId}-${++this.counter}`;
+    this.snapshot = { blob, revision };
+    return revision;
+  }
+}

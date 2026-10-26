@@ -53,6 +53,7 @@ import {
   type FfiPaykitSdkInterface,
   type FfiPaykitStateObservation,
   type FfiProfileResolution,
+  type FfiPubkyClientConfig,
   type FfiPublicContactPaymentResolution,
 } from '@synonymdev/react-native-paykit';
 
@@ -65,13 +66,15 @@ import { SyncEventLog } from './eventLog';
 import { arrayBufferToBase64, isSafeAvatarSize, readImageSize, sniffImageType } from './bytes';
 import { cleanKeyInput, shortKey } from './keys';
 import { WdkPaymentAdapter } from './paymentAdapter';
-import { connectSession, type SessionOrigin } from './session';
+import { AppSessionProvider, connectSession, type SessionOrigin } from './session';
+import { applyBackup, BACKUP_APP_KEYS, type BackupSummary } from './backup';
+import { backupKeyFrom, backupOpenMessage, openBackup, readEnvelope, sealBackup, type BackupEnvelope } from './backupCrypto';
 import { loadOrCreateStorageKey } from './secureStorage';
 import { registerPrivatePaymentHooks } from './privatePayments';
 import { PrivateListStore } from './privatePaymentLists';
 import { paymentsWithUndeliveredProof, registerPaymentRequestHooks } from './requests';
 import { ProfileDirectory, cleanDisplayName } from './profiles';
-import { openPaykitAppStore, openStateStore } from './stateStore';
+import { MemoryStateBlobStore, openPaykitAppStore, openStateStore } from './stateStore';
 import { PaykitSyncLoop } from './syncLoop';
 
 export type ConnectOptions = {
@@ -88,6 +91,13 @@ export type ConnectOptions = {
    */
   appPublished: boolean;
   log: SyncEventLog;
+  /**
+   * Onboarding Restore only: a sealed backup of this identity's contacts
+   * and requests (./backup.ts), restored into the fresh state before
+   * anything else runs. A backup that doesn't open, or a phone that
+   * already has state for this identity, fails the connect.
+   */
+  restoreBackup?: string;
 };
 
 /**
@@ -151,6 +161,12 @@ export class PaykitService {
     private readonly queue: SerialCallQueue,
     readonly log: SyncEventLog,
     private appPublished: boolean,
+    /** For a throwaway SDK handle with the same session (inScratchState). */
+    private readonly session: { provider: AppSessionProvider; pubkyClient: FfiPubkyClientConfig },
+    /** Seals and opens backups (./backupCrypto.ts). Derived from the recovery phrase; never logged. */
+    private readonly backupKey: Uint8Array,
+    /** What a backup restored during this connect, if one did. */
+    readonly restoredFromBackup: BackupSummary | undefined,
   ) {
     this.syncLoop = new PaykitSyncLoop({
       call: (label, task) => this.call(label, task, 'background'),
@@ -205,6 +221,17 @@ export class PaykitService {
       log: (message) => log.info(message),
     });
 
+    // The backup key comes from the same phrase-derived secret (./backupCrypto.ts),
+    // so a backup opens with the recovery phrase alone.
+    const backupKey = backupKeyFrom(new Uint8Array(secretKey.exportBytes()));
+    // Open the backup before anything is built: a wrong paste fails fast.
+    let envelope: BackupEnvelope | undefined;
+    try {
+      envelope = options.restoreBackup ? readEnvelope(openBackup(options.restoreBackup, backupKey), publicKey, BACKUP_APP_KEYS) : undefined;
+    } catch (error) {
+      throw new UserFacingError(backupOpenMessage(error) ?? "Couldn't open the backup.");
+    }
+
     const encryptionKey = await loadOrCreateStorageKey();
     const store = openStateStore(publicKey, encryptionKey);
     const appStore = openPaykitAppStore(publicKey, encryptionKey);
@@ -236,7 +263,37 @@ export class PaykitService {
     }
     log.info('Paykit initialized');
 
-    const service = new PaykitService(sdk, publicKey, session.origin, identity, addressCache, appStore, queue, log, options.appPublished);
+    let restored: BackupSummary | undefined;
+    if (envelope) {
+      try {
+        restored = await applyBackup((label, task) => queue.run(label, (signal) => task(sdk, signal)), envelope, appStore);
+      } catch (error) {
+        queue.close();
+        releaseSdk(sdk);
+        log.error(`restore backup: ${describeError(error)}`);
+        if (paykitErrorTag(error) === PaykitFfiError_Tags.Policy) {
+          throw new UserFacingError('This phone already has contacts or requests for this identity, so the backup was not restored over them.');
+        }
+        throw error;
+      }
+      addressCache.reloadFromStore();
+      log.info(`restored a backup: ${restored.contacts} contacts, ${restored.requests} requests, ${restored.reconnecting} links to form again`);
+    }
+
+    const service = new PaykitService(
+      sdk,
+      publicKey,
+      session.origin,
+      identity,
+      addressCache,
+      appStore,
+      queue,
+      log,
+      options.appPublished,
+      { provider: session.provider, pubkyClient },
+      backupKey,
+      restored,
+    );
     registerPrivatePaymentHooks(service);
     registerPaymentRequestHooks(service);
     liveService = service;
@@ -263,6 +320,43 @@ export class PaykitService {
     this.queue.close();
     releaseSdk(this.sdk);
     if (liveService === this) liveService = undefined;
+  }
+
+  // Backups (./backup.ts) -------------------------------------------------------
+
+  /** Seal backup plaintext (ASCII JSON) with this identity's backup key. */
+  sealBackup(plaintext: string, nonce: Uint8Array): string {
+    return sealBackup(plaintext, this.backupKey, nonce);
+  }
+
+  /** Open backup text made with this recovery phrase. Throws BackupOpenError. */
+  openBackup(text: string): string {
+    return openBackup(text, this.backupKey);
+  }
+
+  /**
+   * Run `task` on a throwaway SDK handle: same identity and session, an
+   * empty in-memory state store, no payment adapter and no sync loop. It
+   * runs in this service's call queue (one SDK call at a time) and is
+   * released afterwards. Its own session provider wraps the live session,
+   * so nothing it does can drop this service's session.
+   */
+  async inScratchState<T>(label: string, task: (sdk: FfiPaykitSdkInterface, signal: AbortSignal) => Promise<T>): Promise<T> {
+    if (this.disposed) throw new Error('Paykit is disconnected');
+    return this.queue.run(label, async (signal) => {
+      const scratch = FfiPaykitSdk.withPubkyClientConfig(
+        new MemoryStateBlobStore(),
+        new AppSessionProvider(this.session.provider.loadSessionAccess()),
+        defaultConfig(PAYKIT_APP_ID),
+        this.session.pubkyClient,
+      );
+      try {
+        await scratch.initialize({ signal });
+        return await task(scratch, signal);
+      } finally {
+        releaseSdk(scratch);
+      }
+    });
   }
 
   // Onboarding ----------------------------------------------------------------

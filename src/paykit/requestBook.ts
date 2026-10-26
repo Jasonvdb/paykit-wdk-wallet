@@ -22,7 +22,7 @@
 import type { StringStore } from './addressCache';
 import { periodKey, type BillingPeriod } from './recurrence';
 
-const BOOK_KEY = 'payment-requests-v1';
+export const BOOK_KEY = 'payment-requests-v1';
 
 export function paymentKey(counterparty: string, requestId: string, period?: BillingPeriod): string {
   return `${counterparty}|${requestId}|${periodKey(period)}`;
