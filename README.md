@@ -317,8 +317,8 @@ One-time human steps:
    approve the Mutinynet faucet app. The script exchanges the GitHub token
    for the faucet's 24-hour token and saves it as `MUTINYNET_FAUCET_TOKEN`
    in `.env.demo`. The faucet gives at most 1,000,000 sats per GitHub user
-   and IP per day. The `--login` flow has not been run end to end yet. If it
-   fails, use the faucet's own CLI (`cargo install mutinynet-cli`,
+   and IP per day. The GitHub app asks only for read-only access to your
+   email addresses. If the login fails, use the faucet's own CLI (`cargo install mutinynet-cli`,
    `mutinynet-cli login`) and put the token it stores in
    `~/.mutinynet/token` into `.env.demo` as `MUTINYNET_FAUCET_TOKEN=…`.
    Background: [`docs/research/04-testnet-funding.md`](docs/research/04-testnet-funding.md).
