@@ -100,13 +100,25 @@ function paidCount(facts: Pick<RequestFacts, 'payments'>): number {
 }
 
 /**
+ * Whether a payment counts toward finishing a schedule. The payer counts
+ * what it paid. The payee counts only what its own on-chain check verified:
+ * a recorded proof may still be checking, may have failed the check, or may
+ * name a period that is not on the schedule (the check rejects those), and
+ * none of that is money the payee got.
+ */
+function countsTowardSchedule(payment: PaymentFacts, role: RequestFacts['role']): boolean {
+  return role === 'payer' ? isPaymentMade(payment) : payment.check === 'verified';
+}
+
+/**
  * A recurring request with a set number of payments that has all of them.
  * The SDK keeps such a request ActiveRecurring for good (Paykit runs no
  * scheduler, so nothing ends it), so the wallet works out that it is done:
  * nothing is left to pay, and nothing to stop or cancel.
  */
-export function isScheduleComplete(facts: Pick<RequestFacts, 'recurring' | 'totalPayments' | 'payments'>): boolean {
-  return facts.recurring && facts.totalPayments !== undefined && paidCount(facts) >= facts.totalPayments;
+export function isScheduleComplete(facts: Pick<RequestFacts, 'role' | 'recurring' | 'totalPayments' | 'payments'>): boolean {
+  if (!facts.recurring || facts.totalPayments === undefined) return false;
+  return facts.payments.filter((payment) => countsTowardSchedule(payment, facts.role)).length >= facts.totalPayments;
 }
 
 /** One payment's status in words (one-time requests and each recurring period). */

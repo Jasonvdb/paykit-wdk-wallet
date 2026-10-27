@@ -56,6 +56,18 @@ describe('requestStatusWords', () => {
     expect(isScheduleComplete({ ...done, totalPayments: undefined })).toBe(false);
     expect(isScheduleComplete({ ...done, recurring: false })).toBe(false);
   });
+
+  it('makes the payee wait for its own checks before calling a schedule done', () => {
+    const verified = (key: string) => payment({ key, proofRecorded: true, check: 'verified', receipt: 'sent' });
+    const payee = (payments: PaymentFacts[]) => facts({ recurring: true, state: 'active', accepted: true, totalPayments: 3, payments });
+    expect(isScheduleComplete(payee([verified('k1'), verified('k2'), verified('k3')]))).toBe(true);
+    // Three proofs arrived, but one failed the check: not paid, so Cancel stays.
+    const oneRejected = payee([verified('k1'), verified('k2'), payment({ key: 'k3', proofRecorded: true, check: 'rejected' })]);
+    expect(isScheduleComplete(oneRejected)).toBe(false);
+    expect(requestStatusWords(oneRejected)).toBe('Active: 3 of 3 paid');
+    // Still checking on chain.
+    expect(isScheduleComplete(payee([verified('k1'), verified('k2'), payment({ key: 'k3', proofRecorded: true, check: 'pending' })]))).toBe(false);
+  });
 });
 
 describe('requestTimeline', () => {
