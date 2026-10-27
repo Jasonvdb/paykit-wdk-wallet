@@ -142,8 +142,29 @@ export function parseBlockscoutTransactions(json: unknown, owner: string): Activ
   return items;
 }
 
-/** USD₮ movements from Blockscout `/addresses/{a}/token-transfers`. Other tokens are skipped. */
-export function parseBlockscoutTokenTransfers(json: unknown, owner: string): ActivityItem[] {
+/**
+ * The network fee of each transaction `owner` sent, by lowercase hash, from
+ * Blockscout `/addresses/{a}/transactions`. A USD₮ send is a zero-value call
+ * to the token contract, so parseBlockscoutTransactions skips it, and the
+ * token-transfer list carries no fee: this is where its fee comes from.
+ */
+export function blockscoutSentFees(json: unknown, owner: string): Map<string, bigint> {
+  const list = (json as { items?: BlockscoutTransaction[] } | null)?.items;
+  const fees = new Map<string, bigint>();
+  if (!Array.isArray(list)) return fees;
+  for (const tx of list) {
+    if (!tx?.hash || !tx.fee?.value || !sameEvmAddress(tx.from?.hash ?? '', owner)) continue;
+    fees.set(tx.hash.toLowerCase(), BigInt(tx.fee.value));
+  }
+  return fees;
+}
+
+/**
+ * USD₮ movements from Blockscout `/addresses/{a}/token-transfers`. Other
+ * tokens are skipped. `sentFees` (blockscoutSentFees) adds the fee to the
+ * ones `owner` sent.
+ */
+export function parseBlockscoutTokenTransfers(json: unknown, owner: string, sentFees?: ReadonlyMap<string, bigint>): ActivityItem[] {
   const list = (json as { items?: BlockscoutTokenTransfer[] } | null)?.items;
   if (!Array.isArray(list)) return [];
   const items: ActivityItem[] = [];
@@ -158,6 +179,7 @@ export function parseBlockscoutTokenTransfers(json: unknown, owner: string): Act
       asset: 'usdt',
       direction: outgoing ? 'out' : 'in',
       amount: BigInt(transfer.total?.value ?? '0'),
+      fee: outgoing ? sentFees?.get(transfer.transaction_hash.toLowerCase()) : undefined,
       hash: transfer.transaction_hash,
       counterpartyAddress: outgoing ? transfer.to?.hash : from,
       timestamp: toTimestamp(transfer.timestamp),
@@ -171,16 +193,52 @@ export function parseBlockscoutTokenTransfers(json: unknown, owner: string): Act
 
 /**
  * Merge activity sources. Indexer items win over locally recorded sends with
- * the same hash and asset. Newest first: pending items, then by time or height.
+ * the same hash and asset, but keep what only the local record knows: when
+ * it was sent (Electrum reports no time for a BTC transaction, so without it
+ * a fresh send would drop below older Ethereum rows until its block time is
+ * read) and, on the sending side, the fee. Newest first: pending items, then
+ * by time or height.
  */
 export function mergeActivity(sources: ActivityItem[][], localSends: ActivityItem[]): ActivityItem[] {
   const byId = new Map<string, ActivityItem>();
   for (const item of sources.flat()) byId.set(item.id, item);
-  const indexed = new Set([...byId.values()].map((item) => `${item.hash}:${item.asset}`));
+  const local = new Map(localSends.map((item) => [`${item.hash}:${item.asset}`, item]));
+  const indexed = new Set<string>();
+  for (const [id, item] of byId) {
+    const key = `${item.hash}:${item.asset}`;
+    indexed.add(key);
+    const sent = local.get(key);
+    if (!sent) continue;
+    byId.set(id, {
+      ...item,
+      timestamp: item.timestamp ?? sent.timestamp,
+      fee: item.fee ?? (item.direction === 'out' ? sent.fee : undefined),
+    });
+  }
   for (const item of localSends) {
     if (!indexed.has(`${item.hash}:${item.asset}`)) byId.set(item.id, item);
   }
   return [...byId.values()].sort(compareNewestFirst);
+}
+
+/**
+ * Give confirmed Bitcoin items the time of their block, from `blockTimes`
+ * (txid -> ms, read from Mutinynet's esplora). WDK's transfers carry only a
+ * block height, and an item without a time sorts below every Ethereum item
+ * and shows "confirmed" instead of "2m ago".
+ */
+export function withBlockTimes(items: ActivityItem[], blockTimes: ReadonlyMap<string, number>): ActivityItem[] {
+  return items.map((item) => {
+    if (item.chain !== 'bitcoin' || item.status !== 'confirmed') return item;
+    const blockTime = blockTimes.get(item.hash);
+    return blockTime === undefined || item.timestamp === blockTime ? item : { ...item, timestamp: blockTime };
+  });
+}
+
+/** Confirmed Bitcoin transactions whose block time is not in `blockTimes` yet. */
+export function missingBlockTimes(items: ActivityItem[], blockTimes: ReadonlyMap<string, number>): string[] {
+  const hashes = items.filter((item) => item.chain === 'bitcoin' && item.status === 'confirmed' && !blockTimes.has(item.hash)).map((item) => item.hash);
+  return [...new Set(hashes)];
 }
 
 /**
