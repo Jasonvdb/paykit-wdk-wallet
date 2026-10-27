@@ -42,9 +42,11 @@ export function activityTitleWithPerson(item: ActivityItem, person: { role: 'pai
  * Activity detail's line under the person: which of their addresses the
  * money went to. Only Bitcoin addresses are private (one per contact); a
  * contact's USD₮ or ETH goes to their one Ethereum address, which everyone
- * pays, so saying "shared only with you" there would be false. A payment
- * that paid a request gets no line: the request section below says what
- * it paid.
+ * pays, so saying "shared only with you" there would be false. Money that
+ * came into one of our contact accounts keeps its line even when it paid a
+ * request: that it reached the private address we gave them is a fact the
+ * request section does not state. A payment we made for a request gets no
+ * line: the request section below says what it paid.
  */
 export function activityPersonHint(item: ActivityItem, role: 'paid-you' | 'you-paid' | 'moved', paidARequest: boolean): string | undefined {
   if (item.accountIndex > 0 && item.direction === 'in') return 'Paid to the private address you gave them';

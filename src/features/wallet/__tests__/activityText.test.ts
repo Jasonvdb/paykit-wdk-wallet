@@ -38,8 +38,10 @@ describe('activity words', () => {
     // USD₮ goes to the one Ethereum address everyone pays: never "only with you".
     expect(activityPersonHint({ ...base, direction: 'out' }, 'you-paid', false)).toBe('Paid to their Ethereum address, the same one everyone pays');
     expect(activityPersonHint({ ...btcOut, direction: 'in', accountIndex: 1 }, 'paid-you', false)).toBe('Paid to the private address you gave them');
-    // A request payment: the request section says what it paid.
+    // A request payment we made: the request section says what it paid.
     expect(activityPersonHint(btcOut, 'you-paid', true)).toBeUndefined();
+    // A request payment into our contact account still says it reached the private address.
+    expect(activityPersonHint({ ...btcOut, direction: 'in', accountIndex: 1 }, 'paid-you', true)).toBe('Paid to the private address you gave them');
     expect(activityPersonHint({ ...btcOut, movedFromAccount: 1, direction: 'in' }, 'moved', false)).toBeUndefined();
   });
 });
