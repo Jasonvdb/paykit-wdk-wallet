@@ -18,8 +18,8 @@ import { Linking, StyleSheet, View } from 'react-native';
 import type { RootScreenProps } from '../../navigation/types';
 import { AssetAmount, Button, Chip, DetailRow, Divider, EmptyState, KeyText, PushedScreen, Text, formatDateTime, relativeTime, space } from '../../ui';
 import { fetchBtcTransactionStatus, formatFee, transactionUrl, useActivity, type ActivityItem } from '../../wallet';
-import { ActivityPaykitLinks } from './activity/ActivityPaykitLinks';
-import { activityStatusWords, activityTitleWithPerson, isFaucetMint, networkName } from './activity/activityText';
+import { ActivityPaykitLinks, useRequestLinkFor } from './activity/ActivityPaykitLinks';
+import { activityPersonHint, activityStatusWords, activityTitleWithPerson, isFaucetMint, networkName } from './activity/activityText';
 import { useActivityPeople } from './activity/useActivityPeople';
 import { PersonSeal } from '../people/PersonSeal';
 import { usePersonName } from '../people/usePersonName';
@@ -46,6 +46,7 @@ export function ActivityDetailScreen({ navigation, route }: RootScreenProps<'Act
   const item = activity.items.find((candidate) => candidate.id === route.params.activityId);
   const blockTime = useBtcBlockTime(item);
   const person = useActivityPeople()(item ?? EMPTY_ITEM);
+  const requestLink = useRequestLinkFor(item ?? EMPTY_ITEM);
   const { name } = usePersonName(person?.publicKey);
   const back = () => navigation.goBack();
 
@@ -62,7 +63,8 @@ export function ActivityDetailScreen({ navigation, route }: RootScreenProps<'Act
   }
 
   const time = item.timestamp ?? blockTime;
-  const counterpartyLabel = item.direction === 'in' ? 'From' : 'To';
+  // Under a person row that already says To or From, the address row is just their address.
+  const counterpartyLabel = person ? 'Address' : item.direction === 'in' ? 'From' : 'To';
   const feeAsset = item.chain === 'bitcoin' ? 'btc' : 'eth';
 
   return (
@@ -83,13 +85,7 @@ export function ActivityDetailScreen({ navigation, route }: RootScreenProps<'Act
                   <Text variant="bodyStrong">{name}</Text>
                 </View>
               }
-              hint={
-                item.accountIndex > 0 && item.direction === 'in'
-                  ? 'Paid to the private address you gave them'
-                  : person.role === 'you-paid'
-                    ? 'Paid to an address they shared only with you'
-                    : undefined
-              }
+              hint={activityPersonHint(item, person.role, requestLink !== undefined)}
               testID="activity-person"
             />
             <Divider />

@@ -1,5 +1,5 @@
 import type { ActivityItem } from '../../../wallet';
-import { activityStatusWords, activityTitle, isFaucetMint } from '../activity/activityText';
+import { activityPersonHint, activityStatusWords, activityTitle, isFaucetMint } from '../activity/activityText';
 
 const base: ActivityItem = {
   id: 'ethereum:0x1:usdt:0',
@@ -30,5 +30,16 @@ describe('activity words', () => {
     expect(activityStatusWords({ ...base, status: 'pending' })).toBe('Pending');
     expect(activityStatusWords(base)).toBe('Confirmed');
     expect(activityStatusWords({ ...base, status: 'failed' })).toBe('Failed');
+  });
+
+  it('says which of their addresses a payment went to, truthfully per asset', () => {
+    const btcOut: ActivityItem = { ...base, chain: 'bitcoin', asset: 'btc', direction: 'out' };
+    expect(activityPersonHint(btcOut, 'you-paid', false)).toBe('Paid to a Bitcoin address they shared only with you');
+    // USD₮ goes to the one Ethereum address everyone pays: never "only with you".
+    expect(activityPersonHint({ ...base, direction: 'out' }, 'you-paid', false)).toBe('Paid to their Ethereum address, the same one everyone pays');
+    expect(activityPersonHint({ ...btcOut, direction: 'in', accountIndex: 1 }, 'paid-you', false)).toBe('Paid to the private address you gave them');
+    // A request payment: the request section says what it paid.
+    expect(activityPersonHint(btcOut, 'you-paid', true)).toBeUndefined();
+    expect(activityPersonHint({ ...btcOut, movedFromAccount: 1, direction: 'in' }, 'moved', false)).toBeUndefined();
   });
 });

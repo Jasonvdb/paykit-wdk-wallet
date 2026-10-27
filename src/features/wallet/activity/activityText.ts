@@ -38,6 +38,22 @@ export function activityTitleWithPerson(item: ActivityItem, person: { role: 'pai
   }
 }
 
+/**
+ * Activity detail's line under the person: which of their addresses the
+ * money went to. Only Bitcoin addresses are private (one per contact); a
+ * contact's USD₮ or ETH goes to their one Ethereum address, which everyone
+ * pays, so saying "shared only with you" there would be false. A payment
+ * that paid a request gets no line: the request section below says what
+ * it paid.
+ */
+export function activityPersonHint(item: ActivityItem, role: 'paid-you' | 'you-paid' | 'moved', paidARequest: boolean): string | undefined {
+  if (item.accountIndex > 0 && item.direction === 'in') return 'Paid to the private address you gave them';
+  if (role !== 'you-paid' || paidARequest) return undefined;
+  return item.chain === 'bitcoin'
+    ? 'Paid to a Bitcoin address they shared only with you'
+    : 'Paid to their Ethereum address, the same one everyone pays';
+}
+
 /** "Pending", "Confirmed", "Failed". */
 export function activityStatusWords(item: ActivityItem): string {
   if (item.status === 'pending') return 'Pending';
