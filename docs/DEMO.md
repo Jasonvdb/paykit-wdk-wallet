@@ -344,6 +344,9 @@ Shows: the Paykit and Noise layer, for developers.
 
 ## Funded run, 27 October 2026
 
+The full record (each step's result, the bugs found and fixed, and what
+is still open) is in [`DEMO-RUN.md`](DEMO-RUN.md).
+
 The payment steps ran with real testnet money on both phones, in this
 order: paying by address, steps 5 and 6, the in-app mint, step 2 after
 removing each other, step 3, then step 5 again once linked. Every

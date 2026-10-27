@@ -31,25 +31,27 @@ Android's window carries `FLAG_SECURE` while a backup is held and the
 screenshot comes out black; on iOS, `Documents/mmkv` carries the
 backup-exclusion attribute.
 
+**Real testnet money moved both ways, in both assets, on every payment
+path in the demo.** [`docs/DEMO-RUN.md`](docs/DEMO-RUN.md) records the
+run of 27 October 2026, with a link to every transaction. It covered
+paying by address, paying a stranger by pubky (public endpoints),
+private payments to a contact, Collect, the in-app USD₮ mint, one-time
+requests in both assets with proofs, on-chain checks and receipts, a
+recurring request paid by hand, and automatic payments under an
+Allowance, up to its amount and hourly limits. Closing the app
+mid-payment (the payer after the broadcast or during the send, the
+payee before its check) still ended with one transaction and a receipt.
+All 28 transactions were checked on the explorers. The run and a review
+of its fixes found 10 bugs, all fixed. None sent money twice or to the
+wrong place: Collect left uncollectable dust behind, and the rest were
+in what the screens showed.
+
 Honest gaps:
 
-- **Everything that moves money ran with real testnet money**, on both
-  phones ([`docs/DEMO.md`](docs/DEMO.md), "Funded run"): paying by
-  address, paying a stranger by pubky (public endpoints), private
-  payments to a contact in both directions and both assets, Collect, the
-  in-app USD₮ mint, one-time requests in both assets with proofs,
-  on-chain checks and receipts, a recurring request paid by hand, and
-  automatic payments under an Allowance, up to its amount and hourly
-  limits. Closing the app mid-payment (payer after the broadcast, payer
-  during the send, payee before its check) still ended with one
-  transaction and a receipt. The payment run fixed four bugs (Collect
-  left uncollectable dust, Bitcoin rows had no time, USD₮ sends stayed
-  Pending until Blockscout caught up, seals outside People had no link
-  ring). The request run found no bug in how money moves; it fixed three
-  screens: a finished recurring request still read "Active" and offered
-  to stop it, Request money promised a tap per payment even to a contact
-  who pays automatically, and Activity detail showed an empty address row
-  under a named contact.
+- **Not run with money:** marking a replaced Sepolia send as Failed. The
+  app never replaces a transaction, so a unit test covers it. The
+  Allowance used in the run is ended: set it up again before demoing
+  DEMO step 9.
 - **Restoring a backup in onboarding** has not run on a device: it needs
   a phone with no state for the identity. The same SDK restore ran in
   "Check a copied backup" on both phones. What a restore means for
@@ -129,6 +131,18 @@ here because the keys are not domain-separated.
 | Paykit | Recovery markers, revisions, the sync loop | You > Network details, Sync status | `src/features/you/NetworkDetailsSection.tsx`, `src/paykit/networkDetails.ts`, `src/paykit/backup.ts` (`readBackupStatus`), `src/paykit/syncLoop.ts`, `src/paykit/eventLog.ts` |
 
 ## Screenshots
+
+From the funded run ([`docs/DEMO-RUN.md`](docs/DEMO-RUN.md)), with real
+testnet money:
+
+| | | |
+|---|---|---|
+| <img src="docs/screenshots/demo-run/ios-wallet-activity-by-time.png" width="220" alt="Wallet with real balances and activity"> | <img src="docs/screenshots/demo-run/ios-pay-ben-private-btc-review.png" width="220" alt="Reviewing a private Bitcoin payment to a contact"> | <img src="docs/screenshots/demo-run/ios-pay-stranger-public-endpoint.png" width="220" alt="Paying a stranger by pubky"> |
+| Wallet and Activity | Paying a contact privately | Paying a stranger by pubky |
+| <img src="docs/screenshots/demo-run/ios-btc-request-receipt.png" width="220" alt="A Bitcoin request paid, checked and receipted"> | <img src="docs/screenshots/demo-run/android-usdt-request-receipt.png" width="220" alt="A USD₮ request paid, checked and receipted on Android"> | <img src="docs/screenshots/demo-run/ios-allowance-usage.png" width="220" alt="Automatic payments and their usage"> |
+| A Bitcoin request, to the receipt | A USD₮ request (Android) | Automatic payments in use |
+
+From the phases:
 
 | | | |
 |---|---|---|
