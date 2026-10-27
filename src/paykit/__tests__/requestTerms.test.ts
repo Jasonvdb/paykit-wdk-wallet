@@ -129,7 +129,7 @@ describe('readRequestTerms', () => {
 describe('recurringScheduleWords', () => {
   it('says the schedule starts when the request is sent, and what a late accept means', () => {
     expect(recurringScheduleWords('1m', 3, 'Ben')).toBe(
-      'A payment is due now and then every minute, 3 in all, counted from when you send this. If Ben accepts late, the missed ones are due at once. Ben pays each one with a tap.',
+      'A payment is due now and then every minute, 3 in all, counted from when you send this. If Ben accepts late, the missed ones are due at once. Ben pays each one with a tap, unless they pay your requests automatically.',
     );
     expect(recurringScheduleWords('5m', 2, 'Ben')).toContain('then every 5 minutes, 2 in all');
     expect(recurringScheduleWords('once', 2, 'Ben')).toBe('');

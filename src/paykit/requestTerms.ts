@@ -63,7 +63,7 @@ export const PAYMENT_COUNT_CHOICES = [2, 3, 5, 10] as const;
 export function recurringScheduleWords(repeat: RepeatChoice, count: number, name: string): string {
   const choice = REPEAT_CHOICES.find((c) => c.id === repeat);
   if (!choice || !('every' in choice)) return '';
-  return `A payment is due now and then ${intervalWords({ every: choice.every, unit: 'minute' })}, ${count} in all, counted from when you send this. If ${name} accepts late, the missed ones are due at once. ${name} pays each one with a tap.`;
+  return `A payment is due now and then ${intervalWords({ every: choice.every, unit: 'minute' })}, ${count} in all, counted from when you send this. If ${name} accepts late, the missed ones are due at once. ${name} pays each one with a tap, unless they pay your requests automatically.`;
 }
 
 /** The terms as plain data. ./requests.ts turns them into the SDK's FfiPaymentRequestTerms. */
