@@ -92,13 +92,24 @@ export function ActivityDetailScreen({ navigation, route }: RootScreenProps<'Act
           </>
         ) : null}
         {isFaucetMint(item) ? (
-          <DetailRow label="From" value="Aave’s Sepolia test-token faucet" />
+          <>
+            <DetailRow label="From" value="Aave’s Sepolia test-token faucet" />
+            <Divider />
+          </>
         ) : item.counterpartyAddress ? (
-          <DetailRow label={counterpartyLabel} value={<KeyText value={item.counterpartyAddress} full small testID="activity-counterparty" />} />
-        ) : (
-          <DetailRow label={counterpartyLabel} value="Not reported by the network" />
+          <>
+            <DetailRow label={counterpartyLabel} value={<KeyText value={item.counterpartyAddress} full small testID="activity-counterparty" />} />
+            <Divider />
+          </>
+        ) : person ? null : (
+          // A Bitcoin receive has no "from" address (its inputs aren't one
+          // address). Under a person row that already says who, it would
+          // only read as something missing.
+          <>
+            <DetailRow label={counterpartyLabel} value="Not reported by the network" />
+            <Divider />
+          </>
         )}
-        <Divider />
         {item.fee !== undefined ? (
           <>
             <DetailRow label="Network fee" value={formatFee(item.fee, feeAsset)} />
