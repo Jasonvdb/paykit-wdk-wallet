@@ -116,9 +116,8 @@ export function useContactBtcBalances(accountIndices: number[], options: { pollM
       }),
     [accountIndices, query.data],
   );
-  const total = balances.reduce((sum, b) => sum + (b.sats ?? 0n), 0n);
-  // A few hundred sats can be too little to move (./collect.ts); the Wallet
-  // tab offers only what Collect can actually move.
+  // Only what Collect can actually move: a few hundred sats can be too
+  // little (./collect.ts), so dust is left out of the Wallet tab's total.
   const collectable = balances.reduce((sum, b) => sum + (isCollectable(b.sats) ? (b.sats ?? 0n) : 0n), 0n);
-  return { balances, total, collectable, isRefreshing: query.isFetching, refresh: query.refetch };
+  return { balances, collectable, isRefreshing: query.isFetching, refresh: query.refetch };
 }
