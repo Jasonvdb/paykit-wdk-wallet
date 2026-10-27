@@ -50,7 +50,7 @@ import {
 import { retryIfElectrumDropped } from './electrumRetry';
 import { nextFailureStreak, NO_FAILURES, shouldReportFailure, type FailureStreak } from './failureStreak';
 import { fetchBtcTransactionStatus } from './mutinynet';
-import { evmTransactionFrom } from './paymentEvidence';
+import { evmTransactionFrom, sendOutcomeOf } from './paymentEvidence';
 import { markSentTransaction, sentTransactions, subscribeSentTransactions } from './sentTransactions';
 import { useAppActive } from './useAppActive';
 import { contactAccountActivity, useContactAccountActivity } from './useContactAccountActivity';
@@ -214,8 +214,9 @@ export function useActivity(options: { pollMs?: number } = {}): WalletActivity {
 
 /**
  * Our Ethereum sends that Blockscout has not listed yet: ask WDK for each
- * one's receipt and mark the local record confirmed or failed. A read that
- * fails leaves it pending; the next poll asks again.
+ * one's receipt and mark the local record confirmed or failed (a send
+ * replaced by another with its nonce counts as failed; see sendOutcomeOf).
+ * A read that fails leaves it pending; the next poll asks again.
  */
 async function confirmPendingEvmSends(indexed: ActivityItem[], extension: () => EvmAccountExtension): Promise<void> {
   const listed = new Set(indexed.map((item) => item.hash.toLowerCase()));
@@ -223,9 +224,8 @@ async function confirmPendingEvmSends(indexed: ActivityItem[], extension: () => 
   await Promise.all(
     pending.map(async (record) => {
       try {
-        const tx = evmTransactionFrom(await extension().getTransaction(record.hash));
-        if (tx.state === 'succeeded') markSentTransaction(record.id, 'confirmed');
-        else if (tx.state === 'failed') markSentTransaction(record.id, 'failed');
+        const outcome = sendOutcomeOf(evmTransactionFrom(await extension().getTransaction(record.hash)));
+        if (outcome) markSentTransaction(record.id, outcome);
       } catch {
         // Not found yet, or the RPC is down: stays pending.
       }

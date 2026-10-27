@@ -1,7 +1,7 @@
 // Reading payments back from what WDK returns over its RPC bridge.
 import { SEPOLIA_USDT } from '../../config/chains';
 import { ERC20_TRANSFER_TOPIC } from '../erc20PaymentProof';
-import { btcReceiptFromTransfers, btcSendStatus, erc20TransferFromLog, evmTransactionFrom, findErc20TransferLog, matchSentTransfer } from '../paymentEvidence';
+import { btcReceiptFromTransfers, btcSendStatus, erc20TransferFromLog, evmTransactionFrom, findErc20TransferLog, matchSentTransfer, sendOutcomeOf } from '../paymentEvidence';
 import type { ActivityItem } from '../activity';
 
 const TXID = 'ab'.repeat(32);
@@ -100,5 +100,16 @@ describe('matchSentTransfer (a payment that lost its hash)', () => {
   it('compares EVM addresses in any letter case', () => {
     const usdt = sent({ chain: 'ethereum', asset: 'usdt', counterpartyAddress: '0xABCDEF' });
     expect(matchSentTransfer([usdt], { ...query, asset: 'usdt', to: '0xabcdef' }).state).toBe('found');
+  });
+});
+
+describe('sendOutcomeOf', () => {
+  it('ends a send that was mined, reverted or replaced, and keeps the rest pending', () => {
+    expect(sendOutcomeOf({ state: 'succeeded', confirmations: 1, logs: [] })).toBe('confirmed');
+    expect(sendOutcomeOf({ state: 'failed', confirmations: 1 })).toBe('failed');
+    // Another transaction took its nonce: it will never be mined.
+    expect(sendOutcomeOf({ state: 'dropped' })).toBe('failed');
+    expect(sendOutcomeOf({ state: 'pending' })).toBeUndefined();
+    expect(sendOutcomeOf({ state: 'unknown' })).toBeUndefined();
   });
 });

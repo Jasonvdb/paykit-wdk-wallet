@@ -33,7 +33,9 @@ module.exports = {
         'transfer', // USD₮ (ERC-20) send
         // Read-only: a transaction's finality, success and receipt logs.
         // The payee checks a USD₮ payment proof with it before issuing a
-        // receipt; the payer finds its Transfer log to name in the proof.
+        // receipt; the payer finds its Transfer log to name in the proof;
+        // Activity reads the receipt of our own pending sends until
+        // Blockscout lists them (src/wallet/useActivity.ts).
         'getTransaction',
         // EIP-712 signatures can authorize spending off chain (an ERC-20
         // permit, for one), so the app signs exactly one domain with it:

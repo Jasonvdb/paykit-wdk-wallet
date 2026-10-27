@@ -98,6 +98,19 @@ export function evmTransactionFrom(result: unknown): EvmTransaction {
   };
 }
 
+/**
+ * The end state of one of our own Ethereum sends, or undefined while it has
+ * none yet. 'dropped' means WDK saw another transaction take its nonce (a
+ * replacement), so it can never be mined: that is a failed send too, not
+ * one to keep showing as Pending. 'unknown' (not found yet) and 'pending'
+ * stay pending and are asked about again.
+ */
+export function sendOutcomeOf(tx: EvmTransaction): 'confirmed' | 'failed' | undefined {
+  if (tx.state === 'succeeded') return 'confirmed';
+  if (tx.state === 'failed' || tx.state === 'dropped') return 'failed';
+  return undefined;
+}
+
 /** An ERC-20 Transfer event read from one log. Addresses lowercase. */
 export type Erc20Transfer = { token: string; from: string; to: string; amount: bigint };
 
