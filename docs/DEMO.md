@@ -52,7 +52,7 @@ Without funds, every step still runs up to the review screen, which says
 ### Starting point
 
 Both phones show the Wallet tab. On People, each lists the other with the
-solid seal ring and "Private connection ready". Steps 2 and 4 remove and
+solid seal ring and "Private connection ready". Steps 2 and 3 remove and
 add each other again, to show paying a stranger and the link forming.
 
 ## 1. Identities and profiles

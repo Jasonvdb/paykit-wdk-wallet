@@ -188,7 +188,8 @@ time is read once from Mutinynet's esplora and cached; without it Bitcoin
 rows said "confirmed" instead of "2m ago" and sorted below every Ethereum
 row. Blockscout lists a Sepolia transaction a minute or more after its
 block, so while it has not, WDK's `getTransaction` reads the receipt of a
-pending send of ours and marks the local record confirmed or failed. A USD₮
+pending send of ours and marks the local record confirmed or failed (a
+send replaced by another with the same nonce counts as failed). A USD₮
 send's fee comes from the sender's Blockscout transaction list, because the
 token-transfer list has none. A received USD₮ row still waits for
 Blockscout: the balance moves first.
@@ -884,8 +885,10 @@ and the row then says "put off for now" (automatic payment skips it
 too). Either side can cancel to stop future
 payments. A schedule with a set number of payments stays ActiveRecurring
 in the SDK after the last one, so the app calls it done once every
-period has a payment (`isScheduleComplete`): "All 3 paid", and no Stop
-or Cancel button.
+period is paid (`isScheduleComplete`): "All 3 paid", and no Stop or
+Cancel button. The payer counts the payments it made; the payee counts
+only payments its own on-chain check verified, so a proof that is still
+being checked or failed the check leaves Cancel in place.
 
 **Round hooks** (`requestRounds.ts`) are cheap and idempotent: they read
 the last observed state and the book, call the SDK or WDK only for work
