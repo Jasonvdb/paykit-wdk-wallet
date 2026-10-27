@@ -17,6 +17,7 @@ import { useBalancesForWallets, useBalancesForWallet } from '@tetherto/wdk-react
 import { BALANCE_POLL_MS } from '../config/sync';
 import { BTC, ETH, USDT } from '../config/wdk';
 import { parseBaseUnits } from './amounts';
+import { isCollectable } from './collect';
 import { nextFailureStreak, NO_FAILURES, shouldReportFailure } from './failureStreak';
 import { useAppActive } from './useAppActive';
 import { ASSETS, type AssetId } from './assets';
@@ -116,5 +117,8 @@ export function useContactBtcBalances(accountIndices: number[], options: { pollM
     [accountIndices, query.data],
   );
   const total = balances.reduce((sum, b) => sum + (b.sats ?? 0n), 0n);
-  return { balances, total, isRefreshing: query.isFetching, refresh: query.refetch };
+  // A few hundred sats can be too little to move (./collect.ts); the Wallet
+  // tab offers only what Collect can actually move.
+  const collectable = balances.reduce((sum, b) => sum + (isCollectable(b.sats) ? (b.sats ?? 0n) : 0n), 0n);
+  return { balances, total, collectable, isRefreshing: query.isFetching, refresh: query.refetch };
 }

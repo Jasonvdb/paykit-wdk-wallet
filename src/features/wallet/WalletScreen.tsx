@@ -72,7 +72,7 @@ export function WalletScreen({ navigation }: MainTabScreenProps<'Wallet'>) {
     >
       <View style={styles.balances}>
         <Row title={ASSETS.btc.displayName} leading={<AssetDot asset="btc" />} trailing={<AssetAmount value={balances.btc} asset="btc" />} testID="balance-btc" />
-        {fromContacts.total > 0n ? (
+        {fromContacts.collectable > 0n ? (
           <Pressable
             accessibilityRole="button"
             accessibilityHint="Opens You, where you collect it"
@@ -81,7 +81,7 @@ export function WalletScreen({ navigation }: MainTabScreenProps<'Wallet'>) {
             testID="balance-btc-contacts"
           >
             <Text variant="caption" color="graphite">
-              Plus {formatAssetAmount(fromContacts.total, 'btc', { withSymbol: true })} from contacts.{' '}
+              Plus {formatAssetAmount(fromContacts.collectable, 'btc', { withSymbol: true })} from contacts.{' '}
               <Text variant="caption" color="seal">
                 Collect it to spend it
               </Text>

@@ -3,8 +3,9 @@
 // money is attributable to them. Sends spend only from the main account
 // (index 0), so "Collect" moves a contact account's balance there.
 //
-// Collect is "almost everything": WDK keeps back a dust-sized change output
-// (src/wallet/useBtcContactAccount.ts), so a few hundred sats can stay.
+// Collect moves the whole balance less the fee (src/wallet/collect.ts). A
+// balance of a few hundred sats is too little to move: Collect is disabled
+// and says so.
 //
 // A collect that may have reached the network despite an error stays
 // disabled (sendFailureFor), and a ref stops a double tap from sending two.
@@ -18,7 +19,7 @@ import { Linking, StyleSheet, View } from 'react-native';
 
 import { useContactAccounts, usePaykitService } from '../../paykit';
 import { AssetAmount, Button, Divider, Text, space } from '../../ui';
-import { sendFailureFor, useBtcContactAccount } from '../../wallet';
+import { isCollectable, sendFailureFor, useBtcContactAccount } from '../../wallet';
 import { usePersonName } from '../people/usePersonName';
 
 export function ContactAccountsSection() {
@@ -98,11 +99,16 @@ export function ContactAccountRow({ pubky, accountIndex }: { pubky: string; acco
           compact
           onPress={onCollect}
           loading={collecting}
-          disabled={!account.sats || outcomeUnknown}
+          disabled={!isCollectable(account.sats) || outcomeUnknown}
           testID={`collect-${accountIndex}`}
         />
         <Button label="Refresh" variant="secondary" compact onPress={() => void account.refresh().catch(() => undefined)} disabled={collecting} />
       </View>
+      {!message && account.sats !== undefined && account.sats > 0n && !isCollectable(account.sats) ? (
+        <Text variant="caption" color="graphite" testID={`collect-too-little-${accountIndex}`}>
+          Too little to move: it would all go to the network fee.
+        </Text>
+      ) : null}
       {message ? (
         <View style={styles.message}>
           <Text variant="caption" color={message.tone}>

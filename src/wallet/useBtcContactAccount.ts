@@ -6,11 +6,9 @@
 // spends only from the account it is asked to, so money there must be moved
 // to account 0 before the user can spend it with everything else.
 //
-// Collect is "almost everything", not a true sweep: WDK's getMaxSpendable
-// assumes a two-output transaction and keeps back a dust-limit change
-// output (about 546 sats), so a small remainder stays in the contact
-// account or goes to the fee. A true sweep would need a single-output raw
-// transaction.
+// Collect empties the account: it sends getMaxSpendable's amount plus the
+// dust-sized change WDK planned to keep back, so WDK builds a one-output
+// transaction (./collect.ts says why and how).
 //
 // Render one component per contact account and call this hook in it; WDK's
 // account hooks are bound to one index each.
@@ -21,6 +19,7 @@ import { BTC, BTC_NETWORK } from '../config/wdk';
 import { fetchBtcFeeRate } from './mutinynet';
 import { parseBaseUnits } from './amounts';
 import { BTC_HISTORY_FETCH_LIMIT, newestItems, parseBtcTransfers, type ActivityItem } from './activity';
+import { collectAmount } from './collect';
 import { retryIfElectrumDropped } from './electrumRetry';
 import { transactionUrl } from './explorers';
 import { recordSentTransaction } from './sentTransactions';
@@ -59,9 +58,8 @@ export function useBtcContactAccount(accountIndex: number) {
   }, [refresh]);
 
   /**
-   * Move what WDK reports as spendable to account 0 (a dust-sized remainder
-   * may stay, see the header). Resolves with the hash, or undefined if there
-   * was nothing to move.
+   * Move the whole balance to account 0, less the fee (see the header).
+   * Resolves with the hash, or undefined if there was nothing to move.
    *
    * One fee rate for both steps: getMaxSpendable sizes the amount at a rate,
    * and the send must pay that same rate, or amount + fee no longer fits
@@ -71,9 +69,8 @@ export function useBtcContactAccount(accountIndex: number) {
     if (!spending.address) throw new Error('The wallet is not ready yet.');
     const rate = await fetchBtcFeeRate().catch(() => undefined);
     const feeRate = rate !== undefined ? Number(rate) : undefined;
-    const max = await extension().getMaxSpendable(feeRate !== undefined ? { feeRate } : {});
-    const amount = parseBaseUnits(String(max?.amount ?? ''));
-    if (amount === undefined || amount <= 0n) return undefined;
+    const amount = collectAmount(await extension().getMaxSpendable(feeRate !== undefined ? { feeRate } : {}));
+    if (amount === undefined) return undefined;
     const sent = await extension().sendTransaction({ to: spending.address, value: amount.toString(), ...(feeRate !== undefined ? { feeRate } : {}) });
     if (!sent?.hash) throw new Error('The transfer to your main account was not sent.');
     recordSentTransaction({

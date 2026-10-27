@@ -27,6 +27,7 @@ export { useSend, type FeeQuote, type SendRequest, type SendResult } from './use
 export { fetchEvmActivity, useActivity, type WalletActivity } from './useActivity';
 export { useUsdtFaucet } from './useUsdtFaucet';
 export { useBtcContactAccount } from './useBtcContactAccount';
+export { isCollectable } from './collect';
 export { addressFromPaymentText, checkRecipientAddress, type RecipientCheck } from './addressFormat';
 export { checkAffordable, formatFee, sendErrorMessage, type SendProblem } from './sendChecks';
 export { fetchBtcFeeRate, fetchBtcTransactionStatus, type BtcTransactionStatus } from './mutinynet';
