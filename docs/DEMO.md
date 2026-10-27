@@ -32,7 +32,7 @@ adb shell am start -a android.intent.action.VIEW -d "paykitwdk://…"  # Ben
 
 ### Funding
 
-Money moves in steps 3, 6, 7, 8, 9 and 10. Check both wallets first:
+Money moves in steps 2, 5, 6, 7, 8 and 9. Check both wallets first:
 
 ```sh
 node scripts/fund-status.mjs --contacts 3
@@ -76,17 +76,26 @@ Shows: public payment endpoints, paying a person, not an address.
 
 1. **Ana:** People > Ben (Android) > **Remove Ben (Android)**, confirm.
    **Ben:** People > Ana (iOS) > **Remove Ana (iOS)**, confirm. They are
-   strangers now; their history stays.
+   strangers now; their history stays, and so does Bitcoin in their
+   contact accounts (still in You > Bitcoin from contacts). Automatic
+   payments between them end.
 2. **Ben:** You > What you publish. Bitcoin and USD₮ are both on. Tap
    **Check what others see**: it lists the two addresses anyone can pay.
 3. **Ana:** Wallet > **Send** > **A person (pubky)**, paste `$BEN`
    (or `xcrun simctl openurl booted "paykitwdk://send?to=$BEN&asset=usdt"`).
    The payee card shows Ben's seal and name with "Not in your contacts:
-   this is the name they gave themselves".
-4. Type 1 USD₮, **Review**. The review shows the address from Ben's public
-   endpoint and the network fee in ETH. **Send 1 USD₮**.
-5. **Ben:** Wallet. A "Received" USD₮ row appears after the next poll
-   (15 seconds), once the block lands.
+   this is the name they gave themselves", "Accepts Bitcoin and USD₮ by
+   pubky" and "USD₮ goes to 0x83A8…".
+4. Type 1 USD₮, **Review**. The review says "The public address they
+   publish for everyone:" above Ben's address, and the network fee in ETH
+   (on Sepolia usually "less than 0.000001 ETH"). **Send 1.00 USD₮**.
+5. **Ben:** Wallet. The USD₮ balance grows within 15 seconds. The
+   "Received" row follows once Blockscout lists the transfer, which can
+   take a minute or two.
+
+Paying Bitcoin the same way goes to Ben's main address
+(`tb1qx06…`), the one he publishes; once they are contacts again (step
+3), Bitcoin goes to an address only Ana knows.
 
 Try switching USD₮ off on Ben's What you publish: Ana's Send then says
 "Ben (Android) doesn't accept USD₮ by pubky. Choose Bitcoin instead."
@@ -105,7 +114,7 @@ Shows: contacts, the Encrypted Link handshake, the seal closing.
 4. Watch both Person pages: "Connecting privately…" with a rotating dashed
    ring, then the dashes join into a solid ring with a small envelope and
    a light haptic: "Private connection ready". This takes a few sync
-   rounds (3 seconds each).
+   rounds (3 seconds each); in the funded run it took about 25 seconds.
 
 ## 4. Private payment lists
 
@@ -133,8 +142,14 @@ cache.
    USD₮ address. It is the same one everyone pays, so this payment is not
    private." Send it.
 3. **Ben:** pay Ana 5,000 sats and 1 USD₮ the same way.
-4. **Both:** Wallet activity names the person: "You paid Ben (Android)",
-   "Ana (iOS) paid you".
+4. **Both:** Wallet activity names the person, with their seal: "You paid
+   Ben (Android)" for both assets, and "Ana (iOS) paid you" for Bitcoin.
+   A USD₮ payment from a contact reads "Received": it arrives at your one
+   Ethereum address, and the sender's address in their list proves
+   nothing (they could list anyone's address).
+5. **Both:** under the Bitcoin balance, "Plus … BTC from contacts.
+   Collect it to spend it": Bitcoin from a contact lands in your own
+   account for them, not in the balance Send spends.
 
 ## 6. Collect
 
@@ -143,9 +158,17 @@ Shows: per-contact Bitcoin accounts.
 1. **Ben:** Wallet. Under the Bitcoin balance: "Plus … from contacts.
    Collect it to spend it."
 2. **Ben:** Ana's Person page > "Bitcoin from Ana (iOS)" > **Collect**
-   (or You > Bitcoin from contacts). A "Moved to main account" row appears
-   in Activity, and the BTC balance grows by almost the whole amount
-   (WDK keeps back a dust-sized change output).
+   (or You > Bitcoin from contacts). It says "Moving to your main account.
+   It arrives with the next block." Activity shows one row, "Moved to main
+   account, Bitcoin, from Ana (iOS)'s account", and the BTC balance grows
+   by the whole amount less the network fee. The contact account is empty
+   and the "from contacts" line goes away.
+3. **Ana:** the same from Ben's Person page.
+
+A contact account holding less than 436 sats can't be collected (it would
+all go to the fee): its Collect button is disabled with "Too little to
+move: it would all go to the network fee.", and the Wallet tab leaves it
+out.
 
 ## 7. One-time request: proof, verification, receipt
 
@@ -260,6 +283,10 @@ Shows: the Paykit and Noise layer, for developers.
 
 ## Troubleshooting
 
+- **A USD₮ "Received" row is late**: the balance comes from the chain,
+  the row from Blockscout, which can list a transfer a minute or two after
+  its block. The sender's own row turns from Pending to "just now" sooner,
+  from the transaction receipt.
 - **A step hangs at "Connecting privately…"**: both apps must be in the
   foreground; Paykit only moves messages while both poll.
 - **"Couldn't load Bitcoin history. We'll keep trying."**: Mutinynet's
@@ -267,3 +294,30 @@ Shows: the Paykit and Noise layer, for developers.
   reconnects by itself; older data stays on screen.
 - **Never reload a dev build** with Cmd-R or the dev menu: relaunch it
   cold (README). Release builds have no dev menu.
+
+## Funded run, 27 October 2026
+
+The payment steps ran with real testnet money on both phones, in this
+order: paying by address, steps 5 and 6, the in-app mint, step 2 after
+removing each other, step 3, then step 5 again once linked. Every
+transaction, so you can check it on the explorers:
+
+| Step | What | Transaction |
+|---|---|---|
+| Address payment | Ana → Ben, 10,000 sats to his address | [cc2a38bc…](https://mutinynet.com/tx/cc2a38bce7b89e3b6f47f112492d4050a083ec56858378af6b8cc6eeed8cb218) |
+| Address payment | Ben → Ana, 2 USD₮ to her address | [0xa9730d…](https://sepolia.etherscan.io/tx/0xa9730dd892ba07bc501992d088c50e53ef43045059c926705e065aa40b62560c) |
+| 5. Pay a contact | Ana → Ben, 10,000 sats to his account for Ana | [3cb2657e…](https://mutinynet.com/tx/3cb2657e83c592380cf3f5f2ac6ddf4f2d42abeb5e91a086aa708f9f5bf2b367) |
+| 5. Pay a contact | Ana → Ben, 2 USD₮ | [0xab6914…](https://sepolia.etherscan.io/tx/0xab69145da1d2aaf942e2b78f2e33ed3f2c3b97e1a93921dcb354ad1cc79e583f) |
+| 5. Pay a contact | Ben → Ana, 5,000 sats to her account for Ben | [fc604633…](https://mutinynet.com/tx/fc604633222475dce24eedd621e4b498da8b32936adf3d4606dad2f88b87d563) |
+| 5. Pay a contact | Ben → Ana, 1 USD₮ | [0x38ebf1…](https://sepolia.etherscan.io/tx/0x38ebf1316b0d765ec2066941fc0e3a32afda11c1ecc84a54f8f988f20369aafe) |
+| 6. Collect | Ben, before the fix: 9,559 sats moved, 300 left behind | [2694c57a…](https://mutinynet.com/tx/2694c57a1d001c2e7915d083ad5f4b385278850b68cf91ee493a278353c6f6f4) |
+| Test funds | Ben, "Get 1,000 test USD₮" | [0x867d31…](https://sepolia.etherscan.io/tx/0x867d312e09714c096c6706579ce59197b76e25cef0115e0ea81002ef247ec303) |
+| 2. Pay a stranger | Ana → Ben by pubky, 1 USD₮ (public endpoint) | [0xd43c63…](https://sepolia.etherscan.io/tx/0xd43c633202eeca79fd5263fa53724d7bcb58110d8f27e9679a5b7459b46a3406) |
+| 2. Pay a stranger | Ana → Ben by pubky, 5,000 sats to his public address | [bfdf88c2…](https://mutinynet.com/tx/bfdf88c2217cad97f2d75cf711da17fed1ac7c2510d46772d907827e261c4974) |
+| 6. Collect | Ana, after the fix: all 5,000 sats less the fee, one output | [ac032666…](https://mutinynet.com/tx/ac03266616224d2ca10c64778c44f8ff33b7d34d4707566dd3aca1c556abe490) |
+| 5. Pay a contact | After re-adding (step 3): Ana → Ben, 5,000 sats, to the same account for Ana | [f738accd…](https://mutinynet.com/tx/f738accd40f12d3f6239d90d882f6a2f04d0a274dac9e3e6a7f44315ad8288dc) |
+| 5. Pay a contact | After re-adding: Ben → Ana, 1 USD₮ | [0xb160f0…](https://sepolia.etherscan.io/tx/0xb160f03e87ba6b4578f952e109d68d2d99b3fe90ea9327bbbceadcb7bd233ce5) |
+| 6. Collect | Ben, after the fix: 5,000 sats plus the 300 left before, one output | [26fae892…](https://mutinynet.com/tx/26fae89216845111c8bc0dcff004bed2d9859a5f9d5d9877cefe32def58a56ba) |
+
+Screenshots of the run are in
+[`screenshots/demo-run/`](screenshots/demo-run/).

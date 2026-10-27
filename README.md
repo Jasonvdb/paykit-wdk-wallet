@@ -33,12 +33,17 @@ backup-exclusion attribute.
 
 Honest gaps:
 
-- **No money has moved on the demo phones yet.** The demo wallets were
-  never funded during development (the Sepolia ETH and Mutinynet faucets
-  need a person once; see "Funding the demo"). Every payment flow ran up
-  to its review screen, which said "Not enough …"; broadcasting, the
-  payee's on-chain check, receipts, automatic payments and Collect are
-  covered by unit tests and code review only.
+- **Payments ran with real testnet money; requests did not yet.** With
+  funded wallets, the demo's payment steps ran on both phones: paying by
+  address, paying a stranger by pubky (public endpoints), private payments
+  to a contact in both directions and both assets, Collect, and the in-app
+  USD₮ mint ([`docs/DEMO.md`](docs/DEMO.md), "Funded run"). That run found
+  and fixed four bugs: Collect left uncollectable dust, Bitcoin rows had no
+  time and sorted below older rows, USD₮ sends stayed Pending until
+  Blockscout caught up, and seals outside People had no link ring. Payment
+  requests with proofs and receipts, recurring requests and automatic
+  payments have not moved money yet: they are covered by unit tests and
+  code review.
 - **Restoring a backup in onboarding** has not run on a device: it needs
   a phone with no state for the identity. The same SDK restore ran in
   "Check a copied backup" on both phones. What a restore means for

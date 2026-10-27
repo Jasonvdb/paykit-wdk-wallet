@@ -182,6 +182,17 @@ has no history call and the WDK Indexer does not cover testnets, so EVM
 activity comes from the keyless Blockscout Sepolia API, merged with a local
 in-memory record of transactions this app just sent.
 
+Two gaps in those sources are filled in `useActivity`. Electrum reports a
+block height but no time, so each confirmed Bitcoin transaction's block
+time is read once from Mutinynet's esplora and cached; without it Bitcoin
+rows said "confirmed" instead of "2m ago" and sorted below every Ethereum
+row. Blockscout lists a Sepolia transaction a minute or more after its
+block, so while it has not, WDK's `getTransaction` reads the receipt of a
+pending send of ours and marks the local record confirmed or failed. A USD₮
+send's fee comes from the sender's Blockscout transaction list, because the
+token-transfer list has none. A received USD₮ row still waits for
+Blockscout: the balance moves first.
+
 ## Paykit service (`src/paykit`)
 
 ```ts
@@ -349,8 +360,13 @@ everything. Each contact gets a stable BTC account index (1, 2, ...) for its
 private payment list, persisted in encrypted MMKV and never reused. EVM uses
 account 0 for everyone, because each EVM index would need its own gas.
 `useBtcContactAccount(index).collect()` moves a contact account's funds to
-account 0. It is not a full sweep: WDK's `getMaxSpendable` keeps back a
-dust-limit change output, so a few hundred sats may stay or go to the fee.
+account 0. WDK's `getMaxSpendable` plans a dust-limit change output back to
+the contact account; sent as planned, the first real Collect left 300 sats
+that no Collect can move. So Collect sends the amount plus that planned
+change, and WDK's spend planner drops the change output: one output,
+nothing left behind (`src/wallet/collect.ts`). Balances under 436 sats
+(dust limit plus WDK's minimum fee) cannot move at all: the Wallet tab
+leaves them out and their Collect button says so.
 
 ### The call queue
 
