@@ -33,17 +33,23 @@ backup-exclusion attribute.
 
 Honest gaps:
 
-- **Payments ran with real testnet money; requests did not yet.** With
-  funded wallets, the demo's payment steps ran on both phones: paying by
-  address, paying a stranger by pubky (public endpoints), private payments
-  to a contact in both directions and both assets, Collect, and the in-app
-  USD₮ mint ([`docs/DEMO.md`](docs/DEMO.md), "Funded run"). That run found
-  and fixed four bugs: Collect left uncollectable dust, Bitcoin rows had no
-  time and sorted below older rows, USD₮ sends stayed Pending until
-  Blockscout caught up, and seals outside People had no link ring. Payment
-  requests with proofs and receipts, recurring requests and automatic
-  payments have not moved money yet: they are covered by unit tests and
-  code review.
+- **Everything that moves money ran with real testnet money**, on both
+  phones ([`docs/DEMO.md`](docs/DEMO.md), "Funded run"): paying by
+  address, paying a stranger by pubky (public endpoints), private
+  payments to a contact in both directions and both assets, Collect, the
+  in-app USD₮ mint, one-time requests in both assets with proofs,
+  on-chain checks and receipts, a recurring request paid by hand, and
+  automatic payments under an Allowance, up to its amount and hourly
+  limits. Closing the app mid-payment (payer after the broadcast, payer
+  during the send, payee before its check) still ended with one
+  transaction and a receipt. The payment run fixed four bugs (Collect
+  left uncollectable dust, Bitcoin rows had no time, USD₮ sends stayed
+  Pending until Blockscout caught up, seals outside People had no link
+  ring). The request run found no bug in how money moves; it fixed three
+  screens: a finished recurring request still read "Active" and offered
+  to stop it, Request money promised a tap per payment even to a contact
+  who pays automatically, and Activity detail showed an empty address row
+  under a named contact.
 - **Restoring a backup in onboarding** has not run on a device: it needs
   a phone with no state for the identity. The same SDK restore ran in
   "Check a copied backup" on both phones. What a restore means for

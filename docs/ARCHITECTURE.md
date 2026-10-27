@@ -882,7 +882,10 @@ due and pays each with a tap, or the wallet pays them under an Allowance
 (see "Automatic payments"); "Not now" records `deferPaymentOccurrence`,
 and the row then says "put off for now" (automatic payment skips it
 too). Either side can cancel to stop future
-payments.
+payments. A schedule with a set number of payments stays ActiveRecurring
+in the SDK after the last one, so the app calls it done once every
+period has a payment (`isScheduleComplete`): "All 3 paid", and no Stop
+or Cancel button.
 
 **Round hooks** (`requestRounds.ts`) are cheap and idempotent: they read
 the last observed state and the book, call the SDK or WDK only for work

@@ -176,63 +176,104 @@ Shows: payment requests, the payment ledger, payment proofs, receipts.
 
 1. **Ben:** Requests > **Request money** (or
    `paykitwdk://request-money?pubky=$ANA`). Choose Ana, USD₮, 3, note
-   "Lunch", expiry 1 hour, One time. **Request 3 USD₮ from Ana (iOS)**.
-   The sheet says "Sent to Ana (iOS)".
+   "Lunch", "can accept it for" 1 hour, One time. **Request 3.00 USD₮
+   from Ana (iOS)**. The sheet says "Sent to Ana (iOS)" and "Waiting for
+   Ana (iOS) to pay."
 2. **Ana:** Requests > Incoming shows Ben's request, "Waiting for you".
-   Open it. The timeline shows Requested.
-3. **Ana:** **Accept and pay**. The Send review opens with the amount and
-   the address locked, "Paying accepts Ben (Android)'s request". Pay.
-4. **Ana:** the timeline moves through Accepted and Paid (the proof: for
-   USD₮ an EIP-712 signature that waits for the block).
-5. **Ben:** the request page shows Paid, then Verified once his wallet
-   checked the transfer on chain, then Receipt.
-6. **Ana:** the Receipt step completes when the encrypted receipt
-   arrives. Activity says "Receipt from Ben (Android)"; Ben's says "Paid
-   your request, receipt sent". Open the row: Activity detail links to the
-   request and the receipt.
+   Open it. The page shows the address Ben put in the request and the
+   status "Ben (Android) asked you", then "Accept to pay".
+3. **Ana:** **Accept and pay**. The Pay request review shows the amount
+   and the address, locked: "Paying accepts Ben (Android)'s request:
+   “Lunch”." and "The address Ben (Android) put in their request, sent to
+   you privately:". **Pay 3.00 USD₮**. The sheet says "Sent" and "Once it
+   is in a block, your wallet signs a proof of payment for Ben (Android).
+   They check it on chain and send you a receipt."
+4. **Ana:** the status moves through "You accepted" and "You paid"
+   (with the transaction). For USD₮ the proof is an EIP-712 signature
+   that waits for the block; for Bitcoin it leaves at once.
+5. **Ben:** the request page shows "Ana (iOS) accepted", "Ana (iOS)
+   paid", "Checked on chain" once his wallet checked the transfer, then
+   "Receipt sent to Ana (iOS)".
+6. **Ana:** "Ben (Android) checked it on chain" and "Receipt from Ben
+   (Android)" complete when the encrypted receipt arrives; the chip says
+   "Paid, receipt received". In the funded run this took about 25
+   seconds for USD₮ and about a minute for Bitcoin (the next block).
+7. **Both:** Activity names the request: Ana's row reads "You paid Ben
+   (Android)" with "Receipt from Ben (Android)", Ben's "Ana (iOS) paid
+   you" with "Paid your request, receipt sent". Open the row: Activity
+   detail has a "Payment request" link ("Ben (Android)'s request, Paid
+   with this transaction") and the receipt.
 
-Also try: **Decline** on another request (Ben's page says Declined, in
-Graphite, not red), and **Cancel request** from Ben's side.
+The same works the other way in Bitcoin (Ana asks Ben for 0.0001 BTC):
+the address is Ana's own account for Ben ("Your private Bitcoin address
+for Ben (Android)"), and Ben's proof leaves with the payment.
+
+Also try, on fresh requests:
+
+- **Decline** (payer): "Decline Ana (iOS)'s request? Ana (iOS) is told
+  you said no. You can't accept it later." The payee's page says "Ben
+  (Android) declined", in Graphite, not red.
+- **Cancel request** (payee): "Cancel this request? Ana (iOS) is told
+  it's canceled and can't pay it any more." The payer's page says "Ben
+  (Android) canceled it".
 
 ## 8. Recurring request
 
 Shows: recurring billing periods (the wallets schedule; Paykit carries the
 terms).
 
-1. **Ben:** Request money from Ana: Bitcoin, 2,000 sats, **Every
-   minute**, 3 payments. The schedule line says when each payment is due.
-2. **Ana:** open it, **Accept and pay the first one**. A minute later the
-   next period is due: the page says "Waiting for you. Every minute, one
-   payment due now." Pay it, or tap **Not now** to put it off.
-3. Either side can stop: **Stop these payments** (Ana) or **Cancel
-   request** (Ben).
+1. **Ben:** Request money from Ana: Bitcoin, 0.00002 BTC (2,000 sats),
+   **Every minute**, Number of payments 3. The form says "A payment is due
+   now and then every minute, 3 in all, counted from when you send this."
+   The request page's Schedule says from when to when.
+2. **Ana:** open it, scroll down, **Accept and pay the first one**. The
+   review says "The payment due …" with that period's time.
+3. A minute later the next period is due. The request row says "Active:
+   1 of 3 paid. Every minute, one payment due now."; the page's Payments
+   list says "1 of 3 paid. Next one in … s.", with the paid period
+   ("Paid, receipt received") and the due one ("Due now"). **Pay now**
+   pays it; **Not now** marks it "Put off for now" and keeps **Pay now**.
+4. Once every payment is made the page says "All 3 paid." and offers no
+   more buttons. Ben's list says "Paid, receipt sent" per period.
+5. Either side can stop sooner: **Stop these payments** (Ana: "Ben
+   (Android) is told you stopped. Payments already made stay made.",
+   then **Stop payments**) or **Cancel request** (Ben).
 
 ## 9. Automatic payments (Allowances)
 
 Shows: Allowances, automatic acceptance and payment within limits.
 
 1. **Ana:** Ben's Person page > Automatic payments > **Set up automatic
-   payments**. Choose 5 USD₮ a payment and 1 day. Your limits read "From
-   0.50 USD₮ to 5.00 USD₮ a payment. At most 10 payments and 20.00 USD₮
-   an hour. 50.00 USD₮ in all. Until …". **Offer to Ben (Android)**.
-2. **Ben:** Ana's Person page says "Ana (iOS) offers to pay your requests
-   automatically". **Accept automatic payments**. Ana's page shows the
-   limits with 0 used; Ben's shows the limits.
+   payments**. Choose USD₮, 5.00 USD₮ a payment and 1 day. Your limits
+   read "From 0.50 USD₮ to 5.00 USD₮ a payment. At most 10 payments and
+   20.00 USD₮ an hour. 50.00 USD₮ in all. Until …". **Offer to Ben
+   (Android)**. Ana's page says "Waiting for Ben (Android) to accept your
+   offer".
+2. **Ben:** Ana's Person page says "Ana (iOS) offers to pay your
+   requests automatically". **Accept automatic payments**. Ben's page
+   then says "Ana (iOS) pays your requests automatically"; Ana's says
+   "You pay Ben (Android)'s requests automatically" with the usage: "0 of
+   10 payments and 0.00 USD₮ of 20.00 USD₮ in the last hour. 0.00 USD₮ of
+   50.00 USD₮ used in all."
 3. **Ben:** request 1 USD₮ from Ana, Every minute, 3 payments. His
    request page says "Ana (iOS) pays requests like this automatically."
 4. **Ana:** don't touch anything. Within a few seconds the request is
    accepted and the first payment is sent; each minute the next one is
    paid. The request page says "Paid automatically within your limits
-   for Ben (Android) as payments come due.", rows say "Paid
-   automatically", and the Person page shows the usage.
+   for Ben (Android) as payments come due.", each period says "Paid
+   automatically, receipt received", and the Person page's usage counts
+   them.
 5. Outside the limits, the request waits for Ana and says why. A request
    for more than 5 USD₮: "Outside the amount you allowed for one
    automatic payment, so it waits for you." A recurring request whose
-   next payment would pass 20 USD₮ in an hour: "Not paid automatically.
-   It would go over your hourly limit for automatic payments. You can pay
-   it yourself."
-6. **Either:** **Stop automatic payments** (Ana) or **End automatic
-   payments** (Ben), each after a confirmation.
+   next payment would pass 20 USD₮ in an hour (5 USD₮ every minute, 5
+   payments, after the three above): three are paid automatically, then
+   "Not paid automatically. It would go over your hourly limit for
+   automatic payments. You can pay it yourself."
+6. **Either:** **Stop automatic payments** (Ana: "Ben (Android)'s next
+   requests wait for you again. Payments already made stay made.", then
+   **Stop**) or **End automatic payments** (Ben). Both pages go back to
+   "Set up automatic payments".
 
 ## 10. Block and unblock
 
@@ -292,6 +333,12 @@ Shows: the Paykit and Noise layer, for developers.
 - **"Couldn't load Bitcoin history. We'll keep trying."**: Mutinynet's
   Electrum server dropped the connection several polls in a row. The app
   reconnects by itself; older data stays on screen.
+- **The app was closed in the middle of a payment**: open it again. A
+  payment that left is finished from the request book (proof, outcome,
+  receipt) and is never offered again. In the funded run, closing the
+  payer right after the broadcast, the payer during the send, and the
+  payee before its on-chain check each ended with one transaction and a
+  receipt.
 - **Never reload a dev build** with Cmd-R or the dev menu: relaunch it
   cold (README). Release builds have no dev menu.
 
@@ -318,6 +365,30 @@ transaction, so you can check it on the explorers:
 | 5. Pay a contact | After re-adding (step 3): Ana → Ben, 5,000 sats, to the same account for Ana | [f738accd…](https://mutinynet.com/tx/f738accd40f12d3f6239d90d882f6a2f04d0a274dac9e3e6a7f44315ad8288dc) |
 | 5. Pay a contact | After re-adding: Ben → Ana, 1 USD₮ | [0xb160f0…](https://sepolia.etherscan.io/tx/0xb160f03e87ba6b4578f952e109d68d2d99b3fe90ea9327bbbceadcb7bd233ce5) |
 | 6. Collect | Ben, after the fix: 5,000 sats plus the 300 left before, one output | [26fae892…](https://mutinynet.com/tx/26fae89216845111c8bc0dcff004bed2d9859a5f9d5d9877cefe32def58a56ba) |
+
+### Requests and automatic payments
+
+The request steps (7, 8 and 9) ran the same day, then three restarts:
+
+| Step | What | Transaction |
+|---|---|---|
+| 7. One-time request | Ana asks Ben for 0.0001 BTC; Ben pays to Ana's account for him; receipt | [6e86bd85…](https://mutinynet.com/tx/6e86bd85c090ed0bc581fe5e1e454787abec7857bb560d74a282a47c34c66939) |
+| 7. One-time request | Ben asks Ana for 3 USD₮ ("Lunch"); EIP-712 proof, receipt | [0xccbab2…](https://sepolia.etherscan.io/tx/0xccbab24e39745850f19d2bcf134d6e7b4447b41ce1ae21fb61b068ace042a94b) |
+| 8. Recurring request | Ana pays Ben's "Phone plan", 2,000 sats, period 1 | [9b336f0f…](https://mutinynet.com/tx/9b336f0f0811bd8e46718fcc3f350418f7a86b9252cba83200ce32290dd08afc) |
+| 8. Recurring request | Period 2 (Pay now) | [b14ae7a3…](https://mutinynet.com/tx/b14ae7a3dffadb8092728d79a1dca9cf7663fe9525d768dda360106fc0c44197) |
+| 8. Recurring request | Period 3, put off with Not now, then paid | [08cf3b67…](https://mutinynet.com/tx/08cf3b677e01f4eb1051643dfb36f20ee1789d03a2856a6ec536b104d0442965) |
+| 9. Automatic payments | "Streaming", 1 USD₮ a minute, period 1, paid automatically | [0xb2140c…](https://sepolia.etherscan.io/tx/0xb2140c13949d6e74681bed88e8b535d1dc63f55d82ffc7eae84ca90e816d4972) |
+| 9. Automatic payments | Period 2, automatically | [0x24d672…](https://sepolia.etherscan.io/tx/0x24d67264e12177eb6973c004d7d0729c044f1add6a35472925e2995120215f75) |
+| 9. Automatic payments | Period 3, automatically | [0x121acd…](https://sepolia.etherscan.io/tx/0x121acdc8df8f0fa8944da39c0eb97e05eba079bb60b678a092b0509f45121617) |
+| 9. Hourly limit | "Gym", 5 USD₮ a minute, period 1, automatically | [0x65cf03…](https://sepolia.etherscan.io/tx/0x65cf0309622c96888d9d3bc72aca61d936b543776e842b6634c05bfe702a424d) |
+| 9. Hourly limit | Period 2, automatically | [0x652bc4…](https://sepolia.etherscan.io/tx/0x652bc4297b48869bc1de08dc6d02466f8eb844dbfaa8494f2deee8f0c671ca71) |
+| 9. Hourly limit | Period 3, automatically (18 of 20 USD₮ this hour); period 4 waited, then Ana stopped the payments | [0x755260…](https://sepolia.etherscan.io/tx/0x755260f25700b606e909b4437fb018a51342ac23fe7da18a5149040b05ac0061) |
+| Restart | Ana pays Ben's 1 USD₮ "Taxi"; Ana's app closed right after the broadcast, proof and receipt after relaunch | [0x2d8529…](https://sepolia.etherscan.io/tx/0x2d8529319f0c9c1d8267ffcdca05db03a84356d7aced4bae306cffb72bf3885b) |
+| Restart | Ben pays Ana's 5,000 sats "Books"; Ana's app (the payee) closed before its check, receipt after relaunch | [cfee5c68…](https://mutinynet.com/tx/cfee5c68b3540db8cf04bf481343d24af7f0b23c9a264e76a7211e6eeab3d9e0) |
+| Restart | Ana pays Ben's 3,000 sats "Snacks"; Ana's app closed 2 s after Pay (first during the acceptance, then during the send), receipt after relaunch | [29682f59…](https://mutinynet.com/tx/29682f59ec5ebaf61ef9183568dc3696a3e55842a80e4fd78e916d8945df3457) |
+
+Each request and period has exactly one transaction on the explorers.
+Declines, cancels and the over-limit request moved no money.
 
 Screenshots of the run are in
 [`screenshots/demo-run/`](screenshots/demo-run/).
