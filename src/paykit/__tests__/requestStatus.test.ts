@@ -1,6 +1,6 @@
 // A request's status words and its five-step timeline, from the separate
 // sources: lifecycle, delivery, our payment, our check and receipts.
-import { isPaymentHandled, isPaymentMade, paymentWords, requestStatusWords, requestTimeline, type PaymentFacts, type RequestFacts } from '../requestStatus';
+import { isPaymentHandled, isPaymentMade, isScheduleComplete, paymentWords, requestStatusWords, requestTimeline, type PaymentFacts, type RequestFacts } from '../requestStatus';
 
 const facts = (overrides: Partial<RequestFacts> = {}): RequestFacts => ({
   role: 'payee',
@@ -44,6 +44,17 @@ describe('requestStatusWords', () => {
   it('counts recurring payments', () => {
     const recurring = facts({ recurring: true, state: 'active', accepted: true, totalPayments: 3, payments: [payment({ proofRecorded: true }), payment({ key: 'k2' })] });
     expect(requestStatusWords(recurring)).toBe('Active: 1 of 3 paid');
+  });
+
+  it('says a set schedule is done once every payment is made, though the SDK still calls it active', () => {
+    const made = [payment({ proofRecorded: true }), payment({ key: 'k2', outgoing: 'broadcast' }), payment({ key: 'k3', proofRecorded: true, receipt: 'received' })];
+    const done = facts({ role: 'payer', recurring: true, state: 'active', accepted: true, totalPayments: 3, payments: made });
+    expect(isScheduleComplete(done)).toBe(true);
+    expect(requestStatusWords(done)).toBe('All 3 paid');
+    expect(isScheduleComplete({ ...done, payments: made.slice(0, 2) })).toBe(false);
+    // An endless schedule is never done.
+    expect(isScheduleComplete({ ...done, totalPayments: undefined })).toBe(false);
+    expect(isScheduleComplete({ ...done, recurring: false })).toBe(false);
   });
 });
 

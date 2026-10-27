@@ -30,6 +30,7 @@ import {
   deferPayment,
   describeError,
   isPaymentHandled,
+  isScheduleComplete,
   isTerminal,
   requestStatusWords,
   requestTimeline,
@@ -79,6 +80,8 @@ export function RequestDetailScreen({ navigation, route }: RootScreenProps<'Requ
   const terminal = isTerminal(view.state);
   const onePayment = facts.payments[0];
   const paidOnce = !recurrence && !!onePayment && isPaymentHandled(onePayment);
+  // Every payment of a set schedule is made: nothing is left to stop.
+  const complete = isScheduleComplete(facts);
 
   const run = async (action: Action, task: () => Promise<void>, failure: string) => {
     if (!service || busy) return;
@@ -228,8 +231,8 @@ export function RequestDetailScreen({ navigation, route }: RootScreenProps<'Requ
         {payer && (view.state === 'proposed' || view.state === 'expired') ? (
           <Button label="Decline" variant="secondary" onPress={decline} {...stateOf('decline')} testID="request-decline" />
         ) : null}
-        {payer && view.state === 'active' ? <Button label="Stop these payments" variant="destructive" onPress={cancel} {...stateOf('cancel')} testID="request-stop" /> : null}
-        {!payer && !terminal && !paidOnce && view.state !== 'proof-submitted' ? (
+        {payer && view.state === 'active' && !complete ? <Button label="Stop these payments" variant="destructive" onPress={cancel} {...stateOf('cancel')} testID="request-stop" /> : null}
+        {!payer && !terminal && !paidOnce && !complete && view.state !== 'proof-submitted' ? (
           <Button label="Cancel request" variant="destructive" onPress={cancel} {...stateOf('cancel')} testID="request-cancel" />
         ) : null}
       </View>

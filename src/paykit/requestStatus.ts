@@ -95,8 +95,18 @@ export function isPaymentHandled(payment: PaymentFacts): boolean {
   return isPaymentMade(payment) || payment.outgoing === 'sending' || payment.outgoing === 'unknown';
 }
 
-function paidCount(facts: RequestFacts): number {
+function paidCount(facts: Pick<RequestFacts, 'payments'>): number {
   return facts.payments.filter(isPaymentMade).length;
+}
+
+/**
+ * A recurring request with a set number of payments that has all of them.
+ * The SDK keeps such a request ActiveRecurring for good (Paykit runs no
+ * scheduler, so nothing ends it), so the wallet works out that it is done:
+ * nothing is left to pay, and nothing to stop or cancel.
+ */
+export function isScheduleComplete(facts: Pick<RequestFacts, 'recurring' | 'totalPayments' | 'payments'>): boolean {
+  return facts.recurring && facts.totalPayments !== undefined && paidCount(facts) >= facts.totalPayments;
 }
 
 /** One payment's status in words (one-time requests and each recurring period). */
@@ -138,6 +148,7 @@ export function requestStatusWords(facts: RequestFacts): string {
       break;
   }
   if (facts.recurring && (state === 'active' || facts.accepted)) {
+    if (isScheduleComplete(facts)) return `All ${facts.totalPayments} paid`;
     const paid = paidCount(facts);
     return facts.totalPayments ? `Active: ${paid} of ${facts.totalPayments} paid` : `Active: ${paid} paid`;
   }

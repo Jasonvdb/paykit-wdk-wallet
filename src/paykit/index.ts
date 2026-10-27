@@ -74,7 +74,7 @@ export {
   type RequestAsset,
   type RequestTermsView,
 } from './requestTerms';
-export { isPaymentHandled, isPaymentMade, isPaymentSettled, isTerminal, paymentWords, requestStatusWords, requestTimeline, type PaymentFacts, type RequestFacts, type TimelineStep } from './requestStatus';
+export { isPaymentHandled, isPaymentMade, isPaymentSettled, isScheduleComplete, isTerminal, paymentWords, requestStatusWords, requestTimeline, type PaymentFacts, type RequestFacts, type TimelineStep } from './requestStatus';
 export { intervalWords, scheduleWords, nextPeriodAfter, paymentCount, periodKey, unpaidPeriods, parseTime, type BillingPeriod, type Recurrence } from './recurrence';
 export { paymentKey } from './requestBook';
 // Backup and restore
